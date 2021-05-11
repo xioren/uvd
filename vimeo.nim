@@ -19,6 +19,7 @@ type
     initUrl: string
     baseUrl: string
     urlSegments: seq[string]
+    exists: bool
 
   VimeoUri* = object
     url*: string
@@ -49,11 +50,14 @@ proc selectBestVideoStream(streams: JsonNode): JsonNode =
 
 
 proc selectBestAudioStream(streams: JsonNode): JsonNode =
-  var largest = 0
-  for stream in streams:
-    if stream["bitrate"].getInt() > largest:
-      largest = stream["bitrate"].getInt()
-      result = stream
+  if streams.kind == JNull:
+    result = streams
+  else:
+    var largest = 0
+    for stream in streams:
+      if stream["bitrate"].getInt() > largest:
+        largest = stream["bitrate"].getInt()
+        result = stream
 
 
 proc getVideoStreamInfo(stream: JsonNode): tuple[mime, ext, size, qlt: string] =
@@ -92,15 +96,18 @@ proc newVideoStream(cdnUrl: string, stream: JsonNode): Stream =
   result.initUrl = stream["init_segment"].getStr()
   result.urlSegments = produceUrlSegments(cdnUrl.split("sep/")[0] & "sep/video",
                                           result.baseUrl, result.initUrl, stream)
+  result.exists = true
 
 
 proc newAudioStream(cdnUrl: string, stream: JsonNode): Stream =
-  (result.mime, result.ext, result.size, result.quality) = getAudioStreamInfo(stream)
-  result.name = addFileExt("audiostream", result.ext)
-  result.baseUrl = stream["base_url"].getStr().strip(leading=true, chars={'.'})
-  result.initUrl = stream["init_segment"].getStr()
-  result.urlSegments = produceUrlSegments(cdnUrl.split("sep/")[0] & "sep/",
-                                          result.baseUrl, result.initUrl, stream)
+  if stream.kind != JNull:
+    (result.mime, result.ext, result.size, result.quality) = getAudioStreamInfo(stream)
+    result.name = addFileExt("audiostream", result.ext)
+    result.baseUrl = stream["base_url"].getStr().strip(leading=true, chars={'.'})
+    result.initUrl = stream["init_segment"].getStr()
+    result.urlSegments = produceUrlSegments(cdnUrl.split("sep/")[0] & "sep/",
+                                            result.baseUrl, result.initUrl, stream)
+    result.exists = true
 
 
 proc reportStreamInfo(stream: Stream) =
@@ -117,7 +124,7 @@ proc main*(vimeoUrl: VimeoUri) =
   try:
     configResponse = parseJson(get(configUrl % id))
   except JsonParsingError:
-    # FIXME: this assumes all json errors are because of restricted video
+    # FIXME: this assumes all json errors are because of unsigned url
     echo "[trying signed config url]"
     let
       webpage = get(vimeoUrl.url)
@@ -136,8 +143,6 @@ proc main*(vimeoUrl: VimeoUri) =
       cdnUrl = configResponse["request"]["files"]["dash"]["cdns"][defaultCDN]["url"].getStr()
       cdnResponse = parseJson(get(dequery(cdnUrl)))
       videoStream = newVideoStream(cdnUrl, selectBestVideoStream(cdnResponse["video"]))
-    var audioStream: Stream
-    if $cdnResponse["audio"] != "null":
       audioStream = newAudioStream(cdnUrl, selectBestAudioStream(cdnResponse["audio"]))
 
     echo "title: ", title
@@ -145,7 +150,7 @@ proc main*(vimeoUrl: VimeoUri) =
     if grabMulti(videoStream.urlSegments, forceFilename=videoStream.name,
                  saveLocation=getCurrentDir()) != "200 OK":
       echo "<failed to download video stream>"
-    elif audioStream.name != "":
+    elif audioStream.exists:
       reportStreamInfo(audioStream)
       if grabMulti(audioStream.urlSegments, forceFilename=audioStream.name,
                    saveLocation=getCurrentDir()) != "200 OK":
