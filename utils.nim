@@ -44,7 +44,8 @@ proc post*(url: string): string =
   try:
     result = client.postContent(url)
   except Exception as e:
-    echo '<', e.msg, '>'
+    result = e.msg
+    echo '<', result, '>'
 
 
 proc get*(url: string): string =
@@ -52,7 +53,8 @@ proc get*(url: string): string =
   try:
     result = client.getContent(url)
   except Exception as e:
-    echo '<', e.msg, '>'
+    result = e.msg
+    echo '<', result, '>'
 
 
 proc download(url, filepath: string): Future[string] {.async.} =

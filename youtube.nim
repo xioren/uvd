@@ -170,6 +170,7 @@ proc newVideoStream(youtubeUrl: string, stream: JsonNode): Stream =
 
 
 proc newAudioStream(youtubeUrl: string, stream: JsonNode): Stream =
+  # QUESTION: will stream with no audio throw exception?
   (result.itag, result.mime, result.ext, result.size, result.quality) = getAudioStreamInfo(stream)
   result.name = addFileExt("audiostream", result.ext)
   result.url = urlOrCipher(youtubeUrl, stream)

@@ -5,7 +5,8 @@ import utils
 
 # NOTE: s=788550b1a916f3211f77d5261169782a1c4b5a46_1620593836
 # sha1hash_timestamp
-# timestamp == epochTime
+# timestamp == unix time
+# can use toUnix(getTime()) or epochTime().int
 # timestamp most likely used in hash as salt
 
 
@@ -121,15 +122,15 @@ proc main*(vimeoUrl: VimeoUri) =
   let
     id = vimeoUrl.url.captureBetween('/', '?', vimeoUrl.url.find(".com/"))
   var configResponse: JsonNode
-  try:
-    configResponse = parseJson(get(configUrl % id))
-  except JsonParsingError:
-    # FIXME: this assumes all json errors are because of unsigned url
+  let response = get(configUrl % id)
+  if response == "403 Forbidden":
     echo "[trying signed config url]"
     let
       webpage = get(vimeoUrl.url)
       signedConfigUrl = webpage.captureBetween('"', '"', webpage.find(""""config_url":""") + 13)
     configResponse = parseJson(get(signedConfigUrl.replace("\\")))
+  else:
+    configResponse = parseJson(response)
   let
     title = configResponse["video"]["title"].getStr()
     safeTitle = title.multiReplace((".", ""), ("/", ""))
@@ -139,8 +140,8 @@ proc main*(vimeoUrl: VimeoUri) =
     echo "<file exists> ", safeTitle
   else:
     let
-      defaultCDN = configResponse["request"]["files"]["dash"]["default_cdn"].getStr()
-      cdnUrl = configResponse["request"]["files"]["dash"]["cdns"][defaultCDN]["url"].getStr()
+      defaultCdn = configResponse["request"]["files"]["dash"]["default_cdn"].getStr()
+      cdnUrl = configResponse["request"]["files"]["dash"]["cdns"][defaultCdn]["url"].getStr()
       cdnResponse = parseJson(get(dequery(cdnUrl)))
       videoStream = newVideoStream(cdnUrl, selectBestVideoStream(cdnResponse["video"]))
       audioStream = newAudioStream(cdnUrl, selectBestAudioStream(cdnResponse["audio"]))
