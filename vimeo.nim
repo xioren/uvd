@@ -30,7 +30,7 @@ const
 
 
 proc isVerticle(stream: JsonNode): bool =
-  ## w x h
+  # NOTE: streams are always w x h
   stream["height"].getInt() > stream["width"].getInt()
 
 
@@ -104,8 +104,10 @@ proc newAudioStream(cdnUrl: string, stream: JsonNode): Stream =
 
 
 proc reportStreamInfo(stream: Stream) =
-  echo "stream: ", stream.name, '\n', "size: ", stream.size, '\n',
-       "quality: ", stream.quality, '\n', "mime: ", stream.mime
+  echo "stream: ", stream.name, '\n',
+       "size: ", stream.size, '\n',
+       "quality: ", stream.quality, '\n',
+       "mime: ", stream.mime
 
 
 proc main*(vimeoUrl: VimeoUri) =

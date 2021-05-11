@@ -73,7 +73,7 @@ proc parseFunctionPlan(js: string): seq[string] =
 
 
 proc createFunctionMap(js, mainFunc: string): Table[string, string] =
-  ## get which functions correspond which function names
+  ## map functions to corresponding function names
   ## {"ai": "function(a,b){var c=a[0];a[0]=a[b%a.length];a[b%a.length]=c}",
   ## "wW": "function(a){a.reverse()}", "Nh": "function(a,b){a.splice(0,b)}"}
   var matches: array[1, string]
@@ -107,7 +107,7 @@ proc decipher(js, signature: string): string =
       splice(splitSig, argument)
     else:
       swap(splitSig, argument)
-  result = splitSig.join("")
+  result = splitSig.join()
 
 
 proc getSigCipherUrl(js, signatureCipher: string): string =
