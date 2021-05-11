@@ -117,6 +117,7 @@ proc main*(vimeoUrl: VimeoUri) =
   try:
     configResponse = parseJson(get(configUrl % id))
   except JsonParsingError:
+    # FIXME: this assumes all json errors are because of restricted video
     echo "[trying signed config url]"
     let
       webpage = get(vimeoUrl.url)

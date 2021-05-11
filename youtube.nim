@@ -234,9 +234,10 @@ proc main*(youtubeUrl: YoutubeUri) =
       reportStreamInfo(videoStream)
       if grab(videoStream.url, forceFilename=videoStream.name, saveLocation=getCurrentDir()) != "200 OK":
         echo "<failed to obtain a suitable video stream>"
+        return
+
+    reportStreamInfo(audioStream)
+    if grab(audioStream.url, forceFilename=audioStream.name, saveLocation=getCurrentDir()) == "200 OK":
+      joinStreams(videoStream.name, audioStream.name, safeTitle)
     else:
-      reportStreamInfo(audioStream)
-      if grab(audioStream.url, forceFilename=audioStream.name, saveLocation=getCurrentDir()) == "200 OK":
-        joinStreams(videoStream.name, audioStream.name, safeTitle)
-      else:
-        echo "<failed to obtain a suitable audio stream>"
+      echo "<failed to obtain a suitable audio stream>"
