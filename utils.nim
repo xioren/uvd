@@ -33,7 +33,7 @@ proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
   stdout.eraseLine()
   stdout.write("[", alignLeft(bar, 40), "] ",
                "size: ", formatSize(total.int, includeSpace=true),
-               " speed: ", formatSize(speed.int, includeSpace=true))
+               " speed: ", formatSize(speed.int, includeSpace=true) , "/s")
   stdout.flushFile()
 
 
