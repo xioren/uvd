@@ -18,16 +18,14 @@ func dequery*(url: string): string =
 proc joinStreams*(videoStreamPath, audioStreamPath, filepath: string) =
   ## join audio and video streams using ffmpeg
   let fullFilepath = addFileExt(filepath, "mkv")
-  if fileExists(fullFilepath):
-    echo "<file exists> ", filepath
+
+  echo "[joining streams]"
+  if execShellCmd(fmt"ffmpeg -i {videoStreamPath} -i {audioStreamPath} -c copy {quoteShell(fullFilepath)} > /dev/null 2>&1") == 0:
+    removeFile(videoStreamPath)
+    removeFile(audioStreamPath)
+    echo "[complete] ", fullFilepath
   else:
-    echo "[joining streams]"
-    if execShellCmd(fmt"ffmpeg -i {videoStreamPath} -i {audioStreamPath} -c copy {quoteShell(fullFilepath)} > /dev/null 2>&1") == 0:
-      removeFile(videoStreamPath)
-      removeFile(audioStreamPath)
-      echo "[complete] ", fullFilepath
-    else:
-      echo "<error joining streams>"
+    echo "<error joining streams>"
 
 
 proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
@@ -95,7 +93,7 @@ proc downloadParts(parts: seq[string], filepath: string): Future[string] {.async
 
 
 proc grab*(url: string, forceFilename = "",
-           saveLocation=joinPath(getHomeDir(), "Downloads")): string =
+           saveLocation=joinPath(getHomeDir(), "Downloads"), forceDl=false): string =
   var filename: string
 
   if forceFilename == "":
@@ -104,7 +102,7 @@ proc grab*(url: string, forceFilename = "",
     filename = forceFilename
 
   let filepath = joinPath(saveLocation, filename)
-  if fileExists(filepath):
+  if not forceDl and fileExists(filepath):
     echo "<file exists> ", filename
   else:
     result = waitFor download(url, filepath)
@@ -113,7 +111,7 @@ proc grab*(url: string, forceFilename = "",
 
 
 proc grabMulti*(urls: seq[string], forceFilename = "",
-                saveLocation=joinPath(getHomeDir(), "Downloads")): string =
+                saveLocation=joinPath(getHomeDir(), "Downloads"), forceDl=false): string =
   var filename: string
 
   if forceFilename == "":
@@ -122,7 +120,7 @@ proc grabMulti*(urls: seq[string], forceFilename = "",
     filename = forceFilename
 
   let filepath = joinPath(saveLocation, filename)
-  if fileExists(filepath):
+  if not forceDl and fileExists(filepath):
     echo "<file exists> ", filename
   else:
     result = waitFor downloadParts(urls, filepath)
