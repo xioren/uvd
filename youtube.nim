@@ -201,7 +201,13 @@ proc standardizeUrl(youtubeUrl: string): string =
 
 proc main*(youtubeUrl: YoutubeUri) =
   let standardYoutubeUrl = standardizeUrl(youtubeUrl.url)
-  var playerResponse = parseJson(post(standardYoutubeUrl & query))[2]["playerResponse"]
+  var playerResponse: JsonNode
+  let response = post(standardYoutubeUrl & query)
+  if response == "404 Not Found":
+    echo '<', response, '>'
+    return
+  else:
+    playerResponse = parseJson(response)[2]["playerResponse"]
   let
     title = playerResponse["videoDetails"]["title"].getStr()
     safeTitle = title.multiReplace((".", ""), ("/", ""))

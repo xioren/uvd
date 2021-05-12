@@ -68,8 +68,7 @@ proc download(url, filepath: string): Future[string] {.async.} =
     await file.writeFromStream(resp.bodyStream)
     result = $resp.code()
   except Exception as e:
-    stdout.eraseLine()
-    echo '<', e.msg, '>'
+    result = e.msg
   finally:
     stdout.eraseLine()
     file.close()
@@ -88,8 +87,7 @@ proc downloadParts(parts: seq[string], filepath: string): Future[string] {.async
       await file.writeFromStream(resp.bodyStream)
       result = $resp.code()
   except Exception as e:
-    stdout.eraseLine()
-    echo '<', e.msg, '>'
+    result = e.msg
   finally:
     stdout.eraseLine()
     file.close()
