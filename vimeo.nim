@@ -152,12 +152,12 @@ proc main*(vimeoUrl: VimeoUri) =
     echo "title: ", title
     reportStreamInfo(videoStream)
     if grabMulti(videoStream.urlSegments, forceFilename=videoStream.name,
-                 saveLocation=getCurrentDir(), forceDL=true) != "200 OK":
+                 saveLocation=getCurrentDir(), forceDl=true) != "200 OK":
       echo "<failed to download video stream>"
     elif audioStream.exists:
       reportStreamInfo(audioStream)
       if grabMulti(audioStream.urlSegments, forceFilename=audioStream.name,
-                   saveLocation=getCurrentDir(), forceDL=true) != "200 OK":
+                   saveLocation=getCurrentDir(), forceDl=true) != "200 OK":
         echo "<failed to download audio stream>"
       else:
         joinStreams(videoStream.name, audioStream.name, safeTitle)

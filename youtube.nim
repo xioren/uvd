@@ -235,17 +235,17 @@ proc main*(youtubeUrl: YoutubeUri) =
 
     echo "title: ", title
     reportStreamInfo(videoStream)
-    if grab(videoStream.url, forceFilename=videoStream.name, saveLocation=getCurrentDir(), forceDL=true) == "404 Not Found":
+    if grab(videoStream.url, forceFilename=videoStream.name, saveLocation=getCurrentDir(), forceDl=true) == "404 Not Found":
       echo "[trying alternate video stream]"
       videoStream = newVideoStream(standardYoutubeUrl, playerResponse["streamingData"]["adaptiveFormats"][1])
 
       reportStreamInfo(videoStream)
-      if grab(videoStream.url, forceFilename=videoStream.name, saveLocation=getCurrentDir(), forceDL=true) != "200 OK":
+      if grab(videoStream.url, forceFilename=videoStream.name, saveLocation=getCurrentDir(), forceDl=true) != "200 OK":
         echo "<failed to obtain a suitable video stream>"
         return
 
     reportStreamInfo(audioStream)
-    if grab(audioStream.url, forceFilename=audioStream.name, saveLocation=getCurrentDir(), forceDL=true) == "200 OK":
+    if grab(audioStream.url, forceFilename=audioStream.name, saveLocation=getCurrentDir(), forceDl=true) == "200 OK":
       joinStreams(videoStream.name, audioStream.name, safeTitle)
     else:
       echo "<failed to obtain a suitable audio stream>"
