@@ -123,6 +123,8 @@ proc grab*(url: string, forceFilename = "",
     result = waitFor download(url, filepath)
     if result == "200 OK":
       echo "[success] ", filename
+    else:
+      echo '<', result, '>', filename
 
 
 proc grabMulti*(urls: seq[string], forceFilename = "",
@@ -141,3 +143,5 @@ proc grabMulti*(urls: seq[string], forceFilename = "",
     result = waitFor downloadParts(urls, filepath)
     if result == "200 OK":
       echo "[success] ", filename
+    else:
+      echo '<', result, '>', filename

@@ -2,6 +2,7 @@ import std/[json, uri, algorithm, sequtils, parseutils]
 
 import utils
 
+# NOTE: ratebypass/yes??
 
 type
   Stream = object
@@ -12,6 +13,9 @@ type
     size: string
     quality: string
     url: string
+    baseUrl: string
+    urlSegments: seq[string]
+    dash: bool
 
   YoutubeUri* = object
     url*: string
@@ -63,23 +67,23 @@ proc parseFunctionPlan(js: string): seq[string] =
   ## get the scramble functions
   ## @["ix.Nh(a,2)", "ix.ai(a,5)", "ix.wW(a,62)", "ix.Nh(a,1)", "ix.wW(a,39)",
   ## "ix.ai(a,41)", "ix.Nh(a,3)"]
-  var matches: array[1, string]
+  var match: array[1, string]
   # NOTE: matches vy=function(a){a=a.split("");uy.bH(a,3);uy.Fg(a,7);uy.Fg(a,50);
   # uy.S6(a,71);uy.bH(a,2);uy.S6(a,80);uy.Fg(a,38);return a.join("")};
   let functionPatterns = [re"([a-z]{2}\=function\(a\)\{a\=a\.split\([^\(]+\);[a-z]{2}\.[^\n]+)"]
   for pattern in functionPatterns:
-    discard js.find(pattern, matches)
-  matches[0].split(';')[1..^3]
+    discard js.find(pattern, match)
+  match[0].split(';')[1..^3]
 
 
 proc createFunctionMap(js, mainFunc: string): Table[string, string] =
   ## map functions to corresponding function names
   ## {"ai": "function(a,b){var c=a[0];a[0]=a[b%a.length];a[b%a.length]=c}",
   ## "wW": "function(a){a.reverse()}", "Nh": "function(a,b){a.splice(0,b)}"}
-  var matches: array[1, string]
+  var match: array[1, string]
   let pattern = re("(?<=var $1={)(.+?)(?=};)" % mainFunc, flags={reDotAll})
-  discard js.find(pattern, matches)
-  for item in matches[0].split(",\n"):
+  discard js.find(pattern, match)
+  for item in match[0].split(",\n"):
     let parts = item.split(':')
     result[parts[0]] = parts[1]
 
@@ -135,11 +139,15 @@ proc selectBestAudioStream(streams: JsonNode): JsonNode =
         result = stream
 
 
-proc getVideoStreamInfo(stream: JsonNode): tuple[itag: int, mime, ext, size, qlt: string] =
+proc getVideoStreamInfo(stream: JsonNode, length: int): tuple[itag: int, mime, ext, size, qlt: string] =
   result.itag = stream["itag"].getInt()
   result.mime = stream["mimeType"].getStr().split(";")[0]
   result.ext = extensions[result.mime]
-  result.size = formatSize(parseInt(stream["contentLength"].getStr()), includeSpace=true)
+  if stream.hasKey("contentLength"):
+    result.size = formatSize(parseInt(stream["contentLength"].getStr()), includeSpace=true)
+  else:
+    # NOTE: estimate from bitrate
+    result.size = formatSize((stream["bitrate"].getInt() * length / 8).int, includeSpace=true)
   result.qlt = stream["qualityLabel"].getStr()
 
 
@@ -153,9 +161,9 @@ proc getAudioStreamInfo(stream: JsonNode): tuple[itag: int, mime, ext, size, qlt
 
 proc urlOrCipher(youtubeUrl: string, stream: JsonNode): string =
   ## produce stream url, deciphering if necessary
-  if stream.contains("url"):
+  if stream.hasKey("url"):
     result = stream["url"].getStr()
-  elif stream.contains("signatureCipher"):
+  elif stream.hasKey("signatureCipher"):
     let
       webpage = get(youtubeUrl)
       jsUrl = "https://www.youtube.com" & webpage.captureBetween('"', '"', webpage.find("\"jsUrl\":\"") + 7)
@@ -163,14 +171,30 @@ proc urlOrCipher(youtubeUrl: string, stream: JsonNode): string =
     result = getSigCipherUrl(baseJs, stream["signatureCipher"].getStr())
 
 
-proc newVideoStream(youtubeUrl: string, stream: JsonNode): Stream =
-  (result.itag, result.mime, result.ext, result.size, result.quality) = getVideoStreamInfo(stream)
+proc produceUrlSegments(baseUrl, segmentList: string): seq[string] =
+  let base = parseUri(baseUrl)
+  for segment in segmentList.findAll(re("""(?<=\")([a-z\d/\.]+)(?=\")""")):
+    result.add($(base / segment))
+
+
+proc newVideoStream(youtubeUrl, dashManifestUrl: string, length: int, stream: JsonNode): Stream =
+  (result.itag, result.mime, result.ext, result.size, result.quality) = getVideoStreamInfo(stream, length)
   result.name = addFileExt("videostream", result.ext)
-  result.url = urlOrCipher(youtubeUrl, stream)
+  if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
+    result.dash = true
+    let xml = get(dashManifestUrl)
+    var match: array[1, string]
+    discard xml.find(re("""(?<=<Representation\s)(id="$1".+?)(?=</Representation>)""" % $result.itag), match)
+    result.baseUrl = match[0].captureBetween('>', '<', match[0].find("<BaseURL>") + 8)
+    discard match[0].find(re("(?<=<SegmentList>)(.+)(?=</SegmentList>)"), match)
+    result.urlSegments = produceUrlSegments(result.baseUrl, match[0])
+  else:
+    result.url = urlOrCipher(youtubeUrl, stream)
 
 
 proc newAudioStream(youtubeUrl: string, stream: JsonNode): Stream =
   # QUESTION: will stream with no audio throw exception?
+  # QUESTION: are audio streams ever in dash format?
   (result.itag, result.mime, result.ext, result.size, result.quality) = getAudioStreamInfo(stream)
   result.name = addFileExt("audiostream", result.ext)
   result.url = urlOrCipher(youtubeUrl, stream)
@@ -178,10 +202,10 @@ proc newAudioStream(youtubeUrl: string, stream: JsonNode): Stream =
 
 proc tryBypass(bypassUrl: string): JsonNode =
   ## get new response using bypass url
-  var matches: array[1, string]
+  var match: array[1, string]
   let bypassResponse = decodeUrl(get(bypassUrl))
-  discard bypassResponse.find(re("({\"responseContext\".+})"), matches)
-  result = parseJson(matches[0])
+  discard bypassResponse.find(re("({\"responseContext\".+})"), match)
+  result = parseJson(match[0])
 
 
 proc reportStreamInfo(stream: Stream) =
@@ -190,6 +214,8 @@ proc reportStreamInfo(stream: Stream) =
        "size: ", stream.size, '\n',
        "quality: ", stream.quality, '\n',
        "mime: ", stream.mime
+  if stream.dash:
+    echo "segments: ", stream.urlSegments.len
 
 
 proc standardizeUrl(youtubeUrl: string): string =
@@ -213,6 +239,7 @@ proc main*(youtubeUrl: YoutubeUri) =
     safeTitle = title.multiReplace((".", ""), ("/", ""))
     id = playerResponse["videoDetails"]["videoId"].getStr()
     finalPath = addFileExt(joinPath(getCurrentDir(), safeTitle), ".mkv")
+    length = parseInt(playerResponse["videoDetails"]["lengthSeconds"].getStr())
 
   if fileExists(finalPath):
     echo "<file exists> ", safeTitle
@@ -230,22 +257,30 @@ proc main*(youtubeUrl: YoutubeUri) =
       return
 
     var
-      videoStream = newVideoStream(standardYoutubeUrl, selectBestVideoStream(playerResponse["streamingData"]["adaptiveFormats"]))
-      audioStream = newAudioStream(standardYoutubeUrl, selectBestAudioStream(playerResponse["streamingData"]["adaptiveFormats"]))
+      videoStream: Stream
+      audioStream: Stream
+      dashManifestUrl: string
+
+    if playerResponse["streamingData"].hasKey("dashManifestUrl"):
+      dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
+    videoStream = newVideoStream(standardYoutubeUrl, dashManifestUrl, length, selectBestVideoStream(playerResponse["streamingData"]["adaptiveFormats"]))
+    audioStream = newAudioStream(standardYoutubeUrl, selectBestAudioStream(playerResponse["streamingData"]["adaptiveFormats"]))
 
     echo "title: ", title
     reportStreamInfo(videoStream)
-    if grab(videoStream.url, forceFilename=videoStream.name, saveLocation=getCurrentDir(), forceDl=true) == "404 Not Found":
-      echo "[trying alternate video stream]"
-      videoStream = newVideoStream(standardYoutubeUrl, playerResponse["streamingData"]["adaptiveFormats"][1])
-
-      reportStreamInfo(videoStream)
-      if grab(videoStream.url, forceFilename=videoStream.name, saveLocation=getCurrentDir(), forceDl=true) != "200 OK":
-        echo "<failed to obtain a suitable video stream>"
+    var attempt: string
+    if videoStream.dash:
+      attempt = grabMulti(videoStream.urlSegments, forceFilename=videoStream.name,
+                          saveLocation=getCurrentDir(), forceDl=true)
+    else:
+      attempt = grab(videoStream.url, forceFilename=videoStream.name,
+                     saveLocation=getCurrentDir(), forceDl=true)
+    if attempt != "200 OK":
+        echo "<failed to download video stream>"
         return
 
     reportStreamInfo(audioStream)
     if grab(audioStream.url, forceFilename=audioStream.name, saveLocation=getCurrentDir(), forceDl=true) == "200 OK":
       joinStreams(videoStream.name, audioStream.name, safeTitle)
     else:
-      echo "<failed to obtain a suitable audio stream>"
+      echo "<failed to download audio stream>"
