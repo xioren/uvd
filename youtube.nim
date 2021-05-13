@@ -181,6 +181,7 @@ proc newVideoStream(youtubeUrl, dashManifestUrl: string, length: int, stream: Js
   (result.itag, result.mime, result.ext, result.size, result.quality) = getVideoStreamInfo(stream, length)
   result.name = addFileExt("videostream", result.ext)
   if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
+    # QUESTION: are dash urls or manifest urls ever ciphered?
     result.dash = true
     let xml = get(dashManifestUrl)
     var match: array[1, string]
@@ -231,53 +232,49 @@ proc main*(youtubeUrl: YoutubeUri) =
   let response = post(standardYoutubeUrl & query)
   if response == "404 Not Found":
     echo '<', response, '>'
-    return
   else:
     playerResponse = parseJson(response)[2]["playerResponse"]
-  let
-    title = playerResponse["videoDetails"]["title"].getStr()
-    safeTitle = title.multiReplace((".", ""), ("/", ""))
-    id = playerResponse["videoDetails"]["videoId"].getStr()
-    finalPath = addFileExt(joinPath(getCurrentDir(), safeTitle), ".mkv")
-    length = parseInt(playerResponse["videoDetails"]["lengthSeconds"].getStr())
-
-  if fileExists(finalPath):
-    echo "<file exists> ", safeTitle
-  else:
-    if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
-      echo "[attempting age-gate bypass]"
-      playerResponse = tryBypass(bypassUrl & encodeUrl(id) & bypassQueryA)
-      if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
-        playerResponse = tryBypass(bypassUrl & encodeUrl(id) & bypassQueryB & encodeUrl(id))
-        if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
-          echo "<bypass failed>"
-          return
-    elif playerResponse["playabilityStatus"]["status"].getStr() != "OK":
-      echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
-      return
-
-    var dashManifestUrl: string
-    if playerResponse["streamingData"].hasKey("dashManifestUrl"):
-      dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
     let
-      videoStream = newVideoStream(standardYoutubeUrl, dashManifestUrl, length, selectBestVideoStream(playerResponse["streamingData"]["adaptiveFormats"]))
-      audioStream = newAudioStream(standardYoutubeUrl, selectBestAudioStream(playerResponse["streamingData"]["adaptiveFormats"]))
+      title = playerResponse["videoDetails"]["title"].getStr()
+      safeTitle = title.multiReplace((".", ""), ("/", ""))
+      id = playerResponse["videoDetails"]["videoId"].getStr()
+      finalPath = addFileExt(joinPath(getCurrentDir(), safeTitle), ".mkv")
+      length = parseInt(playerResponse["videoDetails"]["lengthSeconds"].getStr())
 
-    echo "title: ", title
-    reportStreamInfo(videoStream)
-    var attempt: string
-    if videoStream.dash:
-      attempt = grabMulti(videoStream.urlSegments, forceFilename=videoStream.name,
-                          saveLocation=getCurrentDir(), forceDl=true)
+    if fileExists(finalPath):
+      echo "<file exists> ", safeTitle
     else:
-      attempt = grab(videoStream.url, forceFilename=videoStream.name,
-                     saveLocation=getCurrentDir(), forceDl=true)
-    if attempt != "200 OK":
-        echo "<failed to download video stream>"
-        return
+      if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
+        echo "[attempting age-gate bypass]"
+        playerResponse = tryBypass(bypassUrl & encodeUrl(id) & bypassQueryA)
+        if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
+          playerResponse = tryBypass(bypassUrl & encodeUrl(id) & bypassQueryB & encodeUrl(id))
+          if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
+            echo "<bypass failed>"
+      elif playerResponse["playabilityStatus"]["status"].getStr() != "OK":
+        echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
+      else:
+        var dashManifestUrl: string
+        if playerResponse["streamingData"].hasKey("dashManifestUrl"):
+          dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
+        let
+          videoStream = newVideoStream(standardYoutubeUrl, dashManifestUrl, length, selectBestVideoStream(playerResponse["streamingData"]["adaptiveFormats"]))
+          audioStream = newAudioStream(standardYoutubeUrl, selectBestAudioStream(playerResponse["streamingData"]["adaptiveFormats"]))
 
-    reportStreamInfo(audioStream)
-    if grab(audioStream.url, forceFilename=audioStream.name, saveLocation=getCurrentDir(), forceDl=true) == "200 OK":
-      joinStreams(videoStream.name, audioStream.name, safeTitle)
-    else:
-      echo "<failed to download audio stream>"
+        echo "title: ", title
+        reportStreamInfo(videoStream)
+        var attempt: string
+        if videoStream.dash:
+          attempt = grabMulti(videoStream.urlSegments, forceFilename=videoStream.name,
+                              saveLocation=getCurrentDir(), forceDl=true)
+        else:
+          attempt = grab(videoStream.url, forceFilename=videoStream.name,
+                         saveLocation=getCurrentDir(), forceDl=true)
+        if attempt != "200 OK":
+            echo "<failed to download video stream>"
+        else:
+          reportStreamInfo(audioStream)
+          if grab(audioStream.url, forceFilename=audioStream.name, saveLocation=getCurrentDir(), forceDl=true) == "200 OK":
+            joinStreams(videoStream.name, audioStream.name, safeTitle)
+          else:
+            echo "<failed to download audio stream>"
