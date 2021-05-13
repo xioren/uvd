@@ -1,14 +1,16 @@
-import std/[os, re, strutils, strformat, asyncdispatch, terminal, asyncfile, tables]
+import std/[os, re, strutils, strformat, asyncdispatch, terminal, asyncfile,
+            tables, times]
 import httpClient
 from math import floor
 
 export asyncdispatch, os, strutils, re, tables
 
 
-const extensions* = {"video/webm": ".webm", "video/mp4": ".mp4", "audio/mp4": ".mp4a",
-                     "audio/webm": ".weba"}.toTable()
-var headers* = [("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.85 Safari/537.36"),
-                ("accept", "*/*")]
+const
+  extensions* = {"video/webm": ".webm", "video/mp4": ".mp4",
+                 "audio/mp4": ".mp4a", "audio/webm": ".weba"}.toTable()
+  headers = [("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.85 Safari/537.36"),
+             ("accept", "*/*")]
 
 
 func dequery*(url: string): string =
@@ -28,12 +30,25 @@ proc joinStreams*(videoStreamPath, audioStreamPath, filepath: string) =
     echo "<error joining streams>"
 
 
+proc formatEta(eta: int): string =
+  ## convert eta in seconds to hours and minutes (if applicable)
+  if eta > 3599:
+    result = $convert(Seconds, Hours, eta) & " hours"
+  elif eta > 59:
+    result = $convert(Seconds, Minutes, eta) & " minutes"
+  else:
+    result = $eta & " seconds"
+
+
 proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
-  let bar = '#'.repeat(floor(progress.int / total.int * 40).int)
+  let
+    bar = '#'.repeat(floor(progress.int / total.int * 30).int)
+    eta = ((total - progress).int / speed.int).int
   stdout.eraseLine()
-  stdout.write("[", alignLeft(bar, 40), "] ",
+  stdout.write("[", alignLeft(bar, 30), "] ",
                "size: ", formatSize(total.int, includeSpace=true),
-               " speed: ", formatSize(speed.int, includeSpace=true) , "/s")
+               " speed: ", formatSize(speed.int, includeSpace=true) , "/s",
+               " eta: ", formatEta(eta))
   stdout.flushFile()
 
 
