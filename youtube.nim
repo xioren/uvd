@@ -230,7 +230,7 @@ proc main*(youtubeUrl: YoutubeUri) =
   let standardYoutubeUrl = standardizeUrl(youtubeUrl.url)
   var playerResponse: JsonNode
   let response = post(standardYoutubeUrl & query)
-  if response != "200 OK":
+  if response == "404 Not Found":
     echo '<', response, '>'
   else:
     playerResponse = parseJson(response)[2]["playerResponse"]
