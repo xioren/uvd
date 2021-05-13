@@ -31,13 +31,13 @@ proc joinStreams*(videoStreamPath, audioStreamPath, filepath: string) =
 
 
 proc formatEta(eta: int): string =
-  ## convert eta in seconds to hours and minutes (if applicable)
+  ## convert eta in seconds to hours or minutes (if applicable)
   if eta > 3599:
-    result = $convert(Seconds, Hours, eta) & " hours"
+    result = $convert(Seconds, Hours, eta) & " hour(s)"
   elif eta > 59:
-    result = $convert(Seconds, Minutes, eta) & " minutes"
+    result = $convert(Seconds, Minutes, eta) & " minute(s)"
   else:
-    result = $eta & " seconds"
+    result = $eta & " second(s)"
 
 
 proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
