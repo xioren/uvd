@@ -256,15 +256,12 @@ proc main*(youtubeUrl: YoutubeUri) =
       echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
       return
 
-    var
-      videoStream: Stream
-      audioStream: Stream
-      dashManifestUrl: string
-
+    var dashManifestUrl: string
     if playerResponse["streamingData"].hasKey("dashManifestUrl"):
       dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
-    videoStream = newVideoStream(standardYoutubeUrl, dashManifestUrl, length, selectBestVideoStream(playerResponse["streamingData"]["adaptiveFormats"]))
-    audioStream = newAudioStream(standardYoutubeUrl, selectBestAudioStream(playerResponse["streamingData"]["adaptiveFormats"]))
+    let
+      videoStream = newVideoStream(standardYoutubeUrl, dashManifestUrl, length, selectBestVideoStream(playerResponse["streamingData"]["adaptiveFormats"]))
+      audioStream = newAudioStream(standardYoutubeUrl, selectBestAudioStream(playerResponse["streamingData"]["adaptiveFormats"]))
 
     echo "title: ", title
     reportStreamInfo(videoStream)
