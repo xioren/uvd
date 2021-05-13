@@ -136,7 +136,7 @@ proc main*(vimeoUrl: VimeoUri) =
     configResponse = parseJson(response)
     let
       title = configResponse["video"]["title"].getStr()
-      safeTitle = title.multiReplace((".", ""), ("/", ""))
+      safeTitle = title.multiReplace((".", ""), ("/", "-"))
       finalPath = addFileExt(joinPath(getCurrentDir(), safeTitle), ".mkv")
 
     if fileExists(finalPath):

@@ -70,7 +70,7 @@ proc parseFunctionPlan(js: string): seq[string] =
   var match: array[1, string]
   # NOTE: matches vy=function(a){a=a.split("");uy.bH(a,3);uy.Fg(a,7);uy.Fg(a,50);
   # uy.S6(a,71);uy.bH(a,2);uy.S6(a,80);uy.Fg(a,38);return a.join("")};
-  let functionPatterns = [re"([a-z]{2}\=function\(a\)\{a\=a\.split\([^\(]+\);[a-z]{2}\.[^\n]+)"]
+  let functionPatterns = [re"([a-zA-Z]{2}\=function\(a\)\{a\=a\.split\([^\(]+\);[a-zA-Z]{2}\.[^\n]+)"]
   for pattern in functionPatterns:
     discard js.find(pattern, match)
   match[0].split(';')[1..^3]
