@@ -139,7 +139,7 @@ proc selectBestAudioStream(streams: JsonNode): JsonNode =
         result = stream
 
 
-proc getVideoStreamInfo(stream: JsonNode, length: int): tuple[itag: int, mime, ext, size, qlt: string] =
+proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime, ext, size, qlt: string] =
   result.itag = stream["itag"].getInt()
   result.mime = stream["mimeType"].getStr().split(";")[0]
   result.ext = extensions[result.mime]
@@ -147,7 +147,7 @@ proc getVideoStreamInfo(stream: JsonNode, length: int): tuple[itag: int, mime, e
     result.size = formatSize(parseInt(stream["contentLength"].getStr()), includeSpace=true)
   else:
     # NOTE: estimate from bitrate
-    result.size = formatSize((stream["bitrate"].getInt() * length / 8).int, includeSpace=true)
+    result.size = formatSize((stream["bitrate"].getInt() * duration / 8).int, includeSpace=true)
   result.qlt = stream["qualityLabel"].getStr()
 
 
@@ -177,8 +177,8 @@ proc produceUrlSegments(baseUrl, segmentList: string): seq[string] =
     result.add($(base / segment))
 
 
-proc newVideoStream(youtubeUrl, dashManifestUrl: string, length: int, stream: JsonNode): Stream =
-  (result.itag, result.mime, result.ext, result.size, result.quality) = getVideoStreamInfo(stream, length)
+proc newVideoStream(youtubeUrl, dashManifestUrl: string, duration: int, stream: JsonNode): Stream =
+  (result.itag, result.mime, result.ext, result.size, result.quality) = getVideoStreamInfo(stream, duration)
   result.name = addFileExt("videostream", result.ext)
   if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
     # QUESTION: are dash urls or manifest urls ever ciphered?
@@ -230,7 +230,7 @@ proc main*(youtubeUrl: YoutubeUri) =
   let standardYoutubeUrl = standardizeUrl(youtubeUrl.url)
   var playerResponse: JsonNode
   let response = post(standardYoutubeUrl & query)
-  if response == "404 Not Found":
+  if response != "200 OK":
     echo '<', response, '>'
   else:
     playerResponse = parseJson(response)[2]["playerResponse"]
@@ -239,7 +239,7 @@ proc main*(youtubeUrl: YoutubeUri) =
       safeTitle = title.multiReplace((".", ""), ("/", ""))
       id = playerResponse["videoDetails"]["videoId"].getStr()
       finalPath = addFileExt(joinPath(getCurrentDir(), safeTitle), ".mkv")
-      length = parseInt(playerResponse["videoDetails"]["lengthSeconds"].getStr())
+      duration = parseInt(playerResponse["videoDetails"]["lengthSeconds"].getStr())
 
     if fileExists(finalPath):
       echo "<file exists> ", safeTitle
@@ -258,7 +258,7 @@ proc main*(youtubeUrl: YoutubeUri) =
         if playerResponse["streamingData"].hasKey("dashManifestUrl"):
           dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
         let
-          videoStream = newVideoStream(standardYoutubeUrl, dashManifestUrl, length, selectBestVideoStream(playerResponse["streamingData"]["adaptiveFormats"]))
+          videoStream = newVideoStream(standardYoutubeUrl, dashManifestUrl, duration, selectBestVideoStream(playerResponse["streamingData"]["adaptiveFormats"]))
           audioStream = newAudioStream(standardYoutubeUrl, selectBestAudioStream(playerResponse["streamingData"]["adaptiveFormats"]))
 
         echo "title: ", title
@@ -270,11 +270,11 @@ proc main*(youtubeUrl: YoutubeUri) =
         else:
           attempt = grab(videoStream.url, forceFilename=videoStream.name,
                          saveLocation=getCurrentDir(), forceDl=true)
-        if attempt != "200 OK":
-            echo "<failed to download video stream>"
-        else:
+        if attempt == "200 OK":
           reportStreamInfo(audioStream)
           if grab(audioStream.url, forceFilename=audioStream.name, saveLocation=getCurrentDir(), forceDl=true) == "200 OK":
             joinStreams(videoStream.name, audioStream.name, safeTitle)
           else:
             echo "<failed to download audio stream>"
+        else:
+          echo "<failed to download video stream>"
