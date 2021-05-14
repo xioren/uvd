@@ -253,28 +253,28 @@ proc main*(youtubeUrl: YoutubeUri) =
             echo "<bypass failed>"
       elif playerResponse["playabilityStatus"]["status"].getStr() != "OK":
         echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
-      else:
-        var dashManifestUrl: string
-        if playerResponse["streamingData"].hasKey("dashManifestUrl"):
-          dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
-        let
-          videoStream = newVideoStream(standardYoutubeUrl, dashManifestUrl, duration, selectBestVideoStream(playerResponse["streamingData"]["adaptiveFormats"]))
-          audioStream = newAudioStream(standardYoutubeUrl, selectBestAudioStream(playerResponse["streamingData"]["adaptiveFormats"]))
+        return
+      var dashManifestUrl: string
+      if playerResponse["streamingData"].hasKey("dashManifestUrl"):
+        dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
+      let
+        videoStream = newVideoStream(standardYoutubeUrl, dashManifestUrl, duration, selectBestVideoStream(playerResponse["streamingData"]["adaptiveFormats"]))
+        audioStream = newAudioStream(standardYoutubeUrl, selectBestAudioStream(playerResponse["streamingData"]["adaptiveFormats"]))
 
-        echo "title: ", title
-        reportStreamInfo(videoStream)
-        var attempt: string
-        if videoStream.dash:
-          attempt = grabMulti(videoStream.urlSegments, forceFilename=videoStream.name,
-                              saveLocation=getCurrentDir(), forceDl=true)
+      echo "title: ", title
+      reportStreamInfo(videoStream)
+      var attempt: string
+      if videoStream.dash:
+        attempt = grabMulti(videoStream.urlSegments, forceFilename=videoStream.name,
+                            saveLocation=getCurrentDir(), forceDl=true)
+      else:
+        attempt = grab(videoStream.url, forceFilename=videoStream.name,
+                       saveLocation=getCurrentDir(), forceDl=true)
+      if attempt == "200 OK":
+        reportStreamInfo(audioStream)
+        if grab(audioStream.url, forceFilename=audioStream.name, saveLocation=getCurrentDir(), forceDl=true) == "200 OK":
+          joinStreams(videoStream.name, audioStream.name, safeTitle)
         else:
-          attempt = grab(videoStream.url, forceFilename=videoStream.name,
-                         saveLocation=getCurrentDir(), forceDl=true)
-        if attempt == "200 OK":
-          reportStreamInfo(audioStream)
-          if grab(audioStream.url, forceFilename=audioStream.name, saveLocation=getCurrentDir(), forceDl=true) == "200 OK":
-            joinStreams(videoStream.name, audioStream.name, safeTitle)
-          else:
-            echo "<failed to download audio stream>"
-        else:
-          echo "<failed to download video stream>"
+          echo "<failed to download audio stream>"
+      else:
+        echo "<failed to download video stream>"

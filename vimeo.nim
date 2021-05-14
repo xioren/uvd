@@ -132,34 +132,34 @@ proc main*(vimeoUrl: VimeoUri) =
     configResponse = parseJson(get(signedConfigUrl.replace("\\")))
   elif response == "404 Not Found":
     echo '<', response, '>'
+    return
+  configResponse = parseJson(response)
+  let
+    title = configResponse["video"]["title"].getStr()
+    safeTitle = title.multiReplace((".", ""), ("/", "-"))
+    finalPath = addFileExt(joinPath(getCurrentDir(), safeTitle), ".mkv")
+
+  if fileExists(finalPath):
+    echo "<file exists> ", safeTitle
   else:
-    configResponse = parseJson(response)
     let
-      title = configResponse["video"]["title"].getStr()
-      safeTitle = title.multiReplace((".", ""), ("/", "-"))
-      finalPath = addFileExt(joinPath(getCurrentDir(), safeTitle), ".mkv")
+      defaultCdn = configResponse["request"]["files"]["dash"]["default_cdn"].getStr()
+      cdnUrl = configResponse["request"]["files"]["dash"]["cdns"][defaultCdn]["url"].getStr()
+      cdnResponse = parseJson(get(dequery(cdnUrl)))
+      videoStream = newVideoStream(cdnUrl, selectBestVideoStream(cdnResponse["video"]))
+      audioStream = newAudioStream(cdnUrl, selectBestAudioStream(cdnResponse["audio"]))
 
-    if fileExists(finalPath):
-      echo "<file exists> ", safeTitle
-    else:
-      let
-        defaultCdn = configResponse["request"]["files"]["dash"]["default_cdn"].getStr()
-        cdnUrl = configResponse["request"]["files"]["dash"]["cdns"][defaultCdn]["url"].getStr()
-        cdnResponse = parseJson(get(dequery(cdnUrl)))
-        videoStream = newVideoStream(cdnUrl, selectBestVideoStream(cdnResponse["video"]))
-        audioStream = newAudioStream(cdnUrl, selectBestAudioStream(cdnResponse["audio"]))
-
-      echo "title: ", title
-      reportStreamInfo(videoStream)
-      if grabMulti(videoStream.urlSegments, forceFilename=videoStream.name,
+    echo "title: ", title
+    reportStreamInfo(videoStream)
+    if grabMulti(videoStream.urlSegments, forceFilename=videoStream.name,
+                 saveLocation=getCurrentDir(), forceDl=true) != "200 OK":
+      echo "<failed to download video stream>"
+    elif audioStream.exists:
+      reportStreamInfo(audioStream)
+      if grabMulti(audioStream.urlSegments, forceFilename=audioStream.name,
                    saveLocation=getCurrentDir(), forceDl=true) != "200 OK":
-        echo "<failed to download video stream>"
-      elif audioStream.exists:
-        reportStreamInfo(audioStream)
-        if grabMulti(audioStream.urlSegments, forceFilename=audioStream.name,
-                     saveLocation=getCurrentDir(), forceDl=true) != "200 OK":
-          echo "<failed to download audio stream>"
-        else:
-          joinStreams(videoStream.name, audioStream.name, safeTitle)
+        echo "<failed to download audio stream>"
       else:
-        moveFile(joinPath(getCurrentDir(), videoStream.name), finalPath.changeFileExt(videoStream.ext))
+        joinStreams(videoStream.name, audioStream.name, safeTitle)
+    else:
+      moveFile(joinPath(getCurrentDir(), videoStream.name), finalPath.changeFileExt(videoStream.ext))
