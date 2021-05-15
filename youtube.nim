@@ -24,8 +24,13 @@ type
 const
   query = "&pbj=1"
   bypassUrl = "https://www.youtube.com/get_video_info?video_id="
-  bypassQueryA = "&html5=1&eurl&ps=desktop-polymer&el=adunit&cbr=Chrome&cplatform=DESKTOP&break_type=1&autoplay=1&content_v&authuser=0"
-  bypassQueryB = "&eurl=https%3A%2F%2Fyoutube.googleapis.com%2Fv%2F"
+  bypassQueryA = "&eurl=https%3A%2F%2Fyoutube.googleapis.com%2Fv%2F"
+  bypassQueryB = "&html5=1&eurl&ps=desktop-polymer&el=adunit&cbr=Chrome&cplatform=DESKTOP&break_type=1&autoplay=1&content_v&authuser=0"
+
+var
+  plan: seq[string]
+  mainFunc: string
+  map: Table[string, string]
 
 
 ########################################################
@@ -45,22 +50,22 @@ proc reverseIt(a: var seq[char]) =
   a.reverse()
 
 
-proc splice(a: var seq[char], b: Natural) =
+proc splice(a: var seq[char], b, index: Natural) =
   ## function(a, b){a.splice(0, b)}
-  a.delete(0, -1 + b)
+  a.delete(index, -1 + b)
 
 
-proc swap(a: var seq[char], b: Natural) =
+proc swap(a: var seq[char], b, index: Natural) =
   ## function(a,b){var c=a[0];a[0]=a[b%a.length];a[b%a.length]=c}
-  let c = a[0]
-  a[0] = a[b mod a.len]
+  let c = a[index]
+  a[index] = a[b mod a.len]
   a[b mod a.len] = c
 
 
-proc parseMainFunction(plan: seq[string]): string =
+proc parseMainFunction(jsFunction: string): string =
   ## get the name of the function containing the scramble functions
   ## ix.Nh(a,2) --> ix
-  plan[0].parseIdent()
+  jsFunction.parseIdent()
 
 
 proc parseFunctionPlan(js: string): seq[string] =
@@ -95,22 +100,34 @@ proc parseFunction(function: string): tuple[name: string, argument: int] =
   result.argument = parseInt(function.captureBetween(',', ')'))
 
 
+proc parseIndex(jsFunction: string): int =
+  if jsFunction.contains("splice"):
+    # NOTE: function(a,b){a.splice(0,b)} --> 0
+    result = parseInt(jsFunction.captureBetween('(', ',', jsFunction.find("splice")))
+  elif jsFunction.contains("%"):
+    # NOTE: function(a,b){var c=a[0];a[0]=a[b%a.length];a[b%a.length]=c} --> 0
+    result = parseInt(jsFunction.captureBetween('[', ']', jsFunction.find("var")))
+
+
 proc decipher(js, signature: string): string =
   ## decipher signature
   var splitSig = @signature
-  let
+  once:
     plan = parseFunctionPlan(js)
-    mainFunc = parseMainFunction(plan)
+    mainFunc = parseMainFunction(plan[0])
     map = createFunctionMap(js, mainFunc)
 
   for item in plan:
-    let (funcName, argument) = parseFunction(item)
-    if map[funcName].contains("reverse"):
+    let
+      (funcName, argument) = parseFunction(item)
+      jsFunction = map[funcName]
+      index = parseIndex(jsFunction)
+    if jsFunction.contains("reverse"):
       reverseIt(splitSig)
-    elif map[funcName].contains("splice"):
-      splice(splitSig, argument)
+    elif jsFunction.contains("splice"):
+      splice(splitSig, argument, index)
     else:
-      swap(splitSig, argument)
+      swap(splitSig, argument, index)
   result = splitSig.join()
 
 
@@ -161,14 +178,18 @@ proc getAudioStreamInfo(stream: JsonNode): tuple[itag: int, mime, ext, size, qlt
 
 proc urlOrCipher(youtubeUrl: string, stream: JsonNode): string =
   ## produce stream url, deciphering if necessary
+  var baseJs: string
   if stream.hasKey("url"):
     result = stream["url"].getStr()
   elif stream.hasKey("signatureCipher"):
-    let
-      webpage = get(youtubeUrl)
-      jsUrl = "https://www.youtube.com" & webpage.captureBetween('"', '"', webpage.find("\"jsUrl\":\"") + 7)
+    once:
+      echo "[deciphering urls]"
+      let
+        webpage = get(youtubeUrl)
+        jsUrl = "https://www.youtube.com" & webpage.captureBetween('"', '"', webpage.find("\"jsUrl\":\"") + 7)
       baseJs = get(jsUrl)
     result = getSigCipherUrl(baseJs, stream["signatureCipher"].getStr())
+  result.insert("&ratebypass=yes", result.find("requiressl") + 14)
 
 
 proc produceUrlSegments(baseUrl, segmentList: string): seq[string] =
@@ -246,14 +267,15 @@ proc main*(youtubeUrl: YoutubeUri) =
     else:
       if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
         echo "[attempting age-gate bypass]"
-        playerResponse = tryBypass(bypassUrl & encodeUrl(id) & bypassQueryA)
+        playerResponse = tryBypass(bypassUrl & encodeUrl(id) & bypassQueryA & encodeUrl(id))
         if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
-          playerResponse = tryBypass(bypassUrl & encodeUrl(id) & bypassQueryB & encodeUrl(id))
+          playerResponse = tryBypass(bypassUrl & encodeUrl(id) & bypassQueryB)
           if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
             echo "<bypass failed>"
       elif playerResponse["playabilityStatus"]["status"].getStr() != "OK":
         echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
         return
+
       var dashManifestUrl: string
       if playerResponse["streamingData"].hasKey("dashManifestUrl"):
         dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
