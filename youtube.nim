@@ -2,10 +2,10 @@ import std/[json, uri, algorithm, sequtils, parseutils]
 
 import utils
 
-# NOTE: ratebypass/yes??
 
 type
   Stream = object
+    title: string
     name: string
     itag: int
     mime: string
@@ -19,7 +19,6 @@ type
 
   YoutubeUri* = object
     url*: string
-
 
 const
   query = "&pbj=1"
@@ -178,10 +177,10 @@ proc getAudioStreamInfo(stream: JsonNode): tuple[itag: int, mime, ext, size, qlt
 
 proc urlOrCipher(youtubeUrl: string, stream: JsonNode): string =
   ## produce stream url, deciphering if necessary
-  var baseJs: string
   if stream.hasKey("url"):
     result = stream["url"].getStr()
   elif stream.hasKey("signatureCipher"):
+    var baseJs: string
     once:
       echo "[deciphering urls]"
       let
@@ -198,7 +197,8 @@ proc produceUrlSegments(baseUrl, segmentList: string): seq[string] =
     result.add($(base / segment))
 
 
-proc newVideoStream(youtubeUrl, dashManifestUrl: string, duration: int, stream: JsonNode): Stream =
+proc newVideoStream(youtubeUrl, dashManifestUrl, title: string, duration: int, stream: JsonNode): Stream =
+  result.title = title
   (result.itag, result.mime, result.ext, result.size, result.quality) = getVideoStreamInfo(stream, duration)
   result.name = addFileExt("videostream", result.ext)
   if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
@@ -214,9 +214,10 @@ proc newVideoStream(youtubeUrl, dashManifestUrl: string, duration: int, stream: 
     result.url = urlOrCipher(youtubeUrl, stream)
 
 
-proc newAudioStream(youtubeUrl: string, stream: JsonNode): Stream =
+proc newAudioStream(youtubeUrl, title: string, stream: JsonNode): Stream =
   # QUESTION: will stream with no audio throw exception?
   # QUESTION: are audio streams ever in dash format?
+  result.title = title
   (result.itag, result.mime, result.ext, result.size, result.quality) = getAudioStreamInfo(stream)
   result.name = addFileExt("audiostream", result.ext)
   result.url = urlOrCipher(youtubeUrl, stream)
@@ -231,6 +232,8 @@ proc tryBypass(bypassUrl: string): JsonNode =
 
 
 proc reportStreamInfo(stream: Stream) =
+  once:
+    echo "title: ", stream.title
   echo "stream: ", stream.name, "\n",
        "itag: ", stream.itag, '\n',
        "size: ", stream.size, '\n',
@@ -280,10 +283,10 @@ proc main*(youtubeUrl: YoutubeUri) =
       if playerResponse["streamingData"].hasKey("dashManifestUrl"):
         dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
       let
-        videoStream = newVideoStream(standardYoutubeUrl, dashManifestUrl, duration, selectBestVideoStream(playerResponse["streamingData"]["adaptiveFormats"]))
-        audioStream = newAudioStream(standardYoutubeUrl, selectBestAudioStream(playerResponse["streamingData"]["adaptiveFormats"]))
+        videoStream = newVideoStream(standardYoutubeUrl, dashManifestUrl, title, duration,
+                                     selectBestVideoStream(playerResponse["streamingData"]["adaptiveFormats"]))
+        audioStream = newAudioStream(standardYoutubeUrl, title, selectBestAudioStream(playerResponse["streamingData"]["adaptiveFormats"]))
 
-      echo "title: ", title
       reportStreamInfo(videoStream)
       var attempt: string
       if videoStream.dash:

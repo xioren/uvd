@@ -12,6 +12,7 @@ import utils
 
 type
   Stream = object
+    title: string
     name: string
     mime: string
     ext: string
@@ -91,7 +92,8 @@ proc produceUrlSegments(cdnUrl, baseUrl, initUrl: string, stream: JsonNode): seq
     result.add($(cdn / baseUrl / segment["url"].getStr()))
 
 
-proc newVideoStream(cdnUrl: string, stream: JsonNode): Stream =
+proc newVideoStream(cdnUrl, title: string, stream: JsonNode): Stream =
+  result.title = title
   (result.mime, result.ext, result.size, result.quality) = getVideoStreamInfo(stream)
   result.name = addFileExt("videostream", result.ext)
   result.baseUrl = stream["base_url"].getStr()
@@ -101,8 +103,9 @@ proc newVideoStream(cdnUrl: string, stream: JsonNode): Stream =
   result.exists = true
 
 
-proc newAudioStream(cdnUrl: string, stream: JsonNode): Stream =
+proc newAudioStream(cdnUrl, title: string, stream: JsonNode): Stream =
   if stream.kind != JNull:
+    result.title = title
     (result.mime, result.ext, result.size, result.quality) = getAudioStreamInfo(stream)
     result.name = addFileExt("audiostream", result.ext)
     result.baseUrl = stream["base_url"].getStr().strip(leading=true, chars={'.'})
@@ -113,10 +116,13 @@ proc newAudioStream(cdnUrl: string, stream: JsonNode): Stream =
 
 
 proc reportStreamInfo(stream: Stream) =
+  once:
+    echo "title: ", stream.title
   echo "stream: ", stream.name, '\n',
        "size: ", stream.size, '\n',
        "quality: ", stream.quality, '\n',
-       "mime: ", stream.mime
+       "mime: ", stream.mime, '\n',
+       "segments: ", stream.urlSegments.len
 
 
 proc main*(vimeoUrl: VimeoUri) =
@@ -133,7 +139,8 @@ proc main*(vimeoUrl: VimeoUri) =
   elif response == "404 Not Found":
     echo '<', response, '>'
     return
-  configResponse = parseJson(response)
+  else:
+    configResponse = parseJson(response)
   let
     title = configResponse["video"]["title"].getStr()
     safeTitle = title.multiReplace((".", ""), ("/", "-"))
@@ -146,10 +153,9 @@ proc main*(vimeoUrl: VimeoUri) =
       defaultCdn = configResponse["request"]["files"]["dash"]["default_cdn"].getStr()
       cdnUrl = configResponse["request"]["files"]["dash"]["cdns"][defaultCdn]["url"].getStr()
       cdnResponse = parseJson(get(dequery(cdnUrl)))
-      videoStream = newVideoStream(cdnUrl, selectBestVideoStream(cdnResponse["video"]))
-      audioStream = newAudioStream(cdnUrl, selectBestAudioStream(cdnResponse["audio"]))
+      videoStream = newVideoStream(cdnUrl, title, selectBestVideoStream(cdnResponse["video"]))
+      audioStream = newAudioStream(cdnUrl, title, selectBestAudioStream(cdnResponse["audio"]))
 
-    echo "title: ", title
     reportStreamInfo(videoStream)
     if grabMulti(videoStream.urlSegments, forceFilename=videoStream.name,
                  saveLocation=getCurrentDir(), forceDl=true) != "200 OK":
