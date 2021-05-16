@@ -22,6 +22,7 @@ type
 
 const
   query = "&pbj=1"
+  # QUESTION: just use this url as the default?
   bypassUrl = "https://www.youtube.com/get_video_info?video_id="
   bypassQueryA = "&eurl=https%3A%2F%2Fyoutube.googleapis.com%2Fv%2F"
   bypassQueryB = "&html5=1&eurl&ps=desktop-polymer&el=adunit&cbr=Chrome&cplatform=DESKTOP&break_type=1&autoplay=1&content_v&authuser=0"
@@ -142,7 +143,7 @@ proc getSigCipherUrl(js, signatureCipher: string): string =
 
 
 proc selectBestVideoStream(streams: JsonNode): JsonNode =
-  # NOTE: zeroth stream always seems to be the best* quality
+  # NOTE: zeroth stream always seems to be the overall best* quality
   result = streams[0]
 
 

@@ -17,15 +17,15 @@ func dequery*(url: string): string =
   url.rsplit('?', 1)[0]
 
 
-proc joinStreams*(videoStreamPath, audioStreamPath, filepath: string) =
+proc joinStreams*(videoStream, audioStream, filename: string) =
   ## join audio and video streams using ffmpeg
-  let fullFilepath = addFileExt(filepath, "mkv")
+  let fullFilename = addFileExt(filename, "mkv")
 
-  echo "[joining streams]"
-  if execShellCmd(fmt"ffmpeg -i {videoStreamPath} -i {audioStreamPath} -c copy {quoteShell(fullFilepath)} > /dev/null 2>&1") == 0:
-    removeFile(videoStreamPath)
-    removeFile(audioStreamPath)
-    echo "[complete] ", fullFilepath
+  echo "[joining streams] ", videoStream, '+', audioStream
+  if execShellCmd(fmt"ffmpeg -i {videoStream} -i {audioStream} -c copy {quoteShell(fullFilename)} > /dev/null 2>&1") == 0:
+    removeFile(videoStream)
+    removeFile(audioStream)
+    echo "[complete] ", fullFilename
   else:
     echo "<error joining streams>"
 
@@ -47,7 +47,7 @@ proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
   stdout.eraseLine()
   stdout.write("[", alignLeft(bar, 30), "] ",
                "size: ", formatSize(total.int, includeSpace=true),
-               " speed: ", formatSize(speed.int, includeSpace=true) , "/s",
+               " speed: ", formatSize(speed.int, includeSpace=true), "/s",
                " eta: ", formatEta(eta))
   stdout.flushFile()
 

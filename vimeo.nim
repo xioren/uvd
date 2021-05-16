@@ -126,9 +126,13 @@ proc reportStreamInfo(stream: Stream) =
 
 
 proc main*(vimeoUrl: VimeoUri) =
-  let
+  var
+    configResponse: JsonNode
+    id: string
+  if vimeoUrl.url.contains("/video/"):
+    id = vimeoUrl.url.captureBetween('/', '?', vimeoUrl.url.find("video/"))
+  else:
     id = vimeoUrl.url.captureBetween('/', '?', vimeoUrl.url.find(".com/"))
-  var configResponse: JsonNode
   let response = get(configUrl % id)
   if response == "403 Forbidden":
     echo "[trying signed config url]"
