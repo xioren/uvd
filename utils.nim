@@ -21,7 +21,7 @@ proc joinStreams*(videoStream, audioStream, filename: string) =
   ## join audio and video streams using ffmpeg
   let fullFilename = addFileExt(filename, "mkv")
 
-  echo "[joining streams] ", videoStream, '+', audioStream
+  echo "[joining streams] ", videoStream, " + ", audioStream
   if execShellCmd(fmt"ffmpeg -i {videoStream} -i {audioStream} -c copy {quoteShell(fullFilename)} > /dev/null 2>&1") == 0:
     removeFile(videoStream)
     removeFile(audioStream)
@@ -30,25 +30,15 @@ proc joinStreams*(videoStream, audioStream, filename: string) =
     echo "<error joining streams>"
 
 
-proc formatEta(eta: int): string =
-  ## convert eta in seconds to hours or minutes (if applicable)
-  if eta > 3599:
-    result = $convert(Seconds, Hours, eta) & " hour(s)"
-  elif eta > 59:
-    result = $convert(Seconds, Minutes, eta) & " minute(s)"
-  else:
-    result = $eta & " second(s)"
-
-
 proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
   let
     bar = '#'.repeat(floor(progress.int / total.int * 30).int)
-    eta = ((total - progress).int / speed.int).int
+    eta = initDuration(seconds=((total - progress).int / speed.int).int)
   stdout.eraseLine()
   stdout.write("[", alignLeft(bar, 30), "] ",
                "size: ", formatSize(total.int, includeSpace=true),
                " speed: ", formatSize(speed.int, includeSpace=true), "/s",
-               " eta: ", formatEta(eta))
+               " eta: ", $eta)
   stdout.flushFile()
 
 
@@ -124,7 +114,7 @@ proc grab*(url: string, forceFilename = "",
     if result == "200 OK":
       echo "[success] ", filename
     else:
-      echo '<', result, '>', filename
+      echo '<', result, '>'
 
 
 proc grabMulti*(urls: seq[string], forceFilename = "",
@@ -144,4 +134,4 @@ proc grabMulti*(urls: seq[string], forceFilename = "",
     if result == "200 OK":
       echo "[success] ", filename
     else:
-      echo '<', result, '>', filename
+      echo '<', result, '>'
