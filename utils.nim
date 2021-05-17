@@ -36,10 +36,12 @@ proc clearProgress() =
   stdout.eraseLine()
   stdout.cursorUp()
 
+
 proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
   let
     bar = '#'.repeat(floor(progress.int / total.int * 50).int)
     eta = initDuration(seconds=((total - progress).int / speed.int).int)
+  echo ""
   clearProgress()
   stdout.writeLine("size: ", formatSize(total.int, includeSpace=true),
                    " speed: ", formatSize(speed.int, includeSpace=true), "/s",
