@@ -30,15 +30,23 @@ proc joinStreams*(videoStream, audioStream, filename: string) =
     echo "<error joining streams>"
 
 
+proc clearProgress() =
+  stdout.eraseLine()
+  stdout.cursorDown()
+  stdout.eraseLine()
+  stdout.cursorUp()
+
 proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
   let
-    bar = '#'.repeat(floor(progress.int / total.int * 30).int)
+    bar = '#'.repeat(floor(progress.int / total.int * 50).int)
     eta = initDuration(seconds=((total - progress).int / speed.int).int)
-  stdout.eraseLine()
-  stdout.write("[", alignLeft(bar, 30), "] ",
-               "size: ", formatSize(total.int, includeSpace=true),
+  clearProgress()
+  stdout.write("size: ", formatSize(total.int, includeSpace=true),
                " speed: ", formatSize(speed.int, includeSpace=true), "/s",
-               " eta: ", $eta)
+               " eta: ", $eta, '\n')
+  stdout.write("[", alignLeft(bar, 50), "]")
+  stdout.setCursorXPos(0)
+  stdout.cursorUp()
   stdout.flushFile()
 
 
@@ -73,7 +81,7 @@ proc download(url, filepath: string): Future[string] {.async.} =
   except Exception as e:
     result = e.msg
   finally:
-    stdout.eraseLine()
+    clearProgress()
     file.close()
     client.close()
 
@@ -92,7 +100,7 @@ proc downloadParts(parts: seq[string], filepath: string): Future[string] {.async
   except Exception as e:
     result = e.msg
   finally:
-    stdout.eraseLine()
+    clearProgress()
     file.close()
     client.close()
 
