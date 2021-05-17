@@ -41,9 +41,9 @@ proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
     bar = '#'.repeat(floor(progress.int / total.int * 50).int)
     eta = initDuration(seconds=((total - progress).int / speed.int).int)
   clearProgress()
-  stdout.write("size: ", formatSize(total.int, includeSpace=true),
-               " speed: ", formatSize(speed.int, includeSpace=true), "/s",
-               " eta: ", $eta, '\n')
+  stdout.writeLine("size: ", formatSize(total.int, includeSpace=true),
+                   " speed: ", formatSize(speed.int, includeSpace=true), "/s",
+                   " eta: ", $eta)
   stdout.write("[", alignLeft(bar, 50), "]")
   stdout.setCursorXPos(0)
   stdout.cursorUp()
