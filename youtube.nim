@@ -52,14 +52,12 @@ proc reverseIt(a: var seq[char]) =
 
 proc splice(a: var seq[char], b, index: Natural) =
   ## function(a, b){a.splice(0, b)}
-  a.delete(index, -1 + b)
+  a.delete(index, pred(b))
 
 
 proc swap(a: var seq[char], b, index: Natural) =
   ## function(a,b){var c=a[0];a[0]=a[b%a.length];a[b%a.length]=c}
-  let c = a[index]
-  a[index] = a[b mod a.len]
-  a[b mod a.len] = c
+  swap(a[index], a[b mod a.len])
 
 
 proc parseMainFunction(jsFunction: string): string =
@@ -189,6 +187,7 @@ proc urlOrCipher(youtubeUrl: string, stream: JsonNode): string =
         jsUrl = "https://www.youtube.com" & webpage.captureBetween('"', '"', webpage.find("\"jsUrl\":\"") + 7)
       baseJs = get(jsUrl)
     result = getSigCipherUrl(baseJs, stream["signatureCipher"].getStr())
+  # NOTE: don't think this works.
   result.insert("&ratebypass=yes", result.find("requiressl") + 14)
 
 
