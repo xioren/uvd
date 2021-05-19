@@ -45,21 +45,6 @@ proc getParts(cipherSignature: string): tuple[url, sc, s: string] =
   result = (decodeUrl(parts[2].split('=')[1]), parts[1].split('=')[1], decodeUrl(parts[0].split('=')[1]))
 
 
-proc reverseIt(a: var seq[char]) =
-  ## function(a, b){a.reverse()}
-  a.reverse()
-
-
-proc splice(a: var seq[char], b, index: Natural) =
-  ## function(a, b){a.splice(0, b)}
-  a.delete(index, pred(b))
-
-
-proc swap(a: var seq[char], b, index: Natural) =
-  ## function(a,b){var c=a[0];a[0]=a[b%a.length];a[b%a.length]=c}
-  swap(a[index], a[b mod a.len])
-
-
 proc parseMainFunction(jsFunction: string): string =
   ## get the name of the function containing the scramble functions
   ## ix.Nh(a,2) --> ix
@@ -91,14 +76,14 @@ proc createFunctionMap(js, mainFunc: string): Table[string, string] =
     result[parts[0]] = parts[1]
 
 
-proc parseFunction(function: string): tuple[name: string, argument: int] =
+proc parseFunction(function: string): tuple[name: string, argument: int] {.inline.} =
   ## returns function name and int argument
   ## ix.ai(a,5) --> (ai, 5)
   result.name = function.captureBetween('.', '(')
   result.argument = parseInt(function.captureBetween(',', ')'))
 
 
-proc parseIndex(jsFunction: string): int =
+proc parseIndex(jsFunction: string): int {.inline.} =
   if jsFunction.contains("splice"):
     # NOTE: function(a,b){a.splice(0,b)} --> 0
     result = parseInt(jsFunction.captureBetween('(', ',', jsFunction.find("splice")))
@@ -109,11 +94,11 @@ proc parseIndex(jsFunction: string): int =
 
 proc decipher(js, signature: string): string =
   ## decipher signature
-  var splitSig = @signature
   once:
     plan = parseFunctionPlan(js)
     mainFunc = parseMainFunction(plan[0])
     map = createFunctionMap(js, mainFunc)
+  var splitSig = @signature
 
   for item in plan:
     let
@@ -121,11 +106,14 @@ proc decipher(js, signature: string): string =
       jsFunction = map[funcName]
       index = parseIndex(jsFunction)
     if jsFunction.contains("reverse"):
-      reverseIt(splitSig)
+      ## function(a, b){a.reverse()}
+      splitSig.reverse()
     elif jsFunction.contains("splice"):
-      splice(splitSig, argument, index)
+      ## function(a, b){a.splice(0, b)}
+      splitSig.delete(index, pred(argument))
     else:
-      swap(splitSig, argument, index)
+      ## function(a,b){var c=a[0];a[0]=a[b%a.length];a[b%a.length]=c}
+      swap(splitSig[index], splitSig[argument mod splitSig.len])
   result = splitSig.join()
 
 

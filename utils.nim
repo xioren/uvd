@@ -38,15 +38,16 @@ proc clearProgress() =
 
 
 proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
+  const barWidth = 50
   let
-    bar = '#'.repeat(floor(progress.int / total.int * 50).int)
+    bar = '#'.repeat(floor(progress.int / total.int * barWidth).int)
     eta = initDuration(seconds=((total - progress).int / speed.int).int)
   stdout.eraseLine()
   stdout.writeLine("size: ", formatSize(total.int, includeSpace=true),
                    " speed: ", formatSize(speed.int, includeSpace=true), "/s",
                    " eta: ", $eta)
   stdout.eraseLine()
-  stdout.write("[", alignLeft(bar, 50), "]")
+  stdout.write("[", alignLeft(bar, barWidth), "]")
   stdout.setCursorXPos(0)
   stdout.cursorUp()
   stdout.flushFile()
