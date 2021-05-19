@@ -25,7 +25,6 @@ const
   # QUESTION: just use this url as the default?
   bypassUrl = "https://www.youtube.com/get_video_info?video_id="
   bypassQueryA = "&eurl=https%3A%2F%2Fyoutube.googleapis.com%2Fv%2F"
-  bypassQueryB = "&html5=1&eurl&ps=desktop-polymer&el=adunit&cbr=Chrome&cplatform=DESKTOP&break_type=1&autoplay=1&content_v&authuser=0"
 
 var
   plan: seq[string]
@@ -45,12 +44,6 @@ proc getParts(cipherSignature: string): tuple[url, sc, s: string] =
   result = (decodeUrl(parts[2].split('=')[1]), parts[1].split('=')[1], decodeUrl(parts[0].split('=')[1]))
 
 
-proc parseMainFunction(jsFunction: string): string =
-  ## get the name of the function containing the scramble functions
-  ## ix.Nh(a,2) --> ix
-  jsFunction.parseIdent()
-
-
 proc parseFunctionPlan(js: string): seq[string] =
   ## get the scramble functions
   ## @["ix.Nh(a,2)", "ix.ai(a,5)", "ix.wW(a,62)", "ix.Nh(a,1)", "ix.wW(a,39)",
@@ -64,19 +57,13 @@ proc parseFunctionPlan(js: string): seq[string] =
   match[0].split(';')[1..^3]
 
 
-proc createFunctionMap(js, mainFunc: string): Table[string, string] =
-  ## map functions to corresponding function names
-  ## {"ai": "function(a,b){var c=a[0];a[0]=a[b%a.length];a[b%a.length]=c}",
-  ## "wW": "function(a){a.reverse()}", "Nh": "function(a,b){a.splice(0,b)}"}
-  var match: array[1, string]
-  let pattern = re("(?<=var $1={)(.+?)(?=};)" % mainFunc, flags={reDotAll})
-  discard js.find(pattern, match)
-  for item in match[0].split(",\n"):
-    let parts = item.split(':')
-    result[parts[0]] = parts[1]
+proc parseMainFunctionName(jsFunction: string): string =
+  ## get the name of the function containing the scramble functions
+  ## ix.Nh(a,2) --> ix
+  jsFunction.parseIdent()
 
 
-proc parseFunction(function: string): tuple[name: string, argument: int] {.inline.} =
+proc parseMinorFunction(function: string): tuple[name: string, argument: int] {.inline.} =
   ## returns function name and int argument
   ## ix.ai(a,5) --> (ai, 5)
   result.name = function.captureBetween('.', '(')
@@ -92,17 +79,29 @@ proc parseIndex(jsFunction: string): int {.inline.} =
     result = parseInt(jsFunction.captureBetween('[', ']', jsFunction.find("var")))
 
 
+proc createFunctionMap(js, mainFunc: string): Table[string, string] =
+  ## map functions to corresponding function names
+  ## {"ai": "function(a,b){var c=a[0];a[0]=a[b%a.length];a[b%a.length]=c}",
+  ## "wW": "function(a){a.reverse()}", "Nh": "function(a,b){a.splice(0,b)}"}
+  var match: array[1, string]
+  let pattern = re("(?<=var $1={)(.+?)(?=};)" % mainFunc, flags={reDotAll})
+  discard js.find(pattern, match)
+  for item in match[0].split(",\n"):
+    let parts = item.split(':')
+    result[parts[0]] = parts[1]
+
+
 proc decipher(js, signature: string): string =
   ## decipher signature
   once:
     plan = parseFunctionPlan(js)
-    mainFunc = parseMainFunction(plan[0])
+    mainFunc = parseMainFunctionName(plan[0])
     map = createFunctionMap(js, mainFunc)
   var splitSig = @signature
 
   for item in plan:
     let
-      (funcName, argument) = parseFunction(item)
+      (funcName, argument) = parseMinorFunction(item)
       jsFunction = map[funcName]
       index = parseIndex(jsFunction)
     if jsFunction.contains("reverse"):
@@ -260,9 +259,8 @@ proc main*(youtubeUrl: YoutubeUri) =
         echo "[attempting age-gate bypass]"
         playerResponse = tryBypass(bypassUrl & encodeUrl(id) & bypassQueryA & encodeUrl(id))
         if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
-          playerResponse = tryBypass(bypassUrl & encodeUrl(id) & bypassQueryB)
-          if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
             echo "<bypass failed>"
+            return
       elif playerResponse["playabilityStatus"]["status"].getStr() != "OK":
         echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
         return
