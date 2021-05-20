@@ -23,8 +23,7 @@ type
 const
   query = "&pbj=1"
   # QUESTION: just use this url as the default?
-  bypassUrl = "https://www.youtube.com/get_video_info?video_id="
-  bypassQuery = "&eurl=https%3A%2F%2Fyoutube.googleapis.com%2Fv%2F"
+  bypassUrl = "https://www.youtube.com/get_video_info?html5=1&video_id="
 
 var
   plan: seq[string]
@@ -212,14 +211,13 @@ proc newAudioStream(youtubeUrl, title: string, stream: JsonNode): Stream =
 
 proc tryBypass(bypassUrl: string): JsonNode =
   ## get new response using bypass url
-  var match: array[1, string]
   let bypassResponse = decodeUrl(get(bypassUrl))
-  # NOTE: sometimes returns 404 (bot protection?)
-  if bypassResponse != "404 Not Found":
-    discard bypassResponse.find(re("({\"responseContext\".+})"), match)
-    result = parseJson(match[0])
-  else:
+  if bypassResponse == "404 Not Found":
     result = newJNull()
+  else:
+    var match: array[1, string]
+    discard bypassResponse.find(re("({\"responseContext\".+})(?=&enable)"), match)
+    result = parseJson(match[0])
 
 
 proc reportStreamInfo(stream: Stream) =
@@ -261,7 +259,7 @@ proc main*(youtubeUrl: YoutubeUri) =
     else:
       if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
         echo "[attempting age-gate bypass]"
-        playerResponse = tryBypass(bypassUrl & encodeUrl(id) & bypassQuery & encodeUrl(id))
+        playerResponse = tryBypass(bypassUrl & id)
         if playerResponse.kind == JNull or playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
             echo "<bypass failed>"
             return
