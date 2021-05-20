@@ -21,7 +21,7 @@ type
     url*: string
 
 const
-  query = "&pbj=1"
+  configQuery = "&pbj=1"
   # QUESTION: just use this url as the default?
   bypassUrl = "https://www.youtube.com/get_video_info?html5=1&video_id="
 
@@ -242,7 +242,7 @@ proc standardizeUrl(youtubeUrl: string): string =
 proc main*(youtubeUrl: YoutubeUri) =
   let standardYoutubeUrl = standardizeUrl(youtubeUrl.url)
   var playerResponse: JsonNode
-  let response = post(standardYoutubeUrl & query)
+  let response = post(standardYoutubeUrl & configQuery)
   if response == "404 Not Found":
     echo '<', response, '>'
   else:
@@ -263,7 +263,7 @@ proc main*(youtubeUrl: YoutubeUri) =
         if playerResponse.kind == JNull or playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
             echo "<bypass failed>"
             return
-      elif playerResponse["playabilityStatus"]["status"].getStr() != "OK":
+      elif playerResponse["playabilityStatus"]["status"].getStr() != "OK" or playerResponse["playabilityStatus"].contains("liveStreamability"):
         echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
         return
 
