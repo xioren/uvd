@@ -24,7 +24,7 @@ const
   query = "&pbj=1"
   # QUESTION: just use this url as the default?
   bypassUrl = "https://www.youtube.com/get_video_info?video_id="
-  bypassQueryA = "&eurl=https%3A%2F%2Fyoutube.googleapis.com%2Fv%2F"
+  bypassQuery = "&eurl=https%3A%2F%2Fyoutube.googleapis.com%2Fv%2F"
 
 var
   plan: seq[string]
@@ -214,8 +214,12 @@ proc tryBypass(bypassUrl: string): JsonNode =
   ## get new response using bypass url
   var match: array[1, string]
   let bypassResponse = decodeUrl(get(bypassUrl))
-  discard bypassResponse.find(re("({\"responseContext\".+})"), match)
-  result = parseJson(match[0])
+  # NOTE: sometimes returns 404 (bot protection?)
+  if bypassResponse != "404 Not Found":
+    discard bypassResponse.find(re("({\"responseContext\".+})"), match)
+    result = parseJson(match[0])
+  else:
+    result = newJNull()
 
 
 proc reportStreamInfo(stream: Stream) =
@@ -257,8 +261,8 @@ proc main*(youtubeUrl: YoutubeUri) =
     else:
       if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
         echo "[attempting age-gate bypass]"
-        playerResponse = tryBypass(bypassUrl & encodeUrl(id) & bypassQueryA & encodeUrl(id))
-        if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
+        playerResponse = tryBypass(bypassUrl & encodeUrl(id) & bypassQuery & encodeUrl(id))
+        if playerResponse.kind == JNull or playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
             echo "<bypass failed>"
             return
       elif playerResponse["playabilityStatus"]["status"].getStr() != "OK":
