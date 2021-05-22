@@ -22,7 +22,6 @@ type
 
 const
   configQuery = "&pbj=1"
-  # QUESTION: just use this url as the default?
   bypassUrl = "https://www.youtube.com/get_video_info?html5=1&video_id="
 
 var
@@ -249,7 +248,7 @@ proc main*(youtubeUrl: YoutubeUri) =
     playerResponse = parseJson(response)[2]["playerResponse"]
     let
       title = playerResponse["videoDetails"]["title"].getStr()
-      safeTitle = title.multiReplace((".", ""), ("/", ""))
+      safeTitle = title.multiReplace((".", ""), ("/", "-"))
       id = playerResponse["videoDetails"]["videoId"].getStr()
       finalPath = addFileExt(joinPath(getCurrentDir(), safeTitle), ".mkv")
       duration = parseInt(playerResponse["videoDetails"]["lengthSeconds"].getStr())
@@ -263,7 +262,7 @@ proc main*(youtubeUrl: YoutubeUri) =
         if playerResponse.kind == JNull or playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
             echo "<bypass failed>"
             return
-      elif playerResponse["playabilityStatus"]["status"].getStr() != "OK" or playerResponse["playabilityStatus"].contains("liveStreamability"):
+      elif playerResponse["playabilityStatus"]["status"].getStr() != "OK" or playerResponse["playabilityStatus"].hasKey("liveStreamability"):
         echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
         return
 
