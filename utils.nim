@@ -53,7 +53,7 @@ proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
 
 
 proc post*(url: string): string =
-  var client = newHttpClient(headers=newHttpHeaders(headers))
+  let client = newHttpClient(headers=newHttpHeaders(headers))
   try:
     result = client.postContent(url)
   except Exception as e:
@@ -62,7 +62,7 @@ proc post*(url: string): string =
 
 
 proc get*(url: string): string =
-  var client = newHttpClient(headers=newHttpHeaders(headers))
+  let client = newHttpClient(headers=newHttpHeaders(headers))
   try:
     result = client.getContent(url)
   except Exception as e:
@@ -72,9 +72,8 @@ proc get*(url: string): string =
 
 proc download(url, filepath: string): Future[string] {.async.} =
   ## download single files
-  var
-    client = newAsyncHttpClient(headers=newHttpHeaders(headers))
-    file = openasync(filepath, fmWrite)
+  let client = newAsyncHttpClient(headers=newHttpHeaders(headers))
+  var file = openasync(filepath, fmWrite)
   client.onProgressChanged = onProgressChanged
   try:
     let resp = await client.request(url)
@@ -90,9 +89,8 @@ proc download(url, filepath: string): Future[string] {.async.} =
 
 proc downloadParts(parts: seq[string], filepath: string): Future[string] {.async.} =
   ## download multi-part files
-  var
-    client = newAsyncHttpClient(headers=newHttpHeaders(headers))
-    file = openasync(filepath, fmWrite)
+  let client = newAsyncHttpClient(headers=newHttpHeaders(headers))
+  var file = openasync(filepath, fmWrite)
   client.onProgressChanged = onProgressChanged
   try:
     for url in parts:
