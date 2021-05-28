@@ -173,4 +173,4 @@ proc main*(vimeoUrl: VimeoUri) =
         joinStreams(videoStream.name, audioStream.name, safeTitle)
     else:
       moveFile(joinPath(getCurrentDir(), videoStream.name), finalPath.changeFileExt(videoStream.ext))
-      echo "[complete] ", addFileExt(safeTitle, "mkv")
+      echo "[complete] ", addFileExt(safeTitle, videoStream.ext)

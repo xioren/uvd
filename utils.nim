@@ -107,6 +107,7 @@ proc downloadParts(parts: seq[string], filepath: string): Future[string] {.async
 
 proc grab*(url: string, forceFilename = "",
            saveLocation=joinPath(getHomeDir(), "Downloads"), forceDl=false): string =
+  ## download front end
   var filename: string
 
   if forceFilename == "":
@@ -127,6 +128,7 @@ proc grab*(url: string, forceFilename = "",
 
 proc grabMulti*(urls: seq[string], forceFilename = "",
                 saveLocation=joinPath(getHomeDir(), "Downloads"), forceDl=false): string =
+  ## downloadParts front end
   var filename: string
 
   if forceFilename == "":
