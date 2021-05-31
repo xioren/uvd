@@ -141,7 +141,6 @@ proc main*(vimeoUrl: VimeoUri) =
       signedConfigUrl = webpage.captureBetween('"', '"', webpage.find(""""config_url":""") + 13)
     configResponse = parseJson(get(signedConfigUrl.replace("\\")))
   elif response == "404 Not Found":
-    echo '<', response, '>'
     return
   else:
     configResponse = parseJson(response)

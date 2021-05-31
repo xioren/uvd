@@ -243,7 +243,7 @@ proc main*(youtubeUrl: YoutubeUri) =
   var playerResponse: JsonNode
   let response = post(standardYoutubeUrl & configQuery)
   if response == "404 Not Found":
-    echo '<', response, '>'
+    discard
   else:
     playerResponse = parseJson(response)[2]["playerResponse"]
     let
