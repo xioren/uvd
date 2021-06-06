@@ -249,7 +249,7 @@ proc main*(youtubeUrl: YoutubeUri) =
     playerResponse = parseJson(response)[2]["playerResponse"]
     let
       title = playerResponse["videoDetails"]["title"].getStr()
-      safeTitle = title.multiReplace((".", ""), ("/", "-"), (": ", " -"), (":", "-"))
+      safeTitle = title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"))
       id = playerResponse["videoDetails"]["videoId"].getStr()
       finalPath = addFileExt(joinPath(getCurrentDir(), safeTitle), ".mkv")
       duration = parseInt(playerResponse["videoDetails"]["lengthSeconds"].getStr())
