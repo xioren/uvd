@@ -23,6 +23,7 @@ type
 const
   configQuery = "&pbj=1"
   bypassUrl = "https://www.youtube.com/get_video_info?html5=1&video_id="
+  # browseUrl = "https://www.youtube.com/youtubei/v1/browse?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
 
 var
   plan: seq[string]
@@ -248,7 +249,7 @@ proc main*(youtubeUrl: YoutubeUri) =
     playerResponse = parseJson(response)[2]["playerResponse"]
     let
       title = playerResponse["videoDetails"]["title"].getStr()
-      safeTitle = title.multiReplace((".", ""), ("/", "-"))
+      safeTitle = title.multiReplace((".", ""), ("/", "-"), (": ", " -"), (":", "-"))
       id = playerResponse["videoDetails"]["videoId"].getStr()
       finalPath = addFileExt(joinPath(getCurrentDir(), safeTitle), ".mkv")
       duration = parseInt(playerResponse["videoDetails"]["lengthSeconds"].getStr())
