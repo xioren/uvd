@@ -6,7 +6,7 @@ import utils
 type
   Stream = object
     title: string
-    name: string
+    filename: string
     itag: int
     mime: string
     ext: string
@@ -186,7 +186,7 @@ proc produceUrlSegments(baseUrl, segmentList: string): seq[string] =
 proc newVideoStream(youtubeUrl, dashManifestUrl, title: string, duration: int, stream: JsonNode): Stream =
   result.title = title
   (result.itag, result.mime, result.ext, result.size, result.quality) = getVideoStreamInfo(stream, duration)
-  result.name = addFileExt("videostream", result.ext)
+  result.filename = addFileExt("videostream", result.ext)
   if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
     # QUESTION: are dash urls or manifest urls ever ciphered?
     result.dash = true
@@ -205,7 +205,7 @@ proc newAudioStream(youtubeUrl, title: string, stream: JsonNode): Stream =
   # QUESTION: are audio streams ever in dash format?
   result.title = title
   (result.itag, result.mime, result.ext, result.size, result.quality) = getAudioStreamInfo(stream)
-  result.name = addFileExt("audiostream", result.ext)
+  result.filename = addFileExt("audiostream", result.ext)
   result.url = urlOrCipher(youtubeUrl, stream)
 
 
@@ -223,7 +223,7 @@ proc tryBypass(bypassUrl: string): JsonNode =
 proc reportStreamInfo(stream: Stream) =
   once:
     echo "title: ", stream.title
-  echo "stream: ", stream.name, "\n",
+  echo "stream: ", stream.filename, "\n",
        "itag: ", stream.itag, '\n',
        "size: ", stream.size, '\n',
        "quality: ", stream.quality, '\n',
@@ -243,7 +243,7 @@ proc main*(youtubeUrl: YoutubeUri) =
   let standardYoutubeUrl = standardizeUrl(youtubeUrl.url)
   var playerResponse: JsonNode
   let response = post(standardYoutubeUrl & configQuery)
-  if response == "404 Not Found":
+  if response == "404 Not Found" or response == "429 Too Many Requests":
     discard
   else:
     playerResponse = parseJson(response)[2]["playerResponse"]
@@ -278,15 +278,15 @@ proc main*(youtubeUrl: YoutubeUri) =
       reportStreamInfo(videoStream)
       var attempt: string
       if videoStream.dash:
-        attempt = grabMulti(videoStream.urlSegments, forceFilename=videoStream.name,
+        attempt = grabMulti(videoStream.urlSegments, forceFilename=videoStream.filename,
                             saveLocation=getCurrentDir(), forceDl=true)
       else:
-        attempt = grab(videoStream.url, forceFilename=videoStream.name,
+        attempt = grab(videoStream.url, forceFilename=videoStream.filename,
                        saveLocation=getCurrentDir(), forceDl=true)
       if attempt == "200 OK":
         reportStreamInfo(audioStream)
-        if grab(audioStream.url, forceFilename=audioStream.name, saveLocation=getCurrentDir(), forceDl=true) == "200 OK":
-          joinStreams(videoStream.name, audioStream.name, safeTitle)
+        if grab(audioStream.url, forceFilename=audioStream.filename, saveLocation=getCurrentDir(), forceDl=true) == "200 OK":
+          joinStreams(videoStream.filename, audioStream.filename, safeTitle)
         else:
           echo "<failed to download audio stream>"
       else:

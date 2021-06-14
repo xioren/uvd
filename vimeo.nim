@@ -15,7 +15,7 @@ import utils
 type
   Stream = object
     title: string
-    name: string
+    filename: string
     mime: string
     ext: string
     size: string
@@ -97,7 +97,7 @@ proc produceUrlSegments(cdnUrl, baseUrl, initUrl: string, stream: JsonNode): seq
 proc newVideoStream(cdnUrl, title: string, stream: JsonNode): Stream =
   result.title = title
   (result.mime, result.ext, result.size, result.quality) = getVideoStreamInfo(stream)
-  result.name = addFileExt("videostream", result.ext)
+  result.filename = addFileExt("videostream", result.ext)
   result.baseUrl = stream["base_url"].getStr()
   result.initUrl = stream["init_segment"].getStr()
   result.urlSegments = produceUrlSegments(cdnUrl.split("sep/")[0] & "sep/video",
@@ -109,7 +109,7 @@ proc newAudioStream(cdnUrl, title: string, stream: JsonNode): Stream =
   if stream.kind != JNull:
     result.title = title
     (result.mime, result.ext, result.size, result.quality) = getAudioStreamInfo(stream)
-    result.name = addFileExt("audiostream", result.ext)
+    result.filename = addFileExt("audiostream", result.ext)
     result.baseUrl = stream["base_url"].getStr().strip(leading=true, chars={'.'})
     result.initUrl = stream["init_segment"].getStr()
     result.urlSegments = produceUrlSegments(cdnUrl.split("sep/")[0] & "sep/",
@@ -120,7 +120,7 @@ proc newAudioStream(cdnUrl, title: string, stream: JsonNode): Stream =
 proc reportStreamInfo(stream: Stream) =
   once:
     echo "title: ", stream.title
-  echo "stream: ", stream.name, '\n',
+  echo "stream: ", stream.filename, '\n',
        "size: ", stream.size, '\n',
        "quality: ", stream.quality, '\n',
        "mime: ", stream.mime, '\n',
@@ -142,7 +142,7 @@ proc main*(vimeoUrl: VimeoUri) =
       webpage = get(vimeoUrl.url)
       signedConfigUrl = webpage.captureBetween('"', '"', webpage.find(""""config_url":""") + 13)
     configResponse = parseJson(get(signedConfigUrl.replace("\\")))
-  elif response == "404 Not Found":
+  elif response == "404 Not Found" or response == "429 Too Many Requests":
     return
   else:
     configResponse = parseJson(response)
@@ -162,16 +162,16 @@ proc main*(vimeoUrl: VimeoUri) =
       audioStream = newAudioStream(cdnUrl, title, selectBestAudioStream(cdnResponse["audio"]))
 
     reportStreamInfo(videoStream)
-    if grabMulti(videoStream.urlSegments, forceFilename=videoStream.name,
+    if grabMulti(videoStream.urlSegments, forceFilename=videoStream.filename,
                  saveLocation=getCurrentDir(), forceDl=true) != "200 OK":
       echo "<failed to download video stream>"
     elif audioStream.exists:
       reportStreamInfo(audioStream)
-      if grabMulti(audioStream.urlSegments, forceFilename=audioStream.name,
+      if grabMulti(audioStream.urlSegments, forceFilename=audioStream.filename,
                    saveLocation=getCurrentDir(), forceDl=true) != "200 OK":
         echo "<failed to download audio stream>"
       else:
-        joinStreams(videoStream.name, audioStream.name, safeTitle)
+        joinStreams(videoStream.filename, audioStream.filename, safeTitle)
     else:
-      moveFile(joinPath(getCurrentDir(), videoStream.name), finalPath.changeFileExt(videoStream.ext))
+      moveFile(joinPath(getCurrentDir(), videoStream.filename), finalPath.changeFileExt(videoStream.ext))
       echo "[complete] ", addFileExt(safeTitle, videoStream.ext)
