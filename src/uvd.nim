@@ -10,7 +10,7 @@ when isMainModule:
     echo "<no argument>"
   else:
     let unknownUrl = args[0]
-    if unknownUrl.contains("vimeo.com"):
+    if unknownUrl.contains("vimeo"):
       main(VimeoUri(url: unknownUrl))
     elif unknownUrl.contains("youtu"):
       main(YoutubeUri(url: unknownUrl))
