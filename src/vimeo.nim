@@ -130,19 +130,20 @@ proc reportStreamInfo(stream: Stream) =
 proc main*(vimeoUrl: VimeoUri) =
   var
     configResponse: JsonNode
-    id: string
+    id, response: string
+    code: HttpCode
   if vimeoUrl.url.contains("/video/"):
     id = vimeoUrl.url.captureBetween('/', '?', vimeoUrl.url.find("video/"))
   else:
     id = vimeoUrl.url.captureBetween('/', '?', vimeoUrl.url.find(".com/"))
-  let response = get(configUrl % id)
-  if response == "403 Forbidden":
+  (code, response) = getThis(configUrl % id)
+  if code == Http403:
     echo "[trying signed config url]"
-    let
-      webpage = get(vimeoUrl.url)
-      signedConfigUrl = webpage.captureBetween('"', '"', webpage.find(""""config_url":""") + 13)
-    configResponse = parseJson(get(signedConfigUrl.replace("\\")))
-  elif response == "404 Not Found" or response == "429 Too Many Requests":
+    (code, response) = getThis(vimeoUrl.url)
+    let signedConfigUrl = response.captureBetween('"', '"', response.find(""""config_url":""") + 13)
+    (code, response) = getThis(signedConfigUrl.replace("\\"))
+    configResponse = parseJson(response)
+  elif not code.is2xx:
     return
   else:
     configResponse = parseJson(response)
@@ -157,18 +158,20 @@ proc main*(vimeoUrl: VimeoUri) =
     let
       defaultCdn = configResponse["request"]["files"]["dash"]["default_cdn"].getStr()
       cdnUrl = configResponse["request"]["files"]["dash"]["cdns"][defaultCdn]["url"].getStr()
-      cdnResponse = parseJson(get(dequery(cdnUrl)))
+    (code, response) = getThis(dequery(cdnUrl))
+    let
+      cdnResponse = parseJson(response)
       videoStream = newVideoStream(cdnUrl, title, selectBestVideoStream(cdnResponse["video"]))
       audioStream = newAudioStream(cdnUrl, title, selectBestAudioStream(cdnResponse["audio"]))
 
     reportStreamInfo(videoStream)
-    if grabMulti(videoStream.urlSegments, forceFilename=videoStream.filename,
-                 saveLocation=getCurrentDir(), forceDl=true) != "200 OK":
+    if not grabMulti(videoStream.urlSegments, forceFilename=videoStream.filename,
+                     saveLocation=getCurrentDir(), forceDl=true).is2xx:
       echo "<failed to download video stream>"
     elif audioStream.exists:
       reportStreamInfo(audioStream)
-      if grabMulti(audioStream.urlSegments, forceFilename=audioStream.filename,
-                   saveLocation=getCurrentDir(), forceDl=true) != "200 OK":
+      if not grabMulti(audioStream.urlSegments, forceFilename=audioStream.filename,
+                       saveLocation=getCurrentDir(), forceDl=true).is2xx:
         echo "<failed to download audio stream>"
       else:
         joinStreams(videoStream.filename, audioStream.filename, safeTitle)

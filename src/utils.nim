@@ -2,7 +2,7 @@ import std/[os, re, strutils, strformat, asyncdispatch, terminal, asyncfile,
             tables, times, httpclient]
 from math import floor
 
-export asyncdispatch, os, strutils, re, tables
+export asyncdispatch, os, strutils, re, tables, httpclient
 
 
 const
@@ -52,25 +52,27 @@ proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
   stdout.flushFile()
 
 
-proc post*(url: string): string =
+proc postThis*(url: string): tuple[httpcode: HttpCode, body: string] =
   let client = newHttpClient(headers=newHttpHeaders(headers))
   try:
-    result = client.postContent(url)
+    let response = client.post(url)
+    result.httpcode = response.code
+    result.body = response.body
   except Exception as e:
-    result = e.msg
-    echo '<', result, '>'
+    echo '<', e.msg, '>'
 
 
-proc get*(url: string): string =
+proc getThis*(url: string): tuple[httpcode: HttpCode, body: string] =
   let client = newHttpClient(headers=newHttpHeaders(headers))
   try:
-    result = client.getContent(url)
+    let response = client.get(url)
+    result.httpcode = response.code
+    result.body = response.body
   except Exception as e:
-    result = e.msg
-    echo '<', result, '>'
+    echo '<', e.msg, '>'
 
 
-proc download(url, filepath: string): Future[string] {.async.} =
+proc download(url, filepath: string): Future[HttpCode] {.async.} =
   ## download single files
   let client = newAsyncHttpClient(headers=newHttpHeaders(headers))
   var file = openasync(filepath, fmWrite)
@@ -78,16 +80,16 @@ proc download(url, filepath: string): Future[string] {.async.} =
   try:
     let resp = await client.request(url)
     await file.writeFromStream(resp.bodyStream)
-    result = $resp.code()
+    result = resp.code
   except Exception as e:
-    result = e.msg
+    echo '<', e.msg, '>'
   finally:
     clearProgress()
     file.close()
     client.close()
 
 
-proc downloadParts(parts: seq[string], filepath: string): Future[string] {.async.} =
+proc downloadParts(parts: seq[string], filepath: string): Future[HttpCode] {.async.} =
   ## download multi-part files
   let client = newAsyncHttpClient(headers=newHttpHeaders(headers))
   var file = openasync(filepath, fmWrite)
@@ -96,9 +98,9 @@ proc downloadParts(parts: seq[string], filepath: string): Future[string] {.async
     for url in parts:
       let resp = await client.request(url)
       await file.writeFromStream(resp.bodyStream)
-      result = $resp.code()
+      result = resp.code
   except Exception as e:
-    result = e.msg
+    echo '<', e.msg, '>'
   finally:
     clearProgress()
     file.close()
@@ -106,7 +108,7 @@ proc downloadParts(parts: seq[string], filepath: string): Future[string] {.async
 
 
 proc grab*(url: string, forceFilename = "",
-           saveLocation=joinPath(getHomeDir(), "Downloads"), forceDl=false): string =
+           saveLocation=joinPath(getHomeDir(), "Downloads"), forceDl=false): HttpCode =
   ## download front end
   var filename: string
 
@@ -120,14 +122,14 @@ proc grab*(url: string, forceFilename = "",
     echo "<file exists> ", filename
   else:
     result = waitFor download(url, filepath)
-    if result == "200 OK":
+    if result.is2xx:
       echo "[success] ", filename
     else:
       echo '<', result, '>'
 
 
 proc grabMulti*(urls: seq[string], forceFilename = "",
-                saveLocation=joinPath(getHomeDir(), "Downloads"), forceDl=false): string =
+                saveLocation=joinPath(getHomeDir(), "Downloads"), forceDl=false): HttpCode =
   ## downloadParts front end
   var filename: string
 
@@ -141,7 +143,7 @@ proc grabMulti*(urls: seq[string], forceFilename = "",
     echo "<file exists> ", filename
   else:
     result = waitFor downloadParts(urls, filepath)
-    if result == "200 OK":
+    if result.is2xx:
       echo "[success] ", filename
     else:
       echo '<', result, '>'

@@ -165,14 +165,15 @@ proc urlOrCipher(youtubeUrl: string, stream: JsonNode): string =
   if stream.hasKey("url"):
     result = stream["url"].getStr()
   elif stream.hasKey("signatureCipher"):
-    var baseJs: string
+    var
+      code: HttpCode
+      response: string
     once:
       echo "[deciphering urls]"
-      let
-        webpage = get(youtubeUrl)
-        jsUrl = "https://www.youtube.com" & webpage.captureBetween('"', '"', webpage.find("\"jsUrl\":\"") + 7)
-      baseJs = get(jsUrl)
-    result = getSigCipherUrl(baseJs, stream["signatureCipher"].getStr())
+      (code, response) = getThis(youtubeUrl)
+      let jsUrl = "https://www.youtube.com" & response.captureBetween('"', '"', response.find("\"jsUrl\":\"") + 7)
+      (code, response) = getThis(jsUrl)
+    result = getSigCipherUrl(response, stream["signatureCipher"].getStr())
   # NOTE: don't think this works.
   result.insert("&ratebypass=yes", result.find("requiressl") + 14)
 
@@ -190,7 +191,7 @@ proc newVideoStream(youtubeUrl, dashManifestUrl, title: string, duration: int, s
   if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
     # QUESTION: are dash urls or manifest urls ever ciphered?
     result.dash = true
-    let xml = get(dashManifestUrl)
+    let (_, xml) = getThis(dashManifestUrl)
     var match: array[1, string]
     discard xml.find(re("""(?<=<Representation\s)(id="$1".+?)(?=</Representation>)""" % $result.itag), match)
     result.baseUrl = match[0].captureBetween('>', '<', match[0].find("<BaseURL>") + 8)
@@ -211,13 +212,13 @@ proc newAudioStream(youtubeUrl, title: string, stream: JsonNode): Stream =
 
 proc tryBypass(bypassUrl: string): JsonNode =
   ## get new response using bypass url
-  let bypassResponse = decodeUrl(get(bypassUrl))
-  if bypassResponse == "404 Not Found":
-    result = newJNull()
-  else:
+  let (code, bypassResponse) = getThis(bypassUrl)
+  if code.is2xx:
     var match: array[1, string]
-    discard bypassResponse.find(re("({\"responseContext\".+})(?=&enable)"), match)
+    discard decodeUrl(bypassResponse).find(re("({\"responseContext\".+})(?=&enable)"), match)
     result = parseJson(match[0])
+  else:
+    result = newJNull()
 
 
 proc reportStreamInfo(stream: Stream) =
@@ -241,11 +242,12 @@ proc standardizeUrl(youtubeUrl: string): string =
 
 proc main*(youtubeUrl: YoutubeUri) =
   let standardYoutubeUrl = standardizeUrl(youtubeUrl.url)
-  var playerResponse: JsonNode
-  let response = post(standardYoutubeUrl & configQuery)
-  if response == "404 Not Found" or response == "429 Too Many Requests":
-    discard
-  else:
+  var
+    playerResponse: JsonNode
+    response: string
+    code: HttpCode
+  (code, response) = postThis(standardYoutubeUrl & configQuery)
+  if code.is2xx:
     playerResponse = parseJson(response)[2]["playerResponse"]
     let
       title = playerResponse["videoDetails"]["title"].getStr()
@@ -276,16 +278,16 @@ proc main*(youtubeUrl: YoutubeUri) =
         audioStream = newAudioStream(standardYoutubeUrl, title, selectBestAudioStream(playerResponse["streamingData"]["adaptiveFormats"]))
 
       reportStreamInfo(videoStream)
-      var attempt: string
+      var attempt: HttpCode
       if videoStream.dash:
         attempt = grabMulti(videoStream.urlSegments, forceFilename=videoStream.filename,
                             saveLocation=getCurrentDir(), forceDl=true)
       else:
         attempt = grab(videoStream.url, forceFilename=videoStream.filename,
                        saveLocation=getCurrentDir(), forceDl=true)
-      if attempt == "200 OK":
+      if attempt.is2xx:
         reportStreamInfo(audioStream)
-        if grab(audioStream.url, forceFilename=audioStream.filename, saveLocation=getCurrentDir(), forceDl=true) == "200 OK":
+        if grab(audioStream.url, forceFilename=audioStream.filename, saveLocation=getCurrentDir(), forceDl=true).is2xx:
           joinStreams(videoStream.filename, audioStream.filename, safeTitle)
         else:
           echo "<failed to download audio stream>"
