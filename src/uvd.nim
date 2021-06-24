@@ -11,8 +11,8 @@ when isMainModule:
   else:
     let unknownUrl = args[0]
     if unknownUrl.contains("vimeo"):
-      main(VimeoUri(url: unknownUrl))
+      vimeoDownload(unknownUrl)
     elif unknownUrl.contains("youtu"):
-      main(YoutubeUri(url: unknownUrl))
+      youtubeDownload(unknownUrl)
     else:
       echo "[invalid url]"

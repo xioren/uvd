@@ -25,9 +25,6 @@ type
     urlSegments: seq[string]
     exists: bool
 
-  VimeoUri* = object
-    url*: string
-
 
 const
   configUrl = "https://player.vimeo.com/video/$1/config"
@@ -127,19 +124,19 @@ proc reportStreamInfo(stream: Stream) =
        "segments: ", stream.urlSegments.len
 
 
-proc main*(vimeoUrl: VimeoUri) =
+proc vimeoDownload*(vimeoUrl: string) =
   var
     configResponse: JsonNode
     id, response: string
     code: HttpCode
-  if vimeoUrl.url.contains("/video/"):
-    id = vimeoUrl.url.captureBetween('/', '?', vimeoUrl.url.find("video/"))
+  if vimeoUrl.contains("/video/"):
+    id = vimeoUrl.captureBetween('/', '?', vimeoUrl.find("video/"))
   else:
-    id = vimeoUrl.url.captureBetween('/', '?', vimeoUrl.url.find(".com/"))
+    id = vimeoUrl.captureBetween('/', '?', vimeoUrl.find(".com/"))
   (code, response) = getThis(configUrl % id)
   if code == Http403:
     echo "[trying signed config url]"
-    (code, response) = getThis(vimeoUrl.url)
+    (code, response) = getThis(vimeoUrl)
     let signedConfigUrl = response.captureBetween('"', '"', response.find(""""config_url":""") + 13)
     (code, response) = getThis(signedConfigUrl.replace("\\"))
     configResponse = parseJson(response)

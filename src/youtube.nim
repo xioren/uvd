@@ -17,9 +17,6 @@ type
     urlSegments: seq[string]
     dash: bool
 
-  YoutubeUri* = object
-    url*: string
-
 const
   configQuery = "&pbj=1"
   bypassUrl = "https://www.youtube.com/get_video_info?html5=1&video_id="
@@ -56,13 +53,13 @@ proc parseFunctionPlan(js: string): seq[string] =
   match[0].split(';')[1..^3]
 
 
-proc parseMainFunctionName(jsFunction: string): string =
+proc parseParentFunctionName(jsFunction: string): string =
   ## get the name of the function containing the scramble functions
   ## ix.Nh(a,2) --> ix
   jsFunction.parseIdent()
 
 
-proc parseMinorFunction(function: string): tuple[name: string, argument: int] {.inline.} =
+proc parseChildFunction(function: string): tuple[name: string, argument: int] {.inline.} =
   ## returns function name and int argument
   ## ix.ai(a,5) --> (ai, 5)
   result.name = function.captureBetween('.', '(')
@@ -94,13 +91,13 @@ proc decipher(js, signature: string): string =
   ## decipher signature
   once:
     plan = parseFunctionPlan(js)
-    mainFunc = parseMainFunctionName(plan[0])
+    mainFunc = parseParentFunctionName(plan[0])
     map = createFunctionMap(js, mainFunc)
   var splitSig = @signature
 
   for item in plan:
     let
-      (funcName, argument) = parseMinorFunction(item)
+      (funcName, argument) = parseChildFunction(item)
       jsFunction = map[funcName]
       index = parseIndex(jsFunction)
     if jsFunction.contains("reverse"):
@@ -240,8 +237,8 @@ proc standardizeUrl(youtubeUrl: string): string =
     result = "https://www.youtube.com/watch?v=" & youtubeUrl.captureBetween('=', '&')
 
 
-proc main*(youtubeUrl: YoutubeUri) =
-  let standardYoutubeUrl = standardizeUrl(youtubeUrl.url)
+proc youtubeDownload*(youtubeUrl: string) =
+  let standardYoutubeUrl = standardizeUrl(youtubeUrl)
   var
     playerResponse: JsonNode
     response: string
