@@ -52,7 +52,7 @@ proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
   stdout.flushFile()
 
 
-proc postThis*(url: string): tuple[httpcode: HttpCode, body: string] =
+proc doPost*(url: string): tuple[httpcode: HttpCode, body: string] =
   let client = newHttpClient(headers=newHttpHeaders(headers))
   try:
     let response = client.post(url)
@@ -62,7 +62,7 @@ proc postThis*(url: string): tuple[httpcode: HttpCode, body: string] =
     echo '<', e.msg, '>'
 
 
-proc getThis*(url: string): tuple[httpcode: HttpCode, body: string] =
+proc doGet*(url: string): tuple[httpcode: HttpCode, body: string] =
   let client = newHttpClient(headers=newHttpHeaders(headers))
   try:
     let response = client.get(url)

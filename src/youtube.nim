@@ -167,11 +167,11 @@ proc urlOrCipher(youtubeUrl: string, stream: JsonNode): string =
       response: string
     once:
       echo "[deciphering urls]"
-      (code, response) = getThis(youtubeUrl)
+      (code, response) = doGet(youtubeUrl)
       let jsUrl = "https://www.youtube.com" & response.captureBetween('"', '"', response.find("\"jsUrl\":\"") + 7)
-      (code, response) = getThis(jsUrl)
+      (code, response) = doGet(jsUrl)
     result = getSigCipherUrl(response, stream["signatureCipher"].getStr())
-  # NOTE: don't think this works.
+  # WARNING: don't think this works.
   result.insert("&ratebypass=yes", result.find("requiressl") + 14)
 
 
@@ -188,7 +188,7 @@ proc newVideoStream(youtubeUrl, dashManifestUrl, title: string, duration: int, s
   if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
     # QUESTION: are dash urls or manifest urls ever ciphered?
     result.dash = true
-    let (_, xml) = getThis(dashManifestUrl)
+    let (_, xml) = doGet(dashManifestUrl)
     var match: array[1, string]
     discard xml.find(re("""(?<=<Representation\s)(id="$1".+?)(?=</Representation>)""" % $result.itag), match)
     result.baseUrl = match[0].captureBetween('>', '<', match[0].find("<BaseURL>") + 8)
@@ -209,7 +209,7 @@ proc newAudioStream(youtubeUrl, title: string, stream: JsonNode): Stream =
 
 proc tryBypass(bypassUrl: string): JsonNode =
   ## get new response using bypass url
-  let (code, bypassResponse) = getThis(bypassUrl)
+  let (code, bypassResponse) = doGet(bypassUrl)
   if code.is2xx:
     var match: array[1, string]
     discard decodeUrl(bypassResponse).find(re("({\"responseContext\".+})(?=&enable)"), match)
@@ -243,7 +243,8 @@ proc youtubeDownload*(youtubeUrl: string) =
     playerResponse: JsonNode
     response: string
     code: HttpCode
-  (code, response) = postThis(standardYoutubeUrl & configQuery)
+
+  (code, response) = doPost(standardYoutubeUrl & configQuery)
   if code.is2xx:
     playerResponse = parseJson(response)[2]["playerResponse"]
     let

@@ -65,9 +65,9 @@ proc getVideoStreamInfo(stream: JsonNode): tuple[mime, ext, size, qlt: string] =
   result.mime = stream["mime_type"].getStr()
   result.ext = extensions[result.mime]
   if isVerticle(stream):
-    result.qlt = $stream["width"].getInt() & "p"
+    result.qlt = $stream["width"].getInt() & 'p'
   else:
-    result.qlt = $stream["height"].getInt() & "p"
+    result.qlt = $stream["height"].getInt() & 'p'
   var size = 0
   for segment in stream["segments"]:
     size.inc(segment["size"].getInt())
@@ -133,17 +133,17 @@ proc vimeoDownload*(vimeoUrl: string) =
     id = vimeoUrl.captureBetween('/', '?', vimeoUrl.find("video/"))
   else:
     id = vimeoUrl.captureBetween('/', '?', vimeoUrl.find(".com/"))
-  (code, response) = getThis(configUrl % id)
+
+  (code, response) = doGet(configUrl % id)
   if code == Http403:
     echo "[trying signed config url]"
-    (code, response) = getThis(vimeoUrl)
+    (code, response) = doGet(vimeoUrl)
     let signedConfigUrl = response.captureBetween('"', '"', response.find(""""config_url":""") + 13)
-    (code, response) = getThis(signedConfigUrl.replace("\\"))
-    configResponse = parseJson(response)
+    (code, response) = doGet(signedConfigUrl.replace("\\"))
   elif not code.is2xx:
     return
-  else:
-    configResponse = parseJson(response)
+  configResponse = parseJson(response)
+
   let
     title = configResponse["video"]["title"].getStr()
     safeTitle = title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"))
@@ -155,7 +155,7 @@ proc vimeoDownload*(vimeoUrl: string) =
     let
       defaultCdn = configResponse["request"]["files"]["dash"]["default_cdn"].getStr()
       cdnUrl = configResponse["request"]["files"]["dash"]["cdns"][defaultCdn]["url"].getStr()
-    (code, response) = getThis(dequery(cdnUrl))
+    (code, response) = doGet(cdnUrl.dequery())
     let
       cdnResponse = parseJson(response)
       videoStream = newVideoStream(cdnUrl, title, selectBestVideoStream(cdnResponse["video"]))
