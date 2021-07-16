@@ -142,36 +142,39 @@ proc vimeoDownload*(vimeoUrl: string) =
     (code, response) = doGet(signedConfigUrl.replace("\\"))
   elif not code.is2xx:
     return
+
   configResponse = parseJson(response)
-
-  let
-    title = configResponse["video"]["title"].getStr()
-    safeTitle = title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"))
-    finalPath = addFileExt(joinPath(getCurrentDir(), safeTitle), ".mkv")
-
-  if fileExists(finalPath):
-    echo "<file exists> ", safeTitle
+  if not configResponse["video"].hasKey("owner"):
+    echo "<video does not exist or is hidden>"
   else:
     let
-      defaultCdn = configResponse["request"]["files"]["dash"]["default_cdn"].getStr()
-      cdnUrl = configResponse["request"]["files"]["dash"]["cdns"][defaultCdn]["url"].getStr()
-    (code, response) = doGet(cdnUrl.dequery())
-    let
-      cdnResponse = parseJson(response)
-      videoStream = newVideoStream(cdnUrl, title, selectBestVideoStream(cdnResponse["video"]))
-      audioStream = newAudioStream(cdnUrl, title, selectBestAudioStream(cdnResponse["audio"]))
+      title = configResponse["video"]["title"].getStr()
+      safeTitle = title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"))
+      finalPath = addFileExt(joinPath(getCurrentDir(), safeTitle), ".mkv")
 
-    reportStreamInfo(videoStream)
-    if not grabMulti(videoStream.urlSegments, forceFilename=videoStream.filename,
-                     saveLocation=getCurrentDir(), forceDl=true).is2xx:
-      echo "<failed to download video stream>"
-    elif audioStream.exists:
-      reportStreamInfo(audioStream)
-      if not grabMulti(audioStream.urlSegments, forceFilename=audioStream.filename,
-                       saveLocation=getCurrentDir(), forceDl=true).is2xx:
-        echo "<failed to download audio stream>"
-      else:
-        joinStreams(videoStream.filename, audioStream.filename, safeTitle)
+    if fileExists(finalPath):
+      echo "<file exists> ", safeTitle
     else:
-      moveFile(joinPath(getCurrentDir(), videoStream.filename), finalPath.changeFileExt(videoStream.ext))
-      echo "[complete] ", addFileExt(safeTitle, videoStream.ext)
+      let
+        defaultCdn = configResponse["request"]["files"]["dash"]["default_cdn"].getStr()
+        cdnUrl = configResponse["request"]["files"]["dash"]["cdns"][defaultCdn]["url"].getStr()
+      (code, response) = doGet(cdnUrl.dequery())
+      let
+        cdnResponse = parseJson(response)
+        videoStream = newVideoStream(cdnUrl, title, selectBestVideoStream(cdnResponse["video"]))
+        audioStream = newAudioStream(cdnUrl, title, selectBestAudioStream(cdnResponse["audio"]))
+
+      reportStreamInfo(videoStream)
+      if not grabMulti(videoStream.urlSegments, forceFilename=videoStream.filename,
+                       saveLocation=getCurrentDir(), forceDl=true).is2xx:
+        echo "<failed to download video stream>"
+      elif audioStream.exists:
+        reportStreamInfo(audioStream)
+        if not grabMulti(audioStream.urlSegments, forceFilename=audioStream.filename,
+                         saveLocation=getCurrentDir(), forceDl=true).is2xx:
+          echo "<failed to download audio stream>"
+        else:
+          joinStreams(videoStream.filename, audioStream.filename, safeTitle)
+      else:
+        moveFile(joinPath(getCurrentDir(), videoStream.filename), finalPath.changeFileExt(videoStream.ext))
+        echo "[complete] ", addFileExt(safeTitle, videoStream.ext)
