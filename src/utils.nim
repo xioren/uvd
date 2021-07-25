@@ -7,9 +7,10 @@ export asyncdispatch, os, strutils, re, tables, httpclient
 
 const
   extensions* = {"video/webm": ".webm", "video/mp4": ".mp4",
-                 "audio/mp4": ".mp4a", "audio/webm": ".weba"}.toTable()
-  headers = [("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.85 Safari/537.36"),
-             ("accept", "*/*")]
+                 "audio/mp4": ".mp4a", "audio/webm": ".weba"}.toTable
+var
+  headers* = @[("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.85 Safari/537.36"),
+               ("accept", "*/*")]
 
 
 func dequery*(url: string): string =
@@ -73,7 +74,7 @@ proc doGet*(url: string): tuple[httpcode: HttpCode, body: string] =
 
 
 proc download(url, filepath: string): Future[HttpCode] {.async.} =
-  ## download single files
+  ## download single streams
   let client = newAsyncHttpClient(headers=newHttpHeaders(headers))
   var file = openasync(filepath, fmWrite)
   client.onProgressChanged = onProgressChanged
@@ -90,7 +91,7 @@ proc download(url, filepath: string): Future[HttpCode] {.async.} =
 
 
 proc downloadParts(parts: seq[string], filepath: string): Future[HttpCode] {.async.} =
-  ## download multi-part files
+  ## download multi-part streams
   let client = newAsyncHttpClient(headers=newHttpHeaders(headers))
   var file = openasync(filepath, fmWrite)
   client.onProgressChanged = onProgressChanged

@@ -244,7 +244,7 @@ proc youtubeDownload*(youtubeUrl: string) =
     response: string
     code: HttpCode
 
-  (code, response) = doPost(standardYoutubeUrl & configQuery)
+  (code, response) = doPost(standardYoutubeUrl & configQuery & "&has_verified=1")
   if code.is2xx:
     playerResponse = parseJson(response)[2]["playerResponse"]
     let

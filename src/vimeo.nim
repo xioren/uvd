@@ -133,13 +133,26 @@ proc vimeoDownload*(vimeoUrl: string) =
     id = vimeoUrl.captureBetween('/', '?', vimeoUrl.find("video/"))
   else:
     id = vimeoUrl.captureBetween('/', '?', vimeoUrl.find(".com/"))
+  let standardVimeoUrl = "https://vimeo.com/video/" & id
 
   (code, response) = doGet(configUrl % id)
   if code == Http403:
     echo "[trying signed config url]"
-    (code, response) = doGet(vimeoUrl)
+    (code, response) = doGet(standardVimeoUrl)
     let signedConfigUrl = response.captureBetween('"', '"', response.find(""""config_url":""") + 13)
-    (code, response) = doGet(signedConfigUrl.replace("\\"))
+    if not signedConfigUrl.contains("vimeo"):
+      echo "[trying embed url]"
+      # HACK: use patreon embed url to get meta data
+      headers.add(("referer", "https://cdn.embedly.com/"))
+      (code, response) = doGet("https://player.vimeo.com/video/$1?app_id=122963&referrer=https%3A%2F%2Fwww.patreon.com%2F" % id)
+      let embedResponse = response.captureBetween(' ', ';', response.find("""config =""") + 8)
+      if embedResponse.contains("cdn_url"):
+        response = embedResponse
+      else:
+        echo "[failed to obtain video meta data]"
+        return
+    else:
+      (code, response) = doGet(signedConfigUrl.replace("\\"))
   elif not code.is2xx:
     return
 
