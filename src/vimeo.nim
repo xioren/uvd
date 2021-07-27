@@ -149,7 +149,7 @@ proc vimeoDownload*(vimeoUrl: string) =
       if embedResponse.contains("cdn_url"):
         response = embedResponse
       else:
-        echo "[failed to obtain video meta data]"
+        echo "<failed to obtain meta data>"
         return
     else:
       (code, response) = doGet(signedConfigUrl.replace("\\"))

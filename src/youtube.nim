@@ -3,6 +3,19 @@ import std/[json, uri, algorithm, sequtils, parseutils]
 import utils
 
 
+const context = """{"context": {
+                     "client": {
+                      "hl": "en",
+                      "clientName": "WEB",
+                      "clientVersion": "2.20210721.00.00",
+                      "mainAppWebInfo": {
+                          "graftUrl": "/watch?v=$1"
+                      }
+                     }
+                    },
+                    "videoId": "$1"
+                  }"""
+
 type
   Stream = object
     title: string
@@ -18,8 +31,9 @@ type
     dash: bool
 
 const
-  configQuery = "&pbj=1"
-  bypassUrl = "https://www.youtube.com/get_video_info?html5=1&video_id="
+  # configQuery = "&pbj=1"
+  bypassUrl = "https://www.youtube.com/get_video_info?html5=1&c=TVHTML5&cver=6.20180913&video_id=$1"
+  apiUrl = "https://www.youtube.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
   # browseUrl = "https://www.youtube.com/youtubei/v1/browse?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
 
 var
@@ -230,27 +244,29 @@ proc reportStreamInfo(stream: Stream) =
     echo "segments: ", stream.urlSegments.len
 
 
-proc standardizeUrl(youtubeUrl: string): string =
+proc isolateId(youtubeUrl: string): string =
   if youtubeUrl.contains("youtu.be"):
-    result = "https://www.youtube.com/watch?v=" & youtubeUrl.captureBetween('/', '?', 8)
+    result = youtubeUrl.captureBetween('/', '?', 8)
   else:
-    result = "https://www.youtube.com/watch?v=" & youtubeUrl.captureBetween('=', '&')
+    result = youtubeUrl.captureBetween('=', '&')
 
 
 proc youtubeDownload*(youtubeUrl: string) =
-  let standardYoutubeUrl = standardizeUrl(youtubeUrl)
+  let
+    id = isolateId(youtubeUrl)
+    standardYoutubeUrl = "https://www.youtube.com/watch?v=" & id
   var
     playerResponse: JsonNode
     response: string
     code: HttpCode
 
-  (code, response) = doPost(standardYoutubeUrl & configQuery & "&has_verified=1")
+  (code, response) = doPost(apiUrl, context % id)
   if code.is2xx:
-    playerResponse = parseJson(response)[2]["playerResponse"]
+    playerResponse = parseJson(response)
     let
+      # BUG: if bad url this will throw key not found error
       title = playerResponse["videoDetails"]["title"].getStr()
       safeTitle = title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"))
-      id = playerResponse["videoDetails"]["videoId"].getStr()
       finalPath = addFileExt(joinPath(getCurrentDir(), safeTitle), ".mkv")
       duration = parseInt(playerResponse["videoDetails"]["lengthSeconds"].getStr())
 
@@ -259,10 +275,14 @@ proc youtubeDownload*(youtubeUrl: string) =
     else:
       if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
         echo "[attempting age-gate bypass]"
-        playerResponse = tryBypass(bypassUrl & id)
-        if playerResponse.kind == JNull or playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
-            echo "<bypass failed>"
-            return
+        playerResponse = tryBypass(bypassUrl % id)
+        if playerResponse.kind == JNull:
+          echo "<bypass failed>"
+          return
+        elif playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
+          # QUESTION: can this scenario happen with bypass url?
+          echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
+          return
       elif playerResponse["playabilityStatus"]["status"].getStr() != "OK" or playerResponse["playabilityStatus"].hasKey("liveStreamability"):
         echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
         return
