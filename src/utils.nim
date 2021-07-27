@@ -56,7 +56,7 @@ proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
 proc doPost*(url, body: string): tuple[httpcode: HttpCode, body: string] =
   let client = newHttpClient(headers=newHttpHeaders(headers))
   try:
-    let response = client.request(url, httpMethod = HttpPost, body=body)
+    let response = client.post(url, body=body)
     result.httpcode = response.code
     result.body = response.body
   except Exception as e:

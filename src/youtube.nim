@@ -3,18 +3,47 @@ import std/[json, uri, algorithm, sequtils, parseutils]
 import utils
 
 
-const context = """{"context": {
-                     "client": {
-                      "hl": "en",
-                      "clientName": "WEB",
-                      "clientVersion": "2.20210721.00.00",
-                      "mainAppWebInfo": {
-                          "graftUrl": "/watch?v=$1"
-                      }
-                     }
-                    },
-                    "videoId": "$1"
-                  }"""
+const
+  playerContext = """{
+        "context": {
+          "client": {
+            "hl": "en",
+            "clientName": "WEB",
+            "clientVersion": "2.20210721.00.00",
+            "mainAppWebInfo": {
+              "graftUrl": "/watch?v=$1"
+            }
+          }
+        },
+        "videoId": "$1"
+      }"""
+  browseContext = """{
+        "browseId": "$1",
+        "context": {
+          "client": {
+            "hl": "en",
+            "clientName": "WEB",
+            "clientVersion": "2.20210721.00.00",
+            "mainAppWebInfo": {
+              "graftUrl": "/channel/$1/videos"
+            }
+          }
+        },
+        "params": "EgZ2aWRlb3M%3D"
+      }"""
+  browseContinueContext = """{
+        "context": {
+          "client": {
+            "hl": "en",
+            "clientName": "WEB",
+            "clientVersion": "2.20210721.00.00",
+            "mainAppWebInfo": {
+              "graftUrl": "/channel/$1/videos"
+            }
+          }
+        },
+        "continuation": "$2"
+      }"""
 
 type
   Stream = object
@@ -31,10 +60,9 @@ type
     dash: bool
 
 const
-  # configQuery = "&pbj=1"
   bypassUrl = "https://www.youtube.com/get_video_info?html5=1&c=TVHTML5&cver=6.20180913&video_id=$1"
-  apiUrl = "https://www.youtube.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
-  # browseUrl = "https://www.youtube.com/youtubei/v1/browse?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
+  playerUrl = "https://www.youtube.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
+  browseUrl = "https://www.youtube.com/youtubei/v1/browse?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
 
 var
   plan: seq[string]
@@ -251,7 +279,16 @@ proc isolateId(youtubeUrl: string): string =
     result = youtubeUrl.captureBetween('=', '&')
 
 
-proc youtubeDownload*(youtubeUrl: string) =
+proc isolateChannel(youtubeUrl: string): string =
+  if "/c/" in youtubeUrl:
+    # NOTE: vanity
+    let response = doGet(youtubeUrl)
+    result = response[1].captureBetween('"', '"', response[1].find("""browseId":""") + 9)
+  else:
+    result = youtubeUrl.captureBetween('/', '/', youtubeUrl.find("channel"))
+
+
+proc getVideo(youtubeUrl: string) =
   let
     id = isolateId(youtubeUrl)
     standardYoutubeUrl = "https://www.youtube.com/watch?v=" & id
@@ -260,7 +297,7 @@ proc youtubeDownload*(youtubeUrl: string) =
     response: string
     code: HttpCode
 
-  (code, response) = doPost(apiUrl, context % id)
+  (code, response) = doPost(playerUrl, playerContext % id)
   if code.is2xx:
     playerResponse = parseJson(response)
     let
@@ -311,3 +348,51 @@ proc youtubeDownload*(youtubeUrl: string) =
           echo "<failed to download audio stream>"
       else:
         echo "<failed to download video stream>"
+
+
+proc getChannel(youtubeUrl: string) =
+  let channel = isolateChannel(youtubeUrl)
+  var
+    channelResponse: JsonNode
+    response: string
+    code: HttpCode
+    token, lastToken: string
+    ids: seq[string]
+
+  (code, response) = doPost(browseUrl, browseContext % channel)
+  if code.is2xx:
+    echo "[collecting videos]"
+    channelResponse = parseJson(response)
+    for item in channelResponse["contents"]["twoColumnBrowseResultsRenderer"]["tabs"][1]["tabRenderer"]["content"]["sectionListRenderer"]["contents"][0]["itemSectionRenderer"]["contents"][0]["gridRenderer"]["items"]:
+      if item.hasKey("continuationItemRenderer"):
+        token = item["continuationItemRenderer"]["continuationEndpoint"]["continuationCommand"]["token"].getStr()
+        lastToken = token
+        while true:
+          (code, response) = doPost(browseUrl, browseContinueContext % [channel, token])
+          if code.is2xx:
+            channelResponse = parseJson(response)
+            for item in channelResponse["onResponseReceivedActions"][0]["appendContinuationItemsAction"]["continuationItems"]:
+              if item.hasKey("continuationItemRenderer"):
+                token = item["continuationItemRenderer"]["continuationEndpoint"]["continuationCommand"]["token"].getStr()
+              else:
+                ids.add(item["gridVideoRenderer"]["videoId"].getStr())
+            if token == lastToken:
+              break
+            else:
+              lastToken = token
+          else:
+            echo "<failed to obtain channel metadata>"
+      else:
+        ids.add(item["gridVideoRenderer"]["videoId"].getStr())
+  else:
+    echo "<failed to obtain channel metadata>"
+
+  for id in ids:
+    getVideo("https://www.youtube.com/watch?v=" & id)
+
+
+proc youtubeDownload*(youtubeUrl: string) =
+  if "/channel/" in youtubeUrl or "/c/" in youtubeUrl:
+    getChannel(youtubeUrl)
+  else:
+    getVideo(youtubeUrl)
