@@ -63,11 +63,26 @@ const
   bypassUrl = "https://www.youtube.com/get_video_info?html5=1&c=TVHTML5&cver=6.20180913&video_id=$1"
   playerUrl = "https://www.youtube.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
   browseUrl = "https://www.youtube.com/youtubei/v1/browse?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
+  # contextUrl = "https://www.youtube.com/sw.js_data"
 
 var
   plan: seq[string]
   mainFunc: string
   map: Table[string, string]
+
+
+########################################################
+# misc
+########################################################
+
+
+proc creatAuthenticationCookie(): string =
+  import std/[sha1, times]
+  const xOrigin = "https://www.youtube.com"
+  let
+    timeStamp = toUnix(getTime())
+    sapisid = "" # NOTE: from cookies
+  result = "SAPISIDHASH " & $timeStamp & '_' & $secureHash(timeStamp & ' ' & sapisid & ' ' & xOrigin)
 
 
 ########################################################
@@ -387,6 +402,7 @@ proc getChannel(youtubeUrl: string) =
   else:
     echo "<failed to obtain channel metadata>"
 
+  echo '[', ids.len, " videos found]"
   for id in ids:
     getVideo("https://www.youtube.com/watch?v=" & id)
 
