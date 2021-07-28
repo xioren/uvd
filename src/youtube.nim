@@ -1,8 +1,10 @@
 import std/[json, uri, algorithm, sequtils, parseutils]
+# import std/[sha1, times]
 
 import utils
 
 
+# NOTE: if timestamp changes, it can be found in html under "STS": key
 const
   playerContext = """{
         "context": {
@@ -13,6 +15,11 @@ const
             "mainAppWebInfo": {
               "graftUrl": "/watch?v=$1"
             }
+          }
+        },
+        "playbackContext": {
+          "contentPlaybackContext": {
+            "signatureTimestamp": 18834
           }
         },
         "videoId": "$1"
@@ -76,13 +83,12 @@ var
 ########################################################
 
 
-proc creatAuthenticationCookie(): string =
-  import std/[sha1, times]
-  const xOrigin = "https://www.youtube.com"
-  let
-    timeStamp = toUnix(getTime())
-    sapisid = "" # NOTE: from cookies
-  result = "SAPISIDHASH " & $timeStamp & '_' & $secureHash(timeStamp & ' ' & sapisid & ' ' & xOrigin)
+# proc creatAuthenticationCookie(): string =
+#   const xOrigin = "https://www.youtube.com"
+#   let
+#     timeStamp = toUnix(getTime())
+#     sapisid = "" # NOTE: from cookies
+#   result = "SAPISIDHASH " & $timeStamp & '_' & $secureHash(timeStamp & ' ' & sapisid & ' ' & xOrigin)
 
 
 ########################################################
@@ -180,18 +186,28 @@ proc getSigCipherUrl(js, signatureCipher: string): string =
 ########################################################
 
 
-proc selectBestVideoStream(streams: JsonNode): JsonNode =
+proc selectBestVideoStream(streams: JsonNode, itag=0): JsonNode =
   # NOTE: zeroth stream always seems to be the overall best* quality
-  result = streams[0]
-
-
-proc selectBestAudioStream(streams: JsonNode): JsonNode =
-  var largest = 0
-  for stream in streams:
-    if stream.contains("audioQuality"):
-      if stream["bitrate"].getInt() > largest:
-        largest = stream["bitrate"].getInt()
+  if itag > 0:
+    for stream in streams:
+      if stream["itag"].getInt() == itag:
         result = stream
+  else:
+    result = streams[0]
+
+
+proc selectBestAudioStream(streams: JsonNode, itag=0): JsonNode =
+  if itag > 0:
+    for stream in streams:
+      if stream["itag"].getInt() == itag:
+        result = stream
+  else:
+    var largest = 0
+    for stream in streams:
+      if stream.contains("audioQuality"):
+        if stream["bitrate"].getInt() > largest:
+          largest = stream["bitrate"].getInt()
+          result = stream
 
 
 proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime, ext, size, qlt: string] =
@@ -363,6 +379,8 @@ proc getVideo(youtubeUrl: string) =
           echo "<failed to download audio stream>"
       else:
         echo "<failed to download video stream>"
+  else:
+    echo "<failed to obtain channel metadata>"
 
 
 proc getChannel(youtubeUrl: string) =
