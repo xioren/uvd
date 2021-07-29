@@ -23,6 +23,24 @@ const
         },
         "videoId": "$1"
       }"""
+  playerBypassContext = """{
+        "context": {
+          "client": {
+            "hl": "en",
+            "clientName": "WEB_EMBEDDED_PLAYER",
+            "clientVersion": "2.20210721.00.00",
+            "mainAppWebInfo": {
+              "graftUrl": "/watch?v=$1"
+            }
+          }
+        },
+        "playbackContext": {
+          "contentPlaybackContext": {
+            "signatureTimestamp": $2
+          }
+        },
+        "videoId": "$1"
+      }"""
   browseContext = """{
         "browseId": "$1",
         "context": {
@@ -278,17 +296,6 @@ proc newAudioStream(youtubeUrl, title: string, stream: JsonNode): Stream =
   result.url = urlOrCipher(youtubeUrl, stream)
 
 
-proc tryBypass(bypassUrl: string): JsonNode =
-  ## get new response using bypass url
-  let (code, bypassResponse) = doGet(bypassUrl)
-  if code.is2xx:
-    var match: array[1, string]
-    discard decodeUrl(bypassResponse).find(re("({\"responseContext\".+})(?=&enable)"), match)
-    result = parseJson(match[0])
-  else:
-    result = newJNull()
-
-
 proc reportStreamInfo(stream: Stream) =
   once:
     echo "title: ", stream.title
@@ -326,6 +333,7 @@ proc getVideo(youtubeUrl: string) =
     response: string
     code: HttpCode
 
+  # NOTE: make initial request to get variable youtube values
   (code, response) = doGet(standardYoutubeUrl)
   let sigTimeStamp = response.captureBetween(':', ',', response.find("\"STS\""))
   jsUrl = "https://www.youtube.com" & response.captureBetween('"', '"', response.find("\"jsUrl\":\"") + 7)
@@ -333,7 +341,7 @@ proc getVideo(youtubeUrl: string) =
   (code, response) = doPost(playerUrl, playerContext % [id, sigTimeStamp])
   if code.is2xx:
     playerResponse = parseJson(response)
-    if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
+    if playerResponse["playabilityStatus"]["status"].getStr() == "ERROR":
       echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
       return
     let
@@ -347,12 +355,9 @@ proc getVideo(youtubeUrl: string) =
     else:
       if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
         echo "[attempting age-gate bypass]"
-        playerResponse = tryBypass(bypassUrl % id)
-        if playerResponse.kind == JNull:
-          echo "<bypass failed>"
-          return
-        elif playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
-          # QUESTION: can this scenario happen with bypass url?
+        (code, response) = doPost(playerUrl, playerBypassContext % [id, sigTimeStamp])
+        playerResponse = parseJson(response)
+        if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
           echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
           return
       elif playerResponse["playabilityStatus"]["status"].getStr() != "OK" or playerResponse["playabilityStatus"].hasKey("liveStreamability"):
