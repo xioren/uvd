@@ -4,7 +4,8 @@ import std/[json, uri, algorithm, sequtils, parseutils]
 import utils
 
 
-# NOTE: if timestamp changes, it can be found in html under "STS": key
+# NOTE: if timestamp changes, it can be found in html under the "STS": key
+# QUESTION: clientVersion too? or in sw.js_data url?
 const
   playerContext = """{
         "context": {
@@ -331,8 +332,10 @@ proc getVideo(youtubeUrl: string) =
   (code, response) = doPost(playerUrl, playerContext % id)
   if code.is2xx:
     playerResponse = parseJson(response)
+    if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
+      echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
+      return
     let
-      # BUG: if bad url this will throw key not found error
       title = playerResponse["videoDetails"]["title"].getStr()
       safeTitle = title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"))
       finalPath = addFileExt(joinPath(getCurrentDir(), safeTitle), ".mkv")
