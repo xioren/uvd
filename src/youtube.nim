@@ -1,5 +1,5 @@
 import std/[json, uri, algorithm, sequtils, parseutils]
-# import std/[sha1, times]
+# import std/[sha1]
 
 import utils
 
@@ -12,7 +12,7 @@ const
           "client": {
             "hl": "en",
             "clientName": "WEB",
-            "clientVersion": "2.20210728.00.00",
+            "clientVersion": "2.$3.00.00",
             "mainAppWebInfo": {
               "graftUrl": "/watch?v=$1"
             }
@@ -32,7 +32,7 @@ const
           "client": {
             "hl": "en",
             "clientName": "WEB_EMBEDDED_PLAYER",
-            "clientVersion": "2.20210728.00.00",
+            "clientVersion": "2.$3.00.00",
             "mainAppWebInfo": {
               "graftUrl": "/watch?v=$1"
             }
@@ -53,7 +53,7 @@ const
           "client": {
             "hl": "en",
             "clientName": "WEB",
-            "clientVersion": "2.20210728.00.00",
+            "clientVersion": "2.$2.00.00",
             "mainAppWebInfo": {
               "graftUrl": "/channel/$1/videos"
             }
@@ -66,7 +66,7 @@ const
           "client": {
             "hl": "en",
             "clientName": "WEB",
-            "clientVersion": "2.20210728.00.00",
+            "clientVersion": "2.$3.00.00",
             "mainAppWebInfo": {
               "graftUrl": "/channel/$1/videos"
             }
@@ -93,6 +93,9 @@ const
   playerUrl = "https://youtubei.googleapis.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
   browseUrl = "https://youtubei.googleapis.com/youtubei/v1/browse?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
   # contextUrl = "https://www.youtube.com/sw.js_data"
+
+
+let date = now().format("yyyyMMdd")
 
 var
   jsUrl: string
@@ -265,7 +268,7 @@ proc urlOrCipher(youtubeUrl: string, stream: JsonNode): string =
       echo "[deciphering urls]"
       (code, response) = doGet(jsUrl)
     result = getSigCipherUrl(response, stream["signatureCipher"].getStr())
-  # WARNING: don't think this works.
+  # NOTE: don't think this works.
   result.insert("&ratebypass=yes", result.find("requiressl") + 14)
 
 
@@ -321,8 +324,8 @@ proc isolateId(youtubeUrl: string): string =
 
 
 proc isolateChannel(youtubeUrl: string): string =
+  # NOTE: vanity
   if "/c/" in youtubeUrl:
-    # NOTE: vanity
     let response = doGet(youtubeUrl)
     result = response[1].captureBetween('"', '"', response[1].find("""browseId":""") + 9)
   else:
@@ -344,7 +347,7 @@ proc getVideo(youtubeUrl: string) =
   let sigTimeStamp = response.captureBetween(':', ',', response.find("\"STS\""))
   jsUrl = "https://www.youtube.com" & response.captureBetween('"', '"', response.find("\"jsUrl\":\"") + 7)
 
-  (code, response) = doPost(playerUrl, playerContext % [id, sigTimeStamp])
+  (code, response) = doPost(playerUrl, playerContext % [id, sigTimeStamp, date])
   if code.is2xx:
     playerResponse = parseJson(response)
     if playerResponse["playabilityStatus"]["status"].getStr() == "ERROR":
@@ -361,7 +364,7 @@ proc getVideo(youtubeUrl: string) =
     else:
       if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
         echo "[attempting age-gate bypass]"
-        (code, response) = doPost(playerUrl, playerBypassContext % [id, sigTimeStamp])
+        (code, response) = doPost(playerUrl, playerBypassContext % [id, sigTimeStamp, date])
         playerResponse = parseJson(response)
         if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
           echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
@@ -406,7 +409,7 @@ proc getChannel(youtubeUrl: string) =
     token, lastToken: string
     ids: seq[string]
 
-  (code, response) = doPost(browseUrl, browseContext % channel)
+  (code, response) = doPost(browseUrl, browseContext % [channel, date])
   if code.is2xx:
     echo "[collecting videos]"
     channelResponse = parseJson(response)
@@ -415,7 +418,7 @@ proc getChannel(youtubeUrl: string) =
         token = item["continuationItemRenderer"]["continuationEndpoint"]["continuationCommand"]["token"].getStr()
         lastToken = token
         while true:
-          (code, response) = doPost(browseUrl, browseContinueContext % [channel, token])
+          (code, response) = doPost(browseUrl, browseContinueContext % [channel, token, date])
           if code.is2xx:
             channelResponse = parseJson(response)
             for item in channelResponse["onResponseReceivedActions"][0]["appendContinuationItemsAction"]["continuationItems"]:

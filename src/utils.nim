@@ -2,7 +2,7 @@ import std/[os, re, strutils, strformat, asyncdispatch, terminal, asyncfile,
             tables, times, httpclient]
 from math import floor
 
-export asyncdispatch, os, strutils, re, tables, httpclient
+export asyncdispatch, os, strutils, re, tables, httpclient, times
 
 
 const
