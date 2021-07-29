@@ -3,6 +3,7 @@ import std/[json, uri, algorithm, sequtils, parseutils]
 
 import utils
 
+# NOTE: test age gate video https://www.youtube.com/watch?v=HtVdAasjOgU
 
 const
   playerContext = """{
@@ -21,6 +22,8 @@ const
             "signatureTimestamp": $2
           }
         },
+        "contentCheckOk": true,
+        "racyCheckOk": true,
         "videoId": "$1"
       }"""
   playerBypassContext = """{
@@ -39,6 +42,8 @@ const
             "signatureTimestamp": $2
           }
         },
+        "contentCheckOk": true,
+        "racyCheckOk": true,
         "videoId": "$1"
       }"""
   browseContext = """{
@@ -83,6 +88,7 @@ type
     urlSegments: seq[string]
     dash: bool
 
+# NOTE: these may be able to be prefixed with youtubei.googleapis.com instead of regular youtube
 const
   bypassUrl = "https://www.youtube.com/get_video_info?html5=1&c=TVHTML5&cver=6.20180913&video_id=$1"
   playerUrl = "https://www.youtube.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
@@ -332,6 +338,7 @@ proc getVideo(youtubeUrl: string) =
     playerResponse: JsonNode
     response: string
     code: HttpCode
+    dashManifestUrl: string
 
   # NOTE: make initial request to get variable youtube values
   (code, response) = doGet(standardYoutubeUrl)
@@ -364,7 +371,6 @@ proc getVideo(youtubeUrl: string) =
         echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
         return
 
-      var dashManifestUrl: string
       if playerResponse["streamingData"].hasKey("dashManifestUrl"):
         dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
       let
