@@ -4,8 +4,6 @@ import std/[json, uri, algorithm, sequtils, parseutils]
 import utils
 
 
-# NOTE: if timestamp changes, it can be found in html under the "STS": key
-# QUESTION: clientVersion too? or in sw.js_data url?
 const
   playerContext = """{
         "context": {
@@ -20,7 +18,7 @@ const
         },
         "playbackContext": {
           "contentPlaybackContext": {
-            "signatureTimestamp": 18834
+            "signatureTimestamp": $2
           }
         },
         "videoId": "$1"
@@ -74,6 +72,7 @@ const
   # contextUrl = "https://www.youtube.com/sw.js_data"
 
 var
+  jsUrl: string
   plan: seq[string]
   mainFunc: string
   map: Table[string, string]
@@ -241,8 +240,6 @@ proc urlOrCipher(youtubeUrl: string, stream: JsonNode): string =
       response: string
     once:
       echo "[deciphering urls]"
-      (code, response) = doGet(youtubeUrl)
-      let jsUrl = "https://www.youtube.com" & response.captureBetween('"', '"', response.find("\"jsUrl\":\"") + 7)
       (code, response) = doGet(jsUrl)
     result = getSigCipherUrl(response, stream["signatureCipher"].getStr())
   # WARNING: don't think this works.
@@ -329,7 +326,11 @@ proc getVideo(youtubeUrl: string) =
     response: string
     code: HttpCode
 
-  (code, response) = doPost(playerUrl, playerContext % id)
+  (code, response) = doGet(standardYoutubeUrl)
+  let sigTimeStamp = response.captureBetween(':', ',', response.find("\"STS\""))
+  jsUrl = "https://www.youtube.com" & response.captureBetween('"', '"', response.find("\"jsUrl\":\"") + 7)
+
+  (code, response) = doPost(playerUrl, playerContext % [id, sigTimeStamp])
   if code.is2xx:
     playerResponse = parseJson(response)
     if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
