@@ -5,13 +5,14 @@ import utils
 
 # NOTE: test age gate video https://www.youtube.com/watch?v=HtVdAasjOgU
 
+# NOTE: clientVersion can be found in contextUrl response (along with api key)
 const
   playerContext = """{
         "context": {
           "client": {
             "hl": "en",
             "clientName": "WEB",
-            "clientVersion": "2.20210721.00.00",
+            "clientVersion": "2.20210728.00.00",
             "mainAppWebInfo": {
               "graftUrl": "/watch?v=$1"
             }
@@ -30,8 +31,8 @@ const
         "context": {
           "client": {
             "hl": "en",
-            "clientName": "WEB_EMBEDDED_PLAYER",
-            "clientVersion": "2.20210721.00.00",
+            "clientName": WEB_EMBEDDED_PLAYER,
+            "clientVersion": "2.20210728.00.00",
             "mainAppWebInfo": {
               "graftUrl": "/watch?v=$1"
             }
@@ -52,7 +53,7 @@ const
           "client": {
             "hl": "en",
             "clientName": "WEB",
-            "clientVersion": "2.20210721.00.00",
+            "clientVersion": "2.20210728.00.00",
             "mainAppWebInfo": {
               "graftUrl": "/channel/$1/videos"
             }
@@ -65,7 +66,7 @@ const
           "client": {
             "hl": "en",
             "clientName": "WEB",
-            "clientVersion": "2.20210721.00.00",
+            "clientVersion": "2.20210728.00.00",
             "mainAppWebInfo": {
               "graftUrl": "/channel/$1/videos"
             }
@@ -88,11 +89,9 @@ type
     urlSegments: seq[string]
     dash: bool
 
-# NOTE: these may be able to be prefixed with youtubei.googleapis.com instead of regular youtube
 const
-  bypassUrl = "https://www.youtube.com/get_video_info?html5=1&c=TVHTML5&cver=6.20180913&video_id=$1"
-  playerUrl = "https://www.youtube.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
-  browseUrl = "https://www.youtube.com/youtubei/v1/browse?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
+  playerUrl = "https://youtubei.googleapis.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
+  browseUrl = "https://youtubei.googleapis.com/youtubei/v1/browse?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
   # contextUrl = "https://www.youtube.com/sw.js_data"
 
 var
@@ -435,7 +434,7 @@ proc getChannel(youtubeUrl: string) =
   else:
     echo "<failed to obtain channel metadata>"
 
-  echo '[', ids.len, " videos found]"
+  echo '[', ids.len, " videos queued]"
   for id in ids:
     getVideo("https://www.youtube.com/watch?v=" & id)
 
