@@ -31,7 +31,7 @@ const
         "context": {
           "client": {
             "hl": "en",
-            "clientName": WEB_EMBEDDED_PLAYER,
+            "clientName": "WEB_EMBEDDED_PLAYER",
             "clientVersion": "2.20210728.00.00",
             "mainAppWebInfo": {
               "graftUrl": "/watch?v=$1"
