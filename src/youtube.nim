@@ -159,12 +159,12 @@ proc throttleModFunction(d: seq[string], e: int): int =
 
 
 proc throttleUnshift(d: var string, e: int) =
-  ## handled prepend also
+  ## handles prepend also
   d.rotateLeft(d.len - throttleModFunction(d, e))
 
 
 proc throttleUnshift(d: var seq[string], e: int) =
-  ## handled prepend also
+  ## handleds prepend also
   d.rotateLeft(d.len - throttleModFunction(d, e))
 
 
@@ -224,7 +224,7 @@ proc splice(d: var seq[string], fromIdx: int, toIdx=0): seq[string] =
 
 
 proc throttleSwap(d: var string, e: int) =
-  ## handled nested splice also
+  ## handles nested splice also
   let z = throttleModFunction(d, e)
   if z < 0:
     swap(d[0], d[d.len + z])
@@ -233,7 +233,7 @@ proc throttleSwap(d: var string, e: int) =
 
 
 proc throttleSwap(d: var seq[string], e: int) =
-  ## handled nested splice also
+  ## handles nested splice also
   let z = throttleModFunction(d, e)
   if z < 0:
     swap(d[0], d[d.len + z])
@@ -326,30 +326,31 @@ proc calculateN(n, js: string): string =
   once:
     throttleCode = parseThrottleCode(parseThrottleFunctionName(js), js)
     throttlePlan = parseThrottlePlan(throttleCode)
-  var
     throttleArray = parseThrottleFunctionArray(throttleCode)
+  var
+    tempArray = throttleArray
     firstArg, secondArg, currFunc: string
     initialN = n
 
   for step in throttlePlan:
-      currFunc = throttleArray[parseInt(step[0])]
-      firstArg = throttleArray[parseInt(step[1])]
+      currFunc = tempArray[parseInt(step[0])]
+      firstArg = tempArray[parseInt(step[1])]
 
       if step.len == 3:
-        secondArg = throttleArray[parseInt(step[2])]
+        secondArg = tempArray[parseInt(step[2])]
       if firstArg == "null":
         if currFunc == "throttleUnshift" or currFunc == "throttlePrepend":
-          throttleUnshift(throttleArray, parseInt(secondArg))
+          throttleUnshift(tempArray, parseInt(secondArg))
         elif currFunc == "throttleCipher":
-          throttleCipher(throttleArray, secondArg)
+          throttleCipher(tempArray, secondArg)
         elif currFunc == "throttleReverse":
-          throttleReverse(throttleArray)
+          throttleReverse(tempArray)
         elif currFunc == "throttlePush":
-          throttlePush(throttleArray, secondArg)
+          throttlePush(tempArray, secondArg)
         elif currFunc == "throttleSwap" or currFunc == "throttleNestedSplice":
-          throttleSwap(throttleArray, parseInt(secondArg))
+          throttleSwap(tempArray, parseInt(secondArg))
         elif currFunc == "splice":
-          discard splice(throttleArray, parseInt(secondArg))
+          discard splice(tempArray, parseInt(secondArg))
       else:
         if currFunc == "throttleUnshift" or currFunc == "throttlePrepend":
           throttleUnshift(initialN, parseInt(secondArg))
@@ -512,7 +513,7 @@ proc urlOrCipher(stream: JsonNode): string =
     response: string
     n: string
 
-  echo "[deciphering url]"
+  # echo "[deciphering url]"
   once:
     (code, response) = doGet(jsUrl)
   if stream.hasKey("url"):
@@ -561,9 +562,8 @@ proc newAudioStream(youtubeUrl, title: string, stream: JsonNode): Stream =
 
 
 proc reportStreamInfo(stream: Stream) =
-  once:
-    echo "title: ", stream.title
-  echo "stream: ", stream.filename, "\n",
+  echo "title: ", stream.title, '\n',
+       "stream: ", stream.filename, '\n',
        "itag: ", stream.itag, '\n',
        "size: ", stream.size, '\n',
        "quality: ", stream.quality, '\n',
@@ -734,7 +734,7 @@ proc getPlaylist(youtubeUrl: string) =
 proc youtubeDownload*(youtubeUrl: string) =
   if "/channel/" in youtubeUrl or "/c/" in youtubeUrl:
     getChannel(youtubeUrl)
-  elif "list=" in youtubeUrl and "/watch?" notin youtubeUrl:
+  elif "/playlist?" in youtubeUrl:
     getPlaylist(youtubeUrl)
   else:
     getVideo(youtubeUrl)
