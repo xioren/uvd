@@ -74,6 +74,19 @@ const
     },
     "continuation": "$2"
   }"""
+  playlistContext = """{
+    "context": {
+      "client": {
+        "hl": "en",
+        "clientName": "WEB",
+        "clientVersion": "2.$1.00.00",
+        "mainAppWebInfo": {
+          "graftUrl": "/playlist?list=$2"
+        }
+      }
+    },
+    "playlistId": "$2"
+  }"""
 
 type
   Stream = object
@@ -92,6 +105,7 @@ type
 const
   playerUrl = "https://youtubei.googleapis.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
   browseUrl = "https://youtubei.googleapis.com/youtubei/v1/browse?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
+  nextUrl = "https://youtubei.googleapis.com/youtubei/v1/next?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
   # contextUrl = "https://www.youtube.com/sw.js_data"
 
 let date = now().format("yyyyMMdd")
@@ -203,11 +217,7 @@ proc throttlePush(d: var seq[string], e: string) =
 proc splice(d: var string, fromIdx: int, toIdx=0): string =
   ## javascript splice analogue*
   var idx = fromIdx
-  if fromIdx < 0:
-    # idx = d.len - fromIdx
-    return
-  elif fromIdx > d.len:
-    # idx = d.len
+  if fromIdx < 0 or fromIdx > d.len:
     return
   if toIdx <= 0:
     result = d[idx..d.high]
@@ -530,7 +540,6 @@ proc urlOrCipher(stream: JsonNode): string =
   result = result.replace(n, calculatedN)
 
 
-
 proc produceUrlSegments(baseUrl, segmentList: string): seq[string] =
   let base = parseUri(baseUrl)
   for segment in segmentList.findAll(re("""(?<=\")([a-z\d/\.]+)(?=\")""")):
@@ -590,6 +599,10 @@ proc isolateChannel(youtubeUrl: string): string =
     result = response[1].captureBetween('"', '"', response[1].find("""browseId":""") + 9)
   else:
     result = youtubeUrl.captureBetween('/', '/', youtubeUrl.find("channel"))
+
+
+proc isolatePlaylist(youtubeUrl: string): string =
+  result = youtubeUrl.captureBetween('=', '&', youtubeUrl.find("list="))
 
 
 proc getVideo(youtubeUrl: string) =
@@ -702,8 +715,37 @@ proc getChannel(youtubeUrl: string) =
     getVideo("https://www.youtube.com/watch?v=" & id)
 
 
+proc getPlaylist(youtubeUrl: string) =
+  let playlist = isolatePlaylist(youtubeUrl)
+  var
+    playlistResponse: JsonNode
+    response: string
+    code: HttpCode
+    token, lastToken: string
+    ids: seq[string]
+    title: string
+
+  (code, response) = doPost(nextUrl, playlistContext % [date, playlist])
+  if code.is2xx:
+    playlistResponse = parseJson(response)
+    title = playlistResponse["contents"]["twoColumnWatchNextResults"]["playlist"]["playlist"]["title"].getStr()
+    echo "[collecting videos for ", title, ']'
+    if playlistResponse["contents"]["twoColumnWatchNextResults"]["playlist"]["playlist"]["isInfinite"].getBool():
+      echo "<error: infinite playlist>"
+      return
+    for item in playlistResponse["contents"]["twoColumnWatchNextResults"]["playlist"]["playlist"]["contents"]:
+      ids.add(item["playlistPanelVideoRenderer"]["videoId"].getStr())
+  else:
+    echo "<failed to obtain playlist metadata>"
+
+  for id in ids:
+    getVideo("https://www.youtube.com/watch?v=" & id)
+
+
 proc youtubeDownload*(youtubeUrl: string) =
   if "/channel/" in youtubeUrl or "/c/" in youtubeUrl:
     getChannel(youtubeUrl)
+  elif "list=" in youtubeUrl and "/watch?" notin youtubeUrl:
+    getPlaylist(youtubeUrl)
   else:
     getVideo(youtubeUrl)
