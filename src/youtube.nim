@@ -147,22 +147,22 @@ proc index[T](d: seq[T], item: T): int =
       return idx
 
 
-proc throttleModFunction(d: seq[string], e: int): int =
-  ## function(d,e){e=(e%d.length+d.length)%d.length
-  result = e mod (d.len + d.len) mod d.len
-
-
 proc throttleModFunction(d: string, e: int): int =
   ## function(d,e){e=(e%d.length+d.length)%d.length
   result = e mod (d.len + d.len) mod d.len
 
 
-proc throttleUnshift(d: var seq[string], e: int) =
+proc throttleModFunction(d: seq[string], e: int): int =
+  ## function(d,e){e=(e%d.length+d.length)%d.length
+  result = e mod (d.len + d.len) mod d.len
+
+
+proc throttleUnshift(d: var string, e: int) =
   ## handled prepend also
   d.rotateLeft(d.len - throttleModFunction(d, e))
 
 
-proc throttleUnshift(d: var string, e: int) =
+proc throttleUnshift(d: var seq[string], e: int) =
   ## handled prepend also
   d.rotateLeft(d.len - throttleModFunction(d, e))
 
@@ -706,7 +706,6 @@ proc getChannel(youtubeUrl: string) =
     echo "<failed to obtain channel metadata>"
 
 
-
 proc getPlaylist(youtubeUrl: string) =
   let playlist = isolatePlaylist(youtubeUrl)
   var
@@ -732,7 +731,6 @@ proc getPlaylist(youtubeUrl: string) =
       getVideo("https://www.youtube.com/watch?v=" & id)
   else:
     echo "<failed to obtain playlist metadata>"
-
 
 
 proc youtubeDownload*(youtubeUrl: string) =
