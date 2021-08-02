@@ -139,7 +139,8 @@ var
 ########################################################
 # throttle logic
 ########################################################
-# NOTE: thanks to https://github.com/pytube/pytube as a reference
+# NOTE: thanks to https://github.com/pytube/pytube/blob/master/pytube/cipher.py
+# as a reference
 
 proc index[T](d: seq[T], item: T): int =
   ## provide index of item
@@ -169,13 +170,13 @@ proc throttleUnshift(d: var seq[string], e: int) =
 
 
 proc throttleCipher(d: var string, e: string) =
-  const
-    h = @"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+  const h = @"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
   var
     f = 96
     this = e
     temp = d
     bVal: int
+
   for idx, c in temp:
     bVal = (h.index(c) - h.index(this[idx]) + idx - 32 + f) mod h.len
     this.add(h[bVal])
@@ -207,15 +208,14 @@ proc throttlePush(d: var seq[string], e: string) =
 
 proc splice(d: var string, fromIdx: int, toIdx=0): string =
   ## javascript splice analogue*
-  var idx = fromIdx
   if fromIdx < 0 or fromIdx > d.len:
     return
   if toIdx <= 0:
-    result = d[idx..d.high]
-    d.delete(idx, d.high)
+    result = d[fromIdx..d.high]
+    d.delete(fromIdx, d.high)
   else:
-    result = d[idx..min(idx + pred(toIdx), d.high)]
-    d.delete(idx, min(idx + pred(toIdx), d.high))
+    result = d[fromIdx..min(fromIdx + pred(toIdx), d.high)]
+    d.delete(fromIdx, min(fromIdx + pred(toIdx), d.high))
 
 
 proc splice(d: var seq[string], fromIdx: int, toIdx=0): seq[string] =
