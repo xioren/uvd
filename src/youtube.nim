@@ -141,16 +141,6 @@ var
 # NOTE: thanks to https://github.com/pytube/pytube as a reference
 
 
-proc index(d: seq[char], item: string): int =
-  # NOTE: needed to compile
-  doAssert false
-
-
-proc index(d: seq[string], item: char): int =
-  # NOTE: needed to compile
-  doAssert false
-
-
 proc index[T](d: seq[T], item: T): int =
   for idx, c in d:
     if c == item:
@@ -686,6 +676,7 @@ proc getChannel(youtubeUrl: string) =
   if code.is2xx:
     echo "[collecting videos]"
     channelResponse = parseJson(response)
+
     for item in channelResponse["contents"]["twoColumnBrowseResultsRenderer"]["tabs"][1]["tabRenderer"]["content"]["sectionListRenderer"]["contents"][0]["itemSectionRenderer"]["contents"][0]["gridRenderer"]["items"]:
       if item.hasKey("continuationItemRenderer"):
         token = item["continuationItemRenderer"]["continuationEndpoint"]["continuationCommand"]["token"].getStr()
@@ -707,12 +698,13 @@ proc getChannel(youtubeUrl: string) =
             echo "<failed to obtain channel metadata>"
       else:
         ids.add(item["gridVideoRenderer"]["videoId"].getStr())
+
+    echo '[', ids.len, " videos queued]"
+    for id in ids:
+      getVideo("https://www.youtube.com/watch?v=" & id)
   else:
     echo "<failed to obtain channel metadata>"
 
-  echo '[', ids.len, " videos queued]"
-  for id in ids:
-    getVideo("https://www.youtube.com/watch?v=" & id)
 
 
 proc getPlaylist(youtubeUrl: string) =
@@ -729,16 +721,18 @@ proc getPlaylist(youtubeUrl: string) =
     playlistResponse = parseJson(response)
     title = playlistResponse["contents"]["twoColumnWatchNextResults"]["playlist"]["playlist"]["title"].getStr()
     echo "[collecting videos] ", title
+
     if playlistResponse["contents"]["twoColumnWatchNextResults"]["playlist"]["playlist"]["isInfinite"].getBool():
       echo "<infinite playlist...aborting>"
       return
     for item in playlistResponse["contents"]["twoColumnWatchNextResults"]["playlist"]["playlist"]["contents"]:
       ids.add(item["playlistPanelVideoRenderer"]["videoId"].getStr())
+
+    for id in ids:
+      getVideo("https://www.youtube.com/watch?v=" & id)
   else:
     echo "<failed to obtain playlist metadata>"
 
-  for id in ids:
-    getVideo("https://www.youtube.com/watch?v=" & id)
 
 
 proc youtubeDownload*(youtubeUrl: string) =
