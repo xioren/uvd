@@ -8,72 +8,72 @@ import utils
 # NOTE: clientVersion can be found in contextUrl response (along with api key)
 const
   playerContext = """{
-        "context": {
-          "client": {
-            "hl": "en",
-            "clientName": "WEB",
-            "clientVersion": "2.$3.00.00",
-            "mainAppWebInfo": {
-              "graftUrl": "/watch?v=$1"
-            }
-          }
-        },
-        "playbackContext": {
-          "contentPlaybackContext": {
-            "signatureTimestamp": $2
-          }
-        },
-        "contentCheckOk": true,
-        "racyCheckOk": true,
-        "videoId": "$1"
-      }"""
+    "context": {
+      "client": {
+        "hl": "en",
+        "clientName": "WEB",
+        "clientVersion": "2.$3.00.00",
+        "mainAppWebInfo": {
+          "graftUrl": "/watch?v=$1"
+        }
+      }
+    },
+    "playbackContext": {
+      "contentPlaybackContext": {
+        "signatureTimestamp": $2
+      }
+    },
+    "contentCheckOk": true,
+    "racyCheckOk": true,
+    "videoId": "$1"
+  }"""
   playerBypassContext = """{
-        "context": {
-          "client": {
-            "hl": "en",
-            "clientName": "WEB_EMBEDDED_PLAYER",
-            "clientVersion": "2.$3.00.00",
-            "mainAppWebInfo": {
-              "graftUrl": "/watch?v=$1"
-            }
-          }
-        },
-        "playbackContext": {
-          "contentPlaybackContext": {
-            "signatureTimestamp": $2
-          }
-        },
-        "contentCheckOk": true,
-        "racyCheckOk": true,
-        "videoId": "$1"
-      }"""
+    "context": {
+      "client": {
+        "hl": "en",
+        "clientName": "WEB_EMBEDDED_PLAYER",
+        "clientVersion": "2.$3.00.00",
+        "mainAppWebInfo": {
+          "graftUrl": "/watch?v=$1"
+        }
+      }
+    },
+    "playbackContext": {
+      "contentPlaybackContext": {
+        "signatureTimestamp": $2
+      }
+    },
+    "contentCheckOk": true,
+    "racyCheckOk": true,
+    "videoId": "$1"
+  }"""
   browseContext = """{
-        "browseId": "$1",
-        "context": {
-          "client": {
-            "hl": "en",
-            "clientName": "WEB",
-            "clientVersion": "2.$2.00.00",
-            "mainAppWebInfo": {
-              "graftUrl": "/channel/$1/videos"
-            }
-          }
-        },
-        "params": "EgZ2aWRlb3M%3D"
-      }"""
+    "browseId": "$1",
+    "context": {
+      "client": {
+        "hl": "en",
+        "clientName": "WEB",
+        "clientVersion": "2.$2.00.00",
+        "mainAppWebInfo": {
+          "graftUrl": "/channel/$1/videos"
+        }
+      }
+    },
+    "params": "EgZ2aWRlb3M%3D"
+  }"""
   browseContinueContext = """{
-        "context": {
-          "client": {
-            "hl": "en",
-            "clientName": "WEB",
-            "clientVersion": "2.$3.00.00",
-            "mainAppWebInfo": {
-              "graftUrl": "/channel/$1/videos"
-            }
-          }
-        },
-        "continuation": "$2"
-      }"""
+    "context": {
+      "client": {
+        "hl": "en",
+        "clientName": "WEB",
+        "clientVersion": "2.$3.00.00",
+        "mainAppWebInfo": {
+          "graftUrl": "/channel/$1/videos"
+        }
+      }
+    },
+    "continuation": "$2"
+  }"""
 
 type
   Stream = object
@@ -94,7 +94,6 @@ const
   browseUrl = "https://youtubei.googleapis.com/youtubei/v1/browse?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
   # contextUrl = "https://www.youtube.com/sw.js_data"
 
-
 let date = now().format("yyyyMMdd")
 
 var
@@ -102,6 +101,11 @@ var
   plan: seq[string]
   mainFunc: string
   map: Table[string, string]
+  lastN: string
+  calculatedN: string
+  code: string
+  throttleArray: seq[string]
+  throttlePlan: seq[seq[string]]
 
 
 ########################################################
@@ -115,6 +119,254 @@ var
 #     timeStamp = toUnix(getTime())
 #     sapisid = "" # NOTE: from cookies
 #   result = "SAPISIDHASH " & $timeStamp & '_' & $secureHash(timeStamp & ' ' & sapisid & ' ' & xOrigin)
+
+
+########################################################
+# throttle logic
+########################################################
+# NOTE: thanks to https://github.com/pytube/pytube as a reference
+
+
+proc index(d: seq[char], item: string): int =
+  # NOTE: needed to compile
+  doAssert false
+
+
+proc index(d: seq[string], item: char): int =
+  # NOTE: needed to compile
+  doAssert false
+
+
+proc index[T](d: seq[T], item: T): int =
+  for idx, c in d:
+    if c == item:
+      return idx
+
+
+proc throttleModFunction(d: seq[string], e: int): int =
+  ## function(d,e){e=(e%d.length+d.length)%d.length
+  result = e mod (d.len + d.len) mod d.len
+
+
+proc throttleModFunction(d: string, e: int): int =
+  ## function(d,e){e=(e%d.length+d.length)%d.length
+  result = e mod (d.len + d.len) mod d.len
+
+
+proc throttleUnshift(d: var seq[string], e: int) =
+  ## handled prepend also
+  d.rotateLeft(d.len - throttleModFunction(d, e))
+
+
+proc throttleUnshift(d: var string, e: int) =
+  ## handled prepend also
+  d.rotateLeft(d.len - throttleModFunction(d, e))
+
+
+proc throttleCipher(d: var string, e: string) =
+  const
+    h = @"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+  var
+    f = 96
+    this = e
+    temp = d
+    bVal: int
+  for idx, c in temp:
+    bVal = (h.index(c) - h.index(this[idx]) + idx - 32 + f) mod h.len
+    this.add(h[bVal])
+    d[idx] = h[bVal]
+    dec f
+
+
+proc throttleCipher(d: var seq[string], e: string) =
+  # NOTE: needed to compile
+  doAssert false
+
+
+proc throttleReverse(d: var string) =
+  d.reverse()
+
+
+proc throttleReverse(d: var seq[string]) =
+  d.reverse()
+
+
+proc throttlePush(d: var string, e: string) =
+  # NOTE: needed to compile
+  doAssert false
+
+
+proc throttlePush(d: var seq[string], e: string) =
+  d.add(e)
+
+
+proc splice(d: var string, fromIdx: int, toIdx=0): string =
+  ## javascript splice analogue*
+  var idx = fromIdx
+  if fromIdx < 0:
+    # idx = d.len - fromIdx
+    return
+  elif fromIdx > d.len:
+    # idx = d.len
+    return
+  if toIdx <= 0:
+    result = d[idx..d.high]
+    d.delete(idx, d.high)
+  else:
+    result = d[idx..min(idx + pred(toIdx), d.high)]
+    d.delete(idx, min(idx + pred(toIdx), d.high))
+
+
+proc splice(d: var seq[string], fromIdx: int, toIdx=0): seq[string] =
+  # NOTE: needed to compile
+  doAssert false
+
+
+proc throttleSwap(d: var string, e: int) =
+  ## handled nested splice also
+  let z = throttleModFunction(d, e)
+  if z < 0:
+    swap(d[0], d[d.len + z])
+  else:
+    swap(d[0], d[z])
+
+
+proc throttleSwap(d: var seq[string], e: int) =
+  ## handled nested splice also
+  let z = throttleModFunction(d, e)
+  if z < 0:
+    swap(d[0], d[d.len + z])
+  else:
+    swap(d[0], d[z])
+
+
+########################################################
+
+
+proc parseThrottleFunctionName(js: string): string =
+  # # parse main throttle function
+  # a.C&&(b=a.get("n"))&&(b=kha(b),a.set("n",b))
+  # --> kha
+  var match: array[1, string]
+  let functionPatterns = [re"(a\.C&&\(b=a.get[^}]+)"]
+  for pattern in functionPatterns:
+    discard js.find(pattern, match)
+  result = match[0].captureBetween('=', '(', match[0].find("a.set") - 10)
+
+
+proc parseThrottleCode(mainFunc, js: string): string =
+  ## parse throttle code block
+  # mainThrottleFunction=function(a){.....}
+  var match: array[1, string]
+  let pattern = re("($1=function\\(\\w\\){.+?})(?=;)" % mainFunc, flags={reDotAll})
+  discard js.find(pattern, match)
+  result = match[0]
+
+
+iterator splitThrottleArray(js: string): string =
+  ## split the throttle array into individual components
+  var
+    match: array[1, string]
+    item: string
+    context: seq[char]
+
+  discard js.find(re("(?<=,c=\\[)(.+)(?=\\];c)", flags={reDotAll}), match)
+  item = newString(1)
+  for idx, c in match[0]:
+    if (c == ',' and context.len == 0 and match[0][idx + 3] != '{') or
+       idx == match[0].high:
+      if idx == match[0].high:
+        item.add(c)
+      yield item.multiReplace(("\x00", ""), ("\n", ""))
+      item = newString(1)
+      continue
+    elif c == '{':
+      context.add(c)
+    elif c == '}':
+      discard context.pop()
+    item.add(c)
+
+
+proc parseThrottleFunctionArray(js: string): seq[string] =
+  ## parse c array
+  for item in splitThrottleArray(js):
+    if item.startsWith("\"") and item.endsWith("\""):
+      result.add(item[1..^2])
+    elif item.startsWith("function"):
+      if item.contains("pop"):
+        result.add("throttleUnshift")
+      elif item.contains("case"):
+        result.add("throttleCipher")
+      elif item.contains("reverse") and item.contains("unshift"):
+        result.add("throttlePrepend")
+      elif item.contains("reverse"):
+        result.add("throttleReverse")
+      elif item.contains("push") and item.contains("splice"):
+        result.add("throttleReverse")
+      elif item.contains("push"):
+        result.add("throttlePush")
+      elif item.contains("var"):
+        result.add("throttleSwap")
+      elif item.count("splice") == 2:
+        result.add("throttleNestedSplice")
+      elif item.contains("splice"):
+        result.add("splice")
+    else:
+      result.add(item)
+
+
+proc parseThrottlePlan(js: string): seq[seq[string]] =
+  ## parse elements of c array
+  # (c[4](c[52])...) --> @[@[4, 52],...]
+  let parts = js.captureBetween('{', '}', js.find("try"))
+  for part in parts.split("),"):
+    result.add(part.findAll(re"(?<=\[)(\d+)(?=\])"))
+
+
+proc calculateN(n, js: string): string =
+  ## calculate new n value to prevent throttling
+  once:
+    code = parseThrottleCode(parseThrottleFunctionName(js), js)
+    throttlePlan = parseThrottlePlan(code)
+  var
+    throttleArray = parseThrottleFunctionArray(code)
+    firstArg, secondArg, currFunc: string
+    initialN = n
+
+  for step in throttlePlan:
+      currFunc = throttleArray[parseInt(step[0])]
+      firstArg = throttleArray[parseInt(step[1])]
+
+      if step.len == 3:
+        secondArg = throttleArray[parseInt(step[2])]
+      if firstArg == "null":
+        if currFunc == "throttleUnshift" or currFunc == "throttlePrepend":
+          throttleUnshift(throttleArray, parseInt(secondArg))
+        elif currFunc == "throttleCipher":
+          throttleCipher(throttleArray, secondArg)
+        elif currFunc == "throttleReverse":
+          throttleReverse(throttleArray)
+        elif currFunc == "throttlePush":
+          throttlePush(throttleArray, secondArg)
+        elif currFunc == "throttleSwap" or currFunc == "throttleNestedSplice":
+          throttleSwap(throttleArray, parseInt(secondArg))
+        elif currFunc == "splice":
+          discard splice(throttleArray, parseInt(secondArg))
+      else:
+        if currFunc == "throttleUnshift" or currFunc == "throttlePrepend":
+          throttleUnshift(initialN, parseInt(secondArg))
+        elif currFunc == "throttleCipher":
+          throttleCipher(initialN, secondArg)
+        elif currFunc == "throttleReverse":
+          throttleReverse(initialN)
+        elif currFunc == "throttlePush":
+          throttlePush(initialN, secondArg)
+        elif currFunc == "throttleSwap" or currFunc == "throttleNestedSplice":
+          throttleSwap(initialN, parseInt(secondArg))
+        elif currFunc == "splice":
+          discard splice(initialN, parseInt(secondArg))
+
+  result = initialN
 
 
 ########################################################
@@ -194,7 +446,7 @@ proc decipher(js, signature: string): string =
       splitSig.reverse()
     elif jsFunction.contains("splice"):
       ## function(a, b){a.splice(0, b)}
-      splitSig.delete(index, pred(argument))
+      splitSig.delete(index, index + pred(argument))
     else:
       ## function(a,b){var c=a[0];a[0]=a[b%a.length];a[b%a.length]=c}
       swap(splitSig[index], splitSig[argument mod splitSig.len])
@@ -256,20 +508,27 @@ proc getAudioStreamInfo(stream: JsonNode): tuple[itag: int, mime, ext, size, qlt
   result.qlt = stream["audioQuality"].getStr()
 
 
-proc urlOrCipher(youtubeUrl: string, stream: JsonNode): string =
+proc urlOrCipher(stream: JsonNode): string =
   ## produce stream url, deciphering if necessary
+  var
+    code: HttpCode
+    response: string
+    n: string
+
+  echo "[deciphering url]"
+  once:
+    (code, response) = doGet(jsUrl)
   if stream.hasKey("url"):
     result = stream["url"].getStr()
   elif stream.hasKey("signatureCipher"):
-    var
-      code: HttpCode
-      response: string
-    once:
-      echo "[deciphering urls]"
-      (code, response) = doGet(jsUrl)
     result = getSigCipherUrl(response, stream["signatureCipher"].getStr())
-  # NOTE: don't think this works.
-  result.insert("&ratebypass=yes", result.find("requiressl") + 14)
+
+  n = result.captureBetween('=', '&', result.find("&n="))
+  if n != lastN:
+    calculatedN = calculateN(n, response)
+    lastN = n
+  result = result.replace(n, calculatedN)
+
 
 
 proc produceUrlSegments(baseUrl, segmentList: string): seq[string] =
@@ -282,6 +541,7 @@ proc newVideoStream(youtubeUrl, dashManifestUrl, title: string, duration: int, s
   result.title = title
   (result.itag, result.mime, result.ext, result.size, result.quality) = getVideoStreamInfo(stream, duration)
   result.filename = addFileExt("videostream", result.ext)
+
   if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
     # QUESTION: are dash urls or manifest urls ever ciphered?
     result.dash = true
@@ -292,7 +552,7 @@ proc newVideoStream(youtubeUrl, dashManifestUrl, title: string, duration: int, s
     discard match[0].find(re("(?<=<SegmentList>)(.+)(?=</SegmentList>)"), match)
     result.urlSegments = produceUrlSegments(result.baseUrl, match[0])
   else:
-    result.url = urlOrCipher(youtubeUrl, stream)
+    result.url = urlOrCipher(stream)
 
 
 proc newAudioStream(youtubeUrl, title: string, stream: JsonNode): Stream =
@@ -301,7 +561,7 @@ proc newAudioStream(youtubeUrl, title: string, stream: JsonNode): Stream =
   result.title = title
   (result.itag, result.mime, result.ext, result.size, result.quality) = getAudioStreamInfo(stream)
   result.filename = addFileExt("audiostream", result.ext)
-  result.url = urlOrCipher(youtubeUrl, stream)
+  result.url = urlOrCipher(stream)
 
 
 proc reportStreamInfo(stream: Stream) =

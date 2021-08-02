@@ -9,7 +9,7 @@ const
   extensions* = {"video/webm": ".webm", "video/mp4": ".mp4",
                  "audio/mp4": ".mp4a", "audio/webm": ".weba"}.toTable
 var
-  headers* = @[("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.85 Safari/537.36"),
+  headers* = @[("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.115 Safari/537.36"),
                ("accept", "*/*")]
 
 
