@@ -115,9 +115,8 @@ let date = now().format("yyyyMMdd")
 var
   jsUrl: string
   cipherPlan: seq[string]
-  cipherFucntionMap: Table[string, string]
-  lastN: string
-  calculatedN: string
+  cipherFunctionMap: Table[string, string]
+  nTransforms = initTable[string, string]()
   throttleCode: string
   throttleArray: seq[string]
   throttlePlan: seq[seq[string]]
@@ -431,13 +430,13 @@ proc decipher(js, signature: string): string =
   ## decipher signature
   once:
     cipherPlan = parseFunctionPlan(js)
-    cipherFucntionMap = createFunctionMap(js, parseParentFunctionName(cipherPlan[0]))
+    cipherFunctionMap = createFunctionMap(js, parseParentFunctionName(cipherPlan[0]))
   var splitSig = @signature
 
   for item in cipherPlan:
     let
       (funcName, argument) = parseChildFunction(item)
-      jsFunction = cipherFucntionMap[funcName]
+      jsFunction = cipherFunctionMap[funcName]
       index = parseIndex(jsFunction)
     if jsFunction.contains("reverse"):
       ## function(a, b){a.reverse()}
@@ -448,6 +447,7 @@ proc decipher(js, signature: string): string =
     else:
       ## function(a,b){var c=a[0];a[0]=a[b%a.length];a[b%a.length]=c}
       swap(splitSig[index], splitSig[argument mod splitSig.len])
+
   result = splitSig.join()
 
 
@@ -512,6 +512,7 @@ proc urlOrCipher(stream: JsonNode): string =
     code: HttpCode
     response: string
     n: string
+    calculatedN: string
 
   # echo "[deciphering url]"
   once:
@@ -522,10 +523,12 @@ proc urlOrCipher(stream: JsonNode): string =
     result = getSigCipherUrl(response, stream["signatureCipher"].getStr())
 
   n = result.captureBetween('=', '&', result.find("&n="))
-  if n != lastN:
+  if nTransforms.haskey(n):
+    result = result.replace(n, nTransforms[n])
+  else:
     calculatedN = calculateN(n, response)
-    lastN = n
-  result = result.replace(n, calculatedN)
+    nTransforms[n] = calculatedN
+    result = result.replace(n, calculatedN)
 
 
 proc produceUrlSegments(baseUrl, segmentList: string): seq[string] =
