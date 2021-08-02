@@ -117,7 +117,6 @@ var
   cipherPlan: seq[string]
   cipherFunctionMap: Table[string, string]
   nTransforms = initTable[string, string]()
-  throttleCode: string
   throttleArray: seq[string]
   throttlePlan: seq[seq[string]]
 
@@ -143,8 +142,8 @@ var
 
 proc index[T](d: seq[T], item: T): int =
   ## provide index of item
-  for idx, c in d:
-    if c == item:
+  for idx, i in d:
+    if i == item:
       return idx
 
 
@@ -323,7 +322,7 @@ proc parseThrottlePlan(js: string): seq[seq[string]] =
 proc calculateN(n, js: string): string =
   ## calculate new n value to prevent throttling
   once:
-    throttleCode = parseThrottleCode(parseThrottleFunctionName(js), js)
+    let throttleCode = parseThrottleCode(parseThrottleFunctionName(js), js)
     throttlePlan = parseThrottlePlan(throttleCode)
     throttleArray = parseThrottleFunctionArray(throttleCode)
   var
