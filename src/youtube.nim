@@ -721,7 +721,6 @@ proc getPlaylist(youtubeUrl: string) =
     playlistResponse: JsonNode
     response: string
     code: HttpCode
-    token, lastToken: string
     ids: seq[string]
     title: string
 
@@ -729,9 +728,9 @@ proc getPlaylist(youtubeUrl: string) =
   if code.is2xx:
     playlistResponse = parseJson(response)
     title = playlistResponse["contents"]["twoColumnWatchNextResults"]["playlist"]["playlist"]["title"].getStr()
-    echo "[collecting videos for ", title, ']'
+    echo "[collecting videos] ", title
     if playlistResponse["contents"]["twoColumnWatchNextResults"]["playlist"]["playlist"]["isInfinite"].getBool():
-      echo "<error: infinite playlist>"
+      echo "<infinite playlist...aborting>"
       return
     for item in playlistResponse["contents"]["twoColumnWatchNextResults"]["playlist"]["playlist"]["contents"]:
       ids.add(item["playlistPanelVideoRenderer"]["videoId"].getStr())
