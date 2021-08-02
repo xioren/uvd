@@ -112,12 +112,11 @@ let date = now().format("yyyyMMdd")
 
 var
   jsUrl: string
-  plan: seq[string]
-  mainFunc: string
-  map: Table[string, string]
+  cipherPlan: seq[string]
+  cipherFucntionMap: Table[string, string]
   lastN: string
   calculatedN: string
-  code: string
+  throttleCode: string
   throttleArray: seq[string]
   throttlePlan: seq[seq[string]]
 
@@ -140,8 +139,8 @@ var
 ########################################################
 # NOTE: thanks to https://github.com/pytube/pytube as a reference
 
-
 proc index[T](d: seq[T], item: T): int =
+  ## provide index of item
   for idx, c in d:
     if c == item:
       return idx
@@ -240,9 +239,6 @@ proc throttleSwap(d: var seq[string], e: int) =
     swap(d[0], d[z])
 
 
-########################################################
-
-
 proc parseThrottleFunctionName(js: string): string =
   # # parse main throttle function
   # a.C&&(b=a.get("n"))&&(b=kha(b),a.set("n",b))
@@ -326,10 +322,10 @@ proc parseThrottlePlan(js: string): seq[seq[string]] =
 proc calculateN(n, js: string): string =
   ## calculate new n value to prevent throttling
   once:
-    code = parseThrottleCode(parseThrottleFunctionName(js), js)
-    throttlePlan = parseThrottlePlan(code)
+    throttleCode = parseThrottleCode(parseThrottleFunctionName(js), js)
+    throttlePlan = parseThrottlePlan(throttleCode)
   var
-    throttleArray = parseThrottleFunctionArray(code)
+    throttleArray = parseThrottleFunctionArray(throttleCode)
     firstArg, secondArg, currFunc: string
     initialN = n
 
@@ -431,15 +427,14 @@ proc createFunctionMap(js, mainFunc: string): Table[string, string] =
 proc decipher(js, signature: string): string =
   ## decipher signature
   once:
-    plan = parseFunctionPlan(js)
-    mainFunc = parseParentFunctionName(plan[0])
-    map = createFunctionMap(js, mainFunc)
+    cipherPlan = parseFunctionPlan(js)
+    cipherFucntionMap = createFunctionMap(js, parseParentFunctionName(cipherPlan[0]))
   var splitSig = @signature
 
-  for item in plan:
+  for item in cipherPlan:
     let
       (funcName, argument) = parseChildFunction(item)
-      jsFunction = map[funcName]
+      jsFunction = cipherFucntionMap[funcName]
       index = parseIndex(jsFunction)
     if jsFunction.contains("reverse"):
       ## function(a, b){a.reverse()}
