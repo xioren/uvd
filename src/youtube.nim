@@ -103,6 +103,8 @@ type
     dash: bool
 
 const
+  baseUrl = "https://www.youtube.com"
+  watchUrl = "https://www.youtube.com/watch?v="
   playerUrl = "https://youtubei.googleapis.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
   browseUrl = "https://youtubei.googleapis.com/youtubei/v1/browse?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
   nextUrl = "https://youtubei.googleapis.com/youtubei/v1/next?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
@@ -593,7 +595,7 @@ proc isolatePlaylist(youtubeUrl: string): string =
 proc getVideo(youtubeUrl: string) =
   let
     id = isolateId(youtubeUrl)
-    standardYoutubeUrl = "https://www.youtube.com/watch?v=" & id
+    standardYoutubeUrl = watchUrl & id
   var
     playerResponse: JsonNode
     response: string
@@ -603,7 +605,7 @@ proc getVideo(youtubeUrl: string) =
   # NOTE: make initial request to get variable youtube values
   (code, response) = doGet(standardYoutubeUrl)
   let sigTimeStamp = response.captureBetween(':', ',', response.find("\"STS\""))
-  jsUrl = "https://www.youtube.com" & response.captureBetween('"', '"', response.find("\"jsUrl\":\"") + 7)
+  jsUrl = baseUrl & response.captureBetween('"', '"', response.find("\"jsUrl\":\"") + 7)
 
   (code, response) = doPost(playerUrl, playerContext % [id, sigTimeStamp, date])
   if code.is2xx:
@@ -696,7 +698,7 @@ proc getChannel(youtubeUrl: string) =
 
     echo '[', ids.len, " videos queued]"
     for id in ids:
-      getVideo("https://www.youtube.com/watch?v=" & id)
+      getVideo(watchUrl & id)
   else:
     echo "<failed to obtain channel metadata>"
 
@@ -718,12 +720,13 @@ proc getPlaylist(youtubeUrl: string) =
 
     if playlistResponse["contents"]["twoColumnWatchNextResults"]["playlist"]["playlist"]["isInfinite"].getBool():
       echo "<infinite playlist...aborting>"
-      return
-    for item in playlistResponse["contents"]["twoColumnWatchNextResults"]["playlist"]["playlist"]["contents"]:
-      ids.add(item["playlistPanelVideoRenderer"]["videoId"].getStr())
+    else:
+      for item in playlistResponse["contents"]["twoColumnWatchNextResults"]["playlist"]["playlist"]["contents"]:
+        ids.add(item["playlistPanelVideoRenderer"]["videoId"].getStr())
 
-    for id in ids:
-      getVideo("https://www.youtube.com/watch?v=" & id)
+      echo '[', ids.len, " videos queued]"
+      for id in ids:
+        getVideo(watchUrl & id)
   else:
     echo "<failed to obtain playlist metadata>"
 
