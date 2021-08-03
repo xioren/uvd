@@ -11,6 +11,7 @@
   + videos
   + channels
   + playlists
+
 *vimeo:*
   + videos
   + profiles
