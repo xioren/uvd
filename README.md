@@ -13,3 +13,4 @@
   + playlists
 *vimeo:*
   + videos
+  + profiles

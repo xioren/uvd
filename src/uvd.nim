@@ -15,4 +15,4 @@ when isMainModule:
     elif unknownUrl.contains("youtu"):
       youtubeDownload(unknownUrl)
     else:
-      echo "[invalid url]"
+      echo "<invalid url>"

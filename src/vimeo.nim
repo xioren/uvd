@@ -30,7 +30,10 @@ type
 const
   configUrl = "https://player.vimeo.com/video/$1/config"
   # detailsUrl = "http://vimeo.com/api/v2/video/$1.json"
-
+  authorizationUrl = "https://vimeo.com/_rv/viewer"
+  apiUrl = "https://api.vimeo.com"
+  profileUrl = "https://api.vimeo.com/users/$1/profile_sections?fields=uri%2Ctitle%2CuserUri%2Curi%2C"
+  videosUrl = "https://api.vimeo.com/users/$1/profile_sections/$2/videos?fields=video_details%2Cprofile_section_uri%2Ccolumn_width%2Cclip.uri%2Cclip.name%2Cclip.type%2Cclip.categories.name%2Cclip.categories.uri%2Cclip.config_url%2Cclip.pictures%2Cclip.height%2Cclip.width%2Cclip.duration%2Cclip.description%2Cclip.created_time%2C&page=1&per_page=10"
 
 proc isVerticle(stream: JsonNode): bool =
   # NOTE: streams are always w x h
@@ -125,37 +128,68 @@ proc reportStreamInfo(stream: Stream) =
        "segments: ", stream.urlSegments.len
 
 
-proc vimeoDownload*(vimeoUrl: string) =
+proc authorize() =
+  var
+    authResponse: JsonNode
+    response: string
+    code: HttpCode
+  (code, response) = doGet(authorizationUrl)
+  if code.is2xx:
+    authResponse = parseJson(response)
+    headers.add(("authorization", "jwt " & authResponse["jwt"].getStr()))
+  else:
+    echo "<authorization failed>"
+
+
+proc getProfileIds(vimeoUrl: string): tuple[profileId, sectionId: string] =
+  var
+    profileResponse: JsonNode
+    response: string
+    code: HttpCode
+  (code, response) = doGet(vimeoUrl)
+  if code.is2xx:
+    profileResponse = parseJson(response)
+    let parts = profileResponse["data"][0]["uri"].getStr().split('/')
+    result = (parts[2], parts[^1])
+  else:
+    echo "<failed to obtain profile metadata>"
+
+
+proc getVideo(vimeoUrl: string) =
   var
     configResponse: JsonNode
     id, response: string
     code: HttpCode
-  if vimeoUrl.contains("/video/"):
-    id = vimeoUrl.captureBetween('/', '?', vimeoUrl.find("video/"))
+  if vimeoUrl.contains("/config?"):
+    # NOTE: config url already obtained from getProfile
+    (code, response) = doGet(vimeoUrl)
   else:
-    id = vimeoUrl.captureBetween('/', '?', vimeoUrl.find(".com/"))
-  let standardVimeoUrl = "https://vimeo.com/video/" & id
-
-  (code, response) = doGet(configUrl % id)
-  if code == Http403:
-    echo "[trying signed config url]"
-    (code, response) = doGet(standardVimeoUrl)
-    let signedConfigUrl = response.captureBetween('"', '"', response.find(""""config_url":""") + 13)
-    if not signedConfigUrl.contains("vimeo"):
-      echo "[trying embed url]"
-      # HACK: use patreon embed url to get meta data
-      headers.add(("referer", "https://cdn.embedly.com/"))
-      (code, response) = doGet("https://player.vimeo.com/video/$1?app_id=122963&referrer=https%3A%2F%2Fwww.patreon.com%2F" % id)
-      let embedResponse = response.captureBetween(' ', ';', response.find("""config =""") + 8)
-      if embedResponse.contains("cdn_url"):
-        response = embedResponse
-      else:
-        echo "<failed to obtain meta data>"
-        return
+    if vimeoUrl.contains("/video/"):
+      id = vimeoUrl.captureBetween('/', '?', vimeoUrl.find("video/"))
     else:
-      (code, response) = doGet(signedConfigUrl.replace("\\"))
-  elif not code.is2xx:
-    return
+      id = vimeoUrl.captureBetween('/', '?', vimeoUrl.find(".com/"))
+    let standardVimeoUrl = "https://vimeo.com/video/" & id
+
+    (code, response) = doGet(configUrl % id)
+    if code == Http403:
+      echo "[trying signed config url]"
+      (code, response) = doGet(standardVimeoUrl)
+      let signedConfigUrl = response.captureBetween('"', '"', response.find(""""config_url":""") + 13)
+      if not signedConfigUrl.contains("vimeo"):
+        echo "[trying embed url]"
+        # HACK: use patreon embed url to get meta data
+        headers.add(("referer", "https://cdn.embedly.com/"))
+        (code, response) = doGet("https://player.vimeo.com/video/$1?app_id=122963&referrer=https%3A%2F%2Fwww.patreon.com%2F" % id)
+        let embedResponse = response.captureBetween(' ', ';', response.find("""config =""") + 8)
+        if embedResponse.contains("cdn_url"):
+          response = embedResponse
+        else:
+          echo "<failed to obtain meta data>"
+          return
+      else:
+        (code, response) = doGet(signedConfigUrl.replace("\\"))
+    elif not code.is2xx:
+      return
 
   configResponse = parseJson(response)
   if not configResponse["video"].hasKey("owner"):
@@ -192,3 +226,52 @@ proc vimeoDownload*(vimeoUrl: string) =
       else:
         moveFile(joinPath(getCurrentDir(), videoStream.filename), finalPath.changeFileExt(videoStream.ext))
         echo "[complete] ", addFileExt(safeTitle, videoStream.ext)
+
+
+proc getProfile(vimeoUrl: string) =
+  var
+    profileResponse: JsonNode
+    response: string
+    code: HttpCode
+    userId: string
+    sectionId: string
+    userSlug: string
+    nextUrl: string
+    urls: seq[string]
+
+  userSlug = dequery(vimeoUrl).split('/')[^1]
+  authorize()
+  (userId, sectionId) = getProfileIds(profileUrl % userSlug)
+
+  (code, response) = doGet(videosUrl % [userId, sectionId])
+  if code.is2xx:
+    echo "[collecting videos]"
+    profileResponse = parseJson(response)
+    for video in profileResponse["data"]:
+      urls.add(video["clip"]["config_url"].getStr())
+    nextUrl = profileResponse["paging"]["next"].getStr()
+
+    while nextUrl != "":
+      (code, response) = doGet(apiUrl & nextUrl)
+      if code.is2xx:
+        profileResponse = parseJson(response)
+        for video in profileResponse["data"]:
+          urls.add(video["clip"]["config_url"].getStr())
+        nextUrl = profileResponse["paging"]["next"].getStr()
+      else:
+        echo "<failed to obtain profile metadata>"
+        return
+
+    echo '[', urls.len, " videos queued]"
+    for url in urls:
+      getVideo(url)
+  else:
+    echo "<failed to obtain profile metadata>"
+
+
+proc vimeoDownload*(vimeoUrl: string) =
+  # TODO: find a better approach
+  if skipWhile(vimeoUrl.split('/')[^1], {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9'}) > 0:
+    getVideo(vimeoUrl)
+  else:
+    getProfile(vimeoUrl)
