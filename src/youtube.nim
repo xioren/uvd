@@ -113,6 +113,7 @@ const
 let date = now().format("yyyyMMdd")
 
 var
+  h: array[64, char]
   jsUrl: string
   cipherPlan: seq[string]
   cipherFunctionMap: Table[string, string]
@@ -140,7 +141,7 @@ var
 # NOTE: thanks to https://github.com/pytube/pytube/blob/master/pytube/cipher.py
 # as a reference
 
-proc index[T](d: seq[T], item: T): int =
+proc index[T](d: openarray[T], item: T): int =
   ## provide index of item
   for idx, i in d:
     if i == item:
@@ -168,9 +169,6 @@ proc throttleUnshift(d: var seq[string], e: int) =
 
 
 proc throttleCipher(d: var string, e: string) =
-  # TODO: sometimes this h value is different. find a way to generate it
-  # dynamically.
-  const h = @"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
   var
     f = 96
     this = e
@@ -239,6 +237,34 @@ proc throttleSwap(d: var seq[string], e: int) =
     swap(d[0], d[d.len + z])
   else:
     swap(d[0], d[z])
+
+
+proc setH(code: string) =
+  const
+    charsA = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
+              'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R',
+              'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a',
+              'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j',
+              'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's',
+              't', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1',
+              '2', '3', '4', '5', '6', '7', '8', '9', '-',
+              '_']
+    charsB = ['0', '1', '2', '3', '4', '5', '6', '7', '8',
+              '9', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h',
+              'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q',
+              'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+              'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
+              'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R',
+              'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '-',
+              '_']
+  var match: array[1, string]
+  discard code.find(re"({for\(var\sf=64[^}]+})", match)
+  # if match[0] == """{for(var f=64,h=[];++f-h.length-32;)switch(f){case 58:f=96;continue;case 91:f=44;break;case 65:f=47;continue;case 46:f=153;case 123:f-=58;default:h.push(String.fromCharCode(f))}""":
+  #   result = charsA
+  if match[0] == """{for(var f=64,h=[];++f-h.length-32;){switch(f){case 91:f=44;continue;case 123:f=65;break;case 65:f-=18;continue;case 58:f=96;continue;case 46:f=95}""":
+    h = charsB
+  else:
+    h = charsA
 
 
 proc parseThrottleFunctionName(js: string): string =
@@ -327,6 +353,7 @@ proc calculateN(n, js: string): string =
     let throttleCode = parseThrottleCode(parseThrottleFunctionName(js), js)
     throttlePlan = parseThrottlePlan(throttleCode)
     throttleArray = parseThrottleFunctionArray(throttleCode)
+    setH(throttleCode)
   var
     tempArray = throttleArray
     firstArg, secondArg, currFunc: string
