@@ -168,6 +168,8 @@ proc throttleUnshift(d: var seq[string], e: int) =
 
 
 proc throttleCipher(d: var string, e: string) =
+  # TODO: sometimes this h value is different. find a way to generate it
+  # dynamically.
   const h = @"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
   var
     f = 96
@@ -329,6 +331,7 @@ proc calculateN(n, js: string): string =
     tempArray = throttleArray
     firstArg, secondArg, currFunc: string
     initialN = n
+    k, e: string
 
   for step in throttlePlan:
       currFunc = tempArray[parseInt(step[0])]
@@ -336,6 +339,11 @@ proc calculateN(n, js: string): string =
 
       if step.len == 3:
         secondArg = tempArray[parseInt(step[2])]
+        # NOTE: arg in exponential notation
+        if secondArg.contains('E'):
+          (k, e) = secondArg.split('E')
+          secondArg = k & '0'.repeat(parseInt(e))
+
       if firstArg == "null":
         if currFunc == "throttleUnshift" or currFunc == "throttlePrepend":
           throttleUnshift(tempArray, parseInt(secondArg))

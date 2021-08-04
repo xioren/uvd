@@ -239,11 +239,10 @@ proc getProfile(vimeoUrl: string) =
     code: HttpCode
     userId: string
     sectionId: string
-    userSlug: string
     nextUrl: string
     urls: seq[string]
 
-  userSlug = dequery(vimeoUrl).split('/')[^1]
+  let userSlug = dequery(vimeoUrl).split('/')[^1]
   authorize()
   (userId, sectionId) = getProfileIds(profileUrl % userSlug)
 
