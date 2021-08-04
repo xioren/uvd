@@ -563,6 +563,9 @@ proc urlOrCipher(stream: JsonNode): string =
     calculatedN = calculateN(n, response)
     nTransforms[n] = calculatedN
     result = result.replace(n, calculatedN)
+  # QUESTION: does this work if not in signed vars?
+  if not result.contains("&ratebypass"):
+    result.insert("&ratebypass=yes", result.find("requiressl") + 14)
 
 
 proc produceUrlSegments(baseUrl, segmentList: string): seq[string] =
