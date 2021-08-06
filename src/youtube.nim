@@ -117,7 +117,7 @@ var
   jsUrl: string
   cipherPlan: seq[string]
   cipherFunctionMap: Table[string, string]
-  nTransforms = Table[string, string]
+  nTransforms: Table[string, string]
   throttleArray: seq[string]
   throttlePlan: seq[seq[string]]
 
@@ -292,11 +292,10 @@ iterator splitThrottleArray(js: string): string =
   ## split the throttle array into individual components
   var
     match: array[1, string]
-    item: string
+    item = newString(1)
     context: seq[char]
 
   discard js.find(re("(?<=,c=\\[)(.+)(?=\\];c)", flags={reDotAll}), match)
-  item = newString(1)
   for idx, c in match[0]:
     if (c == ',' and context.len == 0 and match[0][min(idx + 3, match[0].high)] != '{') or
        idx == match[0].high:
