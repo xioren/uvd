@@ -260,9 +260,9 @@ proc setH(code: string) =
               '_']
   var match: array[1, string]
   discard code.find(re"({for\(var\sf=64[^}]+})", match)
-  # if match[0] == """{for(var f=64,h=[];++f-h.length-32;)switch(f){case 58:f=96;continue;case 91:f=44;break;case 65:f=47;continue;case 46:f=153;case 123:f-=58;default:h.push(String.fromCharCode(f))}""":
+  # if match[0].contains("{case 58"):
   #   result = charsA
-  if match[0] == """{for(var f=64,h=[];++f-h.length-32;){switch(f){case 91:f=44;continue;case 123:f=65;break;case 65:f-=18;continue;case 58:f=96;continue;case 46:f=95}""":
+  if match[0].contains("{case 91"):
     h = charsB
   else:
     h = charsA
