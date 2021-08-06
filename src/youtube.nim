@@ -240,6 +240,7 @@ proc throttleSwap(d: var seq[string], e: int) =
 
 
 proc setH(code: string) =
+  ## set h char set used in calculating n throttle value
   const
     charsA = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
               'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R',
@@ -297,7 +298,7 @@ iterator splitThrottleArray(js: string): string =
   discard js.find(re("(?<=,c=\\[)(.+)(?=\\];c)", flags={reDotAll}), match)
   item = newString(1)
   for idx, c in match[0]:
-    if (c == ',' and context.len == 0 and match[0][idx + 3] != '{') or
+    if (c == ',' and context.len == 0 and match[0][min(idx + 3, match[0].high)] != '{') or
        idx == match[0].high:
       if idx == match[0].high:
         item.add(c)
