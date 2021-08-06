@@ -117,7 +117,7 @@ var
   jsUrl: string
   cipherPlan: seq[string]
   cipherFunctionMap: Table[string, string]
-  nTransforms = initTable[string, string]()
+  nTransforms = Table[string, string]
   throttleArray: seq[string]
   throttlePlan: seq[seq[string]]
 
@@ -362,42 +362,42 @@ proc calculateN(n, js: string): string =
     k, e: string
 
   for step in throttlePlan:
-      currFunc = tempArray[parseInt(step[0])]
-      firstArg = tempArray[parseInt(step[1])]
+    currFunc = tempArray[parseInt(step[0])]
+    firstArg = tempArray[parseInt(step[1])]
 
-      if step.len == 3:
-        secondArg = tempArray[parseInt(step[2])]
-        # NOTE: arg in exponential notation
-        if secondArg.contains('E'):
-          (k, e) = secondArg.split('E')
-          secondArg = k & '0'.repeat(parseInt(e))
+    if step.len == 3:
+      secondArg = tempArray[parseInt(step[2])]
+      # NOTE: arg in exponential notation
+      if secondArg.contains('E'):
+        (k, e) = secondArg.split('E')
+        secondArg = k & '0'.repeat(parseInt(e))
 
-      if firstArg == "null":
-        if currFunc == "throttleUnshift" or currFunc == "throttlePrepend":
-          throttleUnshift(tempArray, parseInt(secondArg))
-        elif currFunc == "throttleCipher":
-          throttleCipher(tempArray, secondArg)
-        elif currFunc == "throttleReverse":
-          throttleReverse(tempArray)
-        elif currFunc == "throttlePush":
-          throttlePush(tempArray, secondArg)
-        elif currFunc == "throttleSwap" or currFunc == "throttleNestedSplice":
-          throttleSwap(tempArray, parseInt(secondArg))
-        elif currFunc == "splice":
-          discard splice(tempArray, parseInt(secondArg))
-      else:
-        if currFunc == "throttleUnshift" or currFunc == "throttlePrepend":
-          throttleUnshift(initialN, parseInt(secondArg))
-        elif currFunc == "throttleCipher":
-          throttleCipher(initialN, secondArg)
-        elif currFunc == "throttleReverse":
-          throttleReverse(initialN)
-        elif currFunc == "throttlePush":
-          throttlePush(initialN, secondArg)
-        elif currFunc == "throttleSwap" or currFunc == "throttleNestedSplice":
-          throttleSwap(initialN, parseInt(secondArg))
-        elif currFunc == "splice":
-          discard splice(initialN, parseInt(secondArg))
+    if firstArg == "null":
+      if currFunc == "throttleUnshift" or currFunc == "throttlePrepend":
+        throttleUnshift(tempArray, parseInt(secondArg))
+      elif currFunc == "throttleCipher":
+        throttleCipher(tempArray, secondArg)
+      elif currFunc == "throttleReverse":
+        throttleReverse(tempArray)
+      elif currFunc == "throttlePush":
+        throttlePush(tempArray, secondArg)
+      elif currFunc == "throttleSwap" or currFunc == "throttleNestedSplice":
+        throttleSwap(tempArray, parseInt(secondArg))
+      elif currFunc == "splice":
+        discard splice(tempArray, parseInt(secondArg))
+    else:
+      if currFunc == "throttleUnshift" or currFunc == "throttlePrepend":
+        throttleUnshift(initialN, parseInt(secondArg))
+      elif currFunc == "throttleCipher":
+        throttleCipher(initialN, secondArg)
+      elif currFunc == "throttleReverse":
+        throttleReverse(initialN)
+      elif currFunc == "throttlePush":
+        throttlePush(initialN, secondArg)
+      elif currFunc == "throttleSwap" or currFunc == "throttleNestedSplice":
+        throttleSwap(initialN, parseInt(secondArg))
+      elif currFunc == "splice":
+        discard splice(initialN, parseInt(secondArg))
 
   result = initialN
 
@@ -563,7 +563,8 @@ proc urlOrCipher(stream: JsonNode): string =
   else:
     calculatedN = calculateN(n, response)
     nTransforms[n] = calculatedN
-    result = result.replace(n, calculatedN)
+    if n != calculatedN:
+      result = result.replace(n, calculatedN)
   # QUESTION: does this work if not in signed vars?
   if not result.contains("&ratebypass"):
     result.insert("&ratebypass=yes", result.find("requiressl") + 14)
