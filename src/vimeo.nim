@@ -10,8 +10,6 @@ import utils
 # timestamp most likely used in hash as salt
 # QUESTIONS: SAPISIDHASH?
 
-# NOTE: vimeo=OHLd4DDZLe4MVHLXDDPL44ZtMxHDtBcDNdNca34c4DeXXtaDeN3tcDtXLSBN4BZ%2CZ%2CdMiwiViN5_59biw_ViY3HLXDDPL44ZtMIHcPBPZ%2C3BNDdXNDLec4DX4SZBdedDcdPDSceDZdDXXDtPaSNN3Z3aLDB3cNdZN%2C3S
-# header needed for paid on demand config requests
 
 type
   Stream = object
@@ -120,9 +118,8 @@ proc newAudioStream(cdnUrl, title: string, stream: JsonNode): Stream =
 
 
 proc reportStreamInfo(stream: Stream) =
-  once:
-    echo "title: ", stream.title
-  echo "stream: ", stream.filename, '\n',
+  echo "title: ", stream.title
+       "stream: ", stream.filename, '\n',
        "size: ", stream.size, '\n',
        "quality: ", stream.quality, '\n',
        "mime: ", stream.mime, '\n',

@@ -462,6 +462,8 @@ proc createFunctionMap(js, mainFunc: string): Table[string, string] =
 
 proc decipher(js, signature: string): string =
   ## decipher signature
+  # TODO: major assumption that all videos downloaded will have same base.js.
+  # find a more robust approach; maybe caching?
   once:
     cipherPlan = parseFunctionPlan(js)
     cipherFunctionMap = createFunctionMap(js, parseParentFunctionName(cipherPlan[0]))
@@ -669,9 +671,11 @@ proc getVideo(youtubeUrl: string) =
         playerResponse = parseJson(response)
         if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
           echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
-          return
       elif playerResponse["playabilityStatus"]["status"].getStr() != "OK" or playerResponse["playabilityStatus"].hasKey("liveStreamability"):
         echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
+        if playerResponse["playabilityStatus"]["errorScreen"]["playerErrorMessageRenderer"].hasKey("subreason"):
+          for run in playerResponse["playabilityStatus"]["errorScreen"]["playerErrorMessageRenderer"]["subreason"]["runs"]:
+            stdout.write(run["text"].getStr())
         return
 
       if playerResponse["streamingData"].hasKey("dashManifestUrl"):
