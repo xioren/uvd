@@ -110,12 +110,12 @@ proc downloadParts(parts: seq[string], filepath: string): Future[HttpCode] {.asy
     client.close()
 
 
-proc grab*(url: string, forceFilename = "",
+proc grab*(url: string, forceFilename="",
            saveLocation=joinPath(getHomeDir(), "Downloads"), forceDl=false): HttpCode =
   ## download front end
   var filename: string
 
-  if forceFilename == "":
+  if forceFilename.isEmptyOrWhitespace():
     filename = extractFilename(url)
   else:
     filename = forceFilename
@@ -131,12 +131,12 @@ proc grab*(url: string, forceFilename = "",
       echo '<', result, '>'
 
 
-proc grabMulti*(urls: seq[string], forceFilename = "",
+proc grabMulti*(urls: seq[string], forceFilename="",
                 saveLocation=joinPath(getHomeDir(), "Downloads"), forceDl=false): HttpCode =
   ## downloadParts front end
   var filename: string
 
-  if forceFilename == "":
+  if forceFilename.isEmptyOrWhitespace():
     filename = extractFilename(urls[0])
   else:
     filename = forceFilename

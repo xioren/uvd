@@ -597,7 +597,7 @@ proc newVideoStream(youtubeUrl, dashManifestUrl, title: string, duration: int, s
   result.title = title
   (result.itag, result.mime, result.ext, result.size, result.quality) = getVideoStreamInfo(stream, duration)
   result.filename = addFileExt("videostream", result.ext)
-  # NOTE: "initRange" is a best guess id for segmented streams. may not be universal
+  # NOTE: "initRange" is a best guess id for non-segmented streams, may not be universal
   # and may lead to erroneos stream selection.
   if dashManifestUrl.isEmptyOrWhitespace() or stream.hasKey("initRange"):
     result.url = urlOrCipher(stream)
@@ -614,7 +614,7 @@ proc newAudioStream(youtubeUrl, dashManifestUrl, title: string, duration: int, s
   result.title = title
   (result.itag, result.mime, result.ext, result.size, result.quality) = getAudioStreamInfo(stream, duration)
   result.filename = addFileExt("audiostream", result.ext)
-  # NOTE: "initRange" is a best guess id for segmented streams. may not be universal
+  # NOTE: "initRange" is a best guess id for non-segmented streams, may not be universal
   # and may lead to erroneos stream selection.
   if dashManifestUrl.isEmptyOrWhitespace() or stream.hasKey("initRange"):
     result.url = urlOrCipher(stream)
