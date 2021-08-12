@@ -92,6 +92,8 @@ proc download(url, filepath: string): Future[HttpCode] {.async.} =
 
 proc downloadParts(parts: seq[string], filepath: string): Future[HttpCode] {.async.} =
   ## download multi-part streams
+  # BUG: sometimes "Error: unhandled exception: No handles or timers registered in dispatcher. [ValueError]"
+  # will be thrown. this is a Nim bug and is supposedly fixed in the newest version of Nim.
   let client = newAsyncHttpClient(headers=newHttpHeaders(headers))
   var file = openasync(filepath, fmWrite)
   client.onProgressChanged = onProgressChanged

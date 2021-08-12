@@ -599,13 +599,13 @@ proc newVideoStream(youtubeUrl, dashManifestUrl, title: string, duration: int, s
   result.filename = addFileExt("videostream", result.ext)
   # NOTE: "initRange" is a best guess id for segmented streams. may not be universal
   # and may lead to erroneos stream selection.
-  if not (dashManifestUrl.isEmptyOrWhitespace() and stream.hasKey("initRange")):
+  if dashManifestUrl.isEmptyOrWhitespace() or stream.hasKey("initRange"):
+    result.url = urlOrCipher(stream)
+  else:
     # QUESTION: are dash urls or manifest urls ever ciphered?
     result.dash = true
     (result.baseUrl, segmentList) = extractDashInfo(dashManifestUrl, $result.itag)
     result.urlSegments = produceUrlSegments(result.baseUrl, segmentList)
-  else:
-    result.url = urlOrCipher(stream)
 
 
 proc newAudioStream(youtubeUrl, dashManifestUrl, title: string, duration: int, stream: JsonNode): Stream =
@@ -616,13 +616,13 @@ proc newAudioStream(youtubeUrl, dashManifestUrl, title: string, duration: int, s
   result.filename = addFileExt("audiostream", result.ext)
   # NOTE: "initRange" is a best guess id for segmented streams. may not be universal
   # and may lead to erroneos stream selection.
-  if not (dashManifestUrl.isEmptyOrWhitespace() and stream.hasKey("initRange")):
+  if dashManifestUrl.isEmptyOrWhitespace() or stream.hasKey("initRange"):
+    result.url = urlOrCipher(stream)
+  else:
     # QUESTION: are dash urls or manifest urls ever ciphered?
     result.dash = true
     (result.baseUrl, segmentList) = extractDashInfo(dashManifestUrl, $result.itag)
     result.urlSegments = produceUrlSegments(result.baseUrl, segmentList)
-  else:
-    result.url = urlOrCipher(stream)
 
 
 proc reportStreamInfo(stream: Stream) =
