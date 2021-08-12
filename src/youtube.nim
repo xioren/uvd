@@ -369,7 +369,6 @@ proc calculateN(n, js: string): string =
       secondArg = tempArray[parseInt(step[2])]
       # NOTE: arg in exponential notation
       if secondArg.contains('E') and not secondArg.contains("Each"):
-        echo secondArg
         (k, e) = secondArg.split('E')
         secondArg = k & '0'.repeat(parseInt(e))
 
