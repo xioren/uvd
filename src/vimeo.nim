@@ -118,7 +118,7 @@ proc newAudioStream(cdnUrl, title: string, stream: JsonNode): Stream =
 
 
 proc reportStreamInfo(stream: Stream) =
-  echo "title: ", stream.title
+  echo "title: ", stream.title, '\n',
        "stream: ", stream.filename, '\n',
        "size: ", stream.size, '\n',
        "quality: ", stream.quality, '\n',

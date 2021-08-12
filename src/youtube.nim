@@ -262,7 +262,8 @@ proc setH(code: string) =
   discard code.find(re"({for\(var\sf=64[^}]+})", match)
   # if match[0].contains("{case 58"):
   #   result = charsA
-  if match[0].contains("{case 91"):
+  # NOTE: case 65 may be exclusive to charsB and thus the better way to match.
+  if match[0].contains("{case 91") or match[0].contains("case 65:"):
     h = charsB
   else:
     h = charsA
@@ -367,10 +368,12 @@ proc calculateN(n, js: string): string =
     if step.len == 3:
       secondArg = tempArray[parseInt(step[2])]
       # NOTE: arg in exponential notation
-      if secondArg.contains('E'):
+      if secondArg.contains('E') and not secondArg.contains("Each"):
+        echo secondArg
         (k, e) = secondArg.split('E')
         secondArg = k & '0'.repeat(parseInt(e))
 
+    # TODO: im sure there is a clever way to compact this
     if firstArg == "null":
       if currFunc == "throttleUnshift" or currFunc == "throttlePrepend":
         throttleUnshift(tempArray, parseInt(secondArg))
@@ -534,11 +537,15 @@ proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime,
   result.qlt = stream["qualityLabel"].getStr()
 
 
-proc getAudioStreamInfo(stream: JsonNode): tuple[itag: int, mime, ext, size, qlt: string] =
+proc getAudioStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime, ext, size, qlt: string] =
   result.itag = stream["itag"].getInt()
   result.mime = stream["mimeType"].getStr().split(";")[0]
   result.ext = extensions[result.mime]
-  result.size = formatSize(parseInt(stream["contentLength"].getStr()), includeSpace=true)
+  if stream.hasKey("contentLength"):
+    result.size = formatSize(parseInt(stream["contentLength"].getStr()), includeSpace=true)
+  else:
+    # NOTE: estimate from bitrate
+    result.size = formatSize((stream["bitrate"].getInt() * duration / 8).int, includeSpace=true)
   result.qlt = stream["audioQuality"].getStr()
 
 
@@ -577,31 +584,46 @@ proc produceUrlSegments(baseUrl, segmentList: string): seq[string] =
     result.add($(base / segment))
 
 
+proc extractDashInfo(dashManifestUrl, itag: string): tuple[baseUrl, segmentList: string] =
+  let (_, xml) = doGet(dashManifestUrl)
+  var match: array[1, string]
+  discard xml.find(re("""(?<=<Representation\s)(id="$1".+?)(?=</Representation>)""" % itag), match)
+  result.baseUrl = match[0].captureBetween('>', '<', match[0].find("<BaseURL>") + 8)
+  discard match[0].find(re("(?<=<SegmentList>)(.+)(?=</SegmentList>)"), match)
+  result.segmentList = match[0]
+
+
 proc newVideoStream(youtubeUrl, dashManifestUrl, title: string, duration: int, stream: JsonNode): Stream =
+  var segmentList: string
   result.title = title
   (result.itag, result.mime, result.ext, result.size, result.quality) = getVideoStreamInfo(stream, duration)
   result.filename = addFileExt("videostream", result.ext)
-
-  if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
+  # NOTE: "initRange" is a best guess id for segmented streams. may not be universal
+  # and may lead to erroneos stream selection.
+  if not (dashManifestUrl.isEmptyOrWhitespace() and stream.hasKey("initRange")):
     # QUESTION: are dash urls or manifest urls ever ciphered?
     result.dash = true
-    let (_, xml) = doGet(dashManifestUrl)
-    var match: array[1, string]
-    discard xml.find(re("""(?<=<Representation\s)(id="$1".+?)(?=</Representation>)""" % $result.itag), match)
-    result.baseUrl = match[0].captureBetween('>', '<', match[0].find("<BaseURL>") + 8)
-    discard match[0].find(re("(?<=<SegmentList>)(.+)(?=</SegmentList>)"), match)
-    result.urlSegments = produceUrlSegments(result.baseUrl, match[0])
+    (result.baseUrl, segmentList) = extractDashInfo(dashManifestUrl, $result.itag)
+    result.urlSegments = produceUrlSegments(result.baseUrl, segmentList)
   else:
     result.url = urlOrCipher(stream)
 
 
-proc newAudioStream(youtubeUrl, title: string, stream: JsonNode): Stream =
+proc newAudioStream(youtubeUrl, dashManifestUrl, title: string, duration: int, stream: JsonNode): Stream =
   # QUESTION: will stream with no audio throw exception?
-  # QUESTION: are audio streams ever in dash format?
+  var segmentList: string
   result.title = title
-  (result.itag, result.mime, result.ext, result.size, result.quality) = getAudioStreamInfo(stream)
+  (result.itag, result.mime, result.ext, result.size, result.quality) = getAudioStreamInfo(stream, duration)
   result.filename = addFileExt("audiostream", result.ext)
-  result.url = urlOrCipher(stream)
+  # NOTE: "initRange" is a best guess id for segmented streams. may not be universal
+  # and may lead to erroneos stream selection.
+  if not (dashManifestUrl.isEmptyOrWhitespace() and stream.hasKey("initRange")):
+    # QUESTION: are dash urls or manifest urls ever ciphered?
+    result.dash = true
+    (result.baseUrl, segmentList) = extractDashInfo(dashManifestUrl, $result.itag)
+    result.urlSegments = produceUrlSegments(result.baseUrl, segmentList)
+  else:
+    result.url = urlOrCipher(stream)
 
 
 proc reportStreamInfo(stream: Stream) =
@@ -678,12 +700,14 @@ proc getVideo(youtubeUrl: string) =
             stdout.write(run["text"].getStr())
         return
 
+      # NOTE: hlsManifestUrl seems to be for live streamed videos but is it ever needed?
       if playerResponse["streamingData"].hasKey("dashManifestUrl"):
         dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
       let
         videoStream = newVideoStream(standardYoutubeUrl, dashManifestUrl, title, duration,
                                      selectBestVideoStream(playerResponse["streamingData"]["adaptiveFormats"]))
-        audioStream = newAudioStream(standardYoutubeUrl, title, selectBestAudioStream(playerResponse["streamingData"]["adaptiveFormats"]))
+        audioStream = newAudioStream(standardYoutubeUrl, dashManifestUrl, title, duration,
+                                     selectBestAudioStream(playerResponse["streamingData"]["adaptiveFormats"]))
 
       reportStreamInfo(videoStream)
       var attempt: HttpCode
@@ -695,7 +719,13 @@ proc getVideo(youtubeUrl: string) =
                        saveLocation=getCurrentDir(), forceDl=true)
       if attempt.is2xx:
         reportStreamInfo(audioStream)
-        if grab(audioStream.url, forceFilename=audioStream.filename, saveLocation=getCurrentDir(), forceDl=true).is2xx:
+        if audioStream.dash:
+          attempt = grabMulti(audioStream.urlSegments, forceFilename=audioStream.filename,
+                              saveLocation=getCurrentDir(), forceDl=true)
+        else:
+          attempt = grab(audioStream.url, forceFilename=audioStream.filename,
+                         saveLocation=getCurrentDir(), forceDl=true)
+        if attempt.is2xx:
           joinStreams(videoStream.filename, audioStream.filename, safeTitle)
         else:
           echo "<failed to download audio stream>"
