@@ -668,69 +668,74 @@ proc getVideo(youtubeUrl: string) =
 
   # NOTE: make initial request to get variable youtube values
   (code, response) = doGet(standardYoutubeUrl)
-  let sigTimeStamp = response.captureBetween(':', ',', response.find("\"STS\""))
-  jsUrl = baseUrl & response.captureBetween('"', '"', response.find("\"jsUrl\":\"") + 7)
-
-  (code, response) = doPost(playerUrl, playerContext % [id, sigTimeStamp, date])
   if code.is2xx:
-    playerResponse = parseJson(response)
-    if playerResponse["playabilityStatus"]["status"].getStr() == "ERROR":
-      echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
-      return
-    let
-      title = playerResponse["videoDetails"]["title"].getStr()
-      safeTitle = title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"))
-      finalPath = addFileExt(joinPath(getCurrentDir(), safeTitle), ".mkv")
-      duration = parseInt(playerResponse["videoDetails"]["lengthSeconds"].getStr())
+    let sigTimeStamp = response.captureBetween(':', ',', response.find("\"STS\""))
+    jsUrl = baseUrl & response.captureBetween('"', '"', response.find("\"jsUrl\":\"") + 7)
 
-    if fileExists(finalPath):
-      echo "<file exists> ", safeTitle
-    else:
-      if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
-        echo "[attempting age-gate bypass]"
-        (code, response) = doPost(playerUrl, playerBypassContext % [id, sigTimeStamp, date])
-        playerResponse = parseJson(response)
-        if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
-          echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
-      elif playerResponse["playabilityStatus"]["status"].getStr() != "OK" or playerResponse["playabilityStatus"].hasKey("liveStreamability"):
+    (code, response) = doPost(playerUrl, playerContext % [id, sigTimeStamp, date])
+    if code.is2xx:
+      playerResponse = parseJson(response)
+      if playerResponse["playabilityStatus"]["status"].getStr() == "ERROR":
         echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
-        if playerResponse["playabilityStatus"]["errorScreen"]["playerErrorMessageRenderer"].hasKey("subreason"):
-          for run in playerResponse["playabilityStatus"]["errorScreen"]["playerErrorMessageRenderer"]["subreason"]["runs"]:
-            stdout.write(run["text"].getStr())
         return
-
-      # NOTE: hlsManifestUrl seems to be for live streamed videos but is it ever needed?
-      if playerResponse["streamingData"].hasKey("dashManifestUrl"):
-        dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
       let
-        videoStream = newVideoStream(standardYoutubeUrl, dashManifestUrl, title, duration,
-                                     selectBestVideoStream(playerResponse["streamingData"]["adaptiveFormats"]))
-        audioStream = newAudioStream(standardYoutubeUrl, dashManifestUrl, title, duration,
-                                     selectBestAudioStream(playerResponse["streamingData"]["adaptiveFormats"]))
+        title = playerResponse["videoDetails"]["title"].getStr()
+        safeTitle = title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"))
+        finalPath = addFileExt(joinPath(getCurrentDir(), safeTitle), ".mkv")
+        duration = parseInt(playerResponse["videoDetails"]["lengthSeconds"].getStr())
 
-      reportStreamInfo(videoStream)
-      var attempt: HttpCode
-      if videoStream.dash:
-        attempt = grabMulti(videoStream.urlSegments, forceFilename=videoStream.filename,
-                            saveLocation=getCurrentDir(), forceDl=true)
+      if fileExists(finalPath):
+        echo "<file exists> ", safeTitle
       else:
-        attempt = grab(videoStream.url, forceFilename=videoStream.filename,
-                       saveLocation=getCurrentDir(), forceDl=true)
-      if attempt.is2xx:
-        reportStreamInfo(audioStream)
-        if audioStream.dash:
-          attempt = grabMulti(audioStream.urlSegments, forceFilename=audioStream.filename,
+        if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
+          echo "[attempting age-gate bypass]"
+          (code, response) = doPost(playerUrl, playerBypassContext % [id, sigTimeStamp, date])
+          playerResponse = parseJson(response)
+          if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
+            echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
+        elif playerResponse["playabilityStatus"]["status"].getStr() != "OK" or playerResponse["playabilityStatus"].hasKey("liveStreamability"):
+          echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
+          if playerResponse["playabilityStatus"]["errorScreen"]["playerErrorMessageRenderer"].hasKey("subreason"):
+            for run in playerResponse["playabilityStatus"]["errorScreen"]["playerErrorMessageRenderer"]["subreason"]["runs"]:
+              stdout.write(run["text"].getStr())
+          return
+
+        # NOTE: hlsManifestUrl seems to be for live streamed videos but is it ever needed?
+        if playerResponse["streamingData"].hasKey("dashManifestUrl"):
+          dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
+        let
+          videoStream = newVideoStream(standardYoutubeUrl, dashManifestUrl, title, duration,
+                                       selectBestVideoStream(playerResponse["streamingData"]["adaptiveFormats"]))
+          audioStream = newAudioStream(standardYoutubeUrl, dashManifestUrl, title, duration,
+                                       selectBestAudioStream(playerResponse["streamingData"]["adaptiveFormats"]))
+
+        reportStreamInfo(videoStream)
+        var attempt: HttpCode
+        if videoStream.dash:
+          attempt = grabMulti(videoStream.urlSegments, forceFilename=videoStream.filename,
                               saveLocation=getCurrentDir(), forceDl=true)
         else:
-          attempt = grab(audioStream.url, forceFilename=audioStream.filename,
+          attempt = grab(videoStream.url, forceFilename=videoStream.filename,
                          saveLocation=getCurrentDir(), forceDl=true)
         if attempt.is2xx:
-          joinStreams(videoStream.filename, audioStream.filename, safeTitle)
+          reportStreamInfo(audioStream)
+          if audioStream.dash:
+            attempt = grabMulti(audioStream.urlSegments, forceFilename=audioStream.filename,
+                                saveLocation=getCurrentDir(), forceDl=true)
+          else:
+            attempt = grab(audioStream.url, forceFilename=audioStream.filename,
+                           saveLocation=getCurrentDir(), forceDl=true)
+          if attempt.is2xx:
+            joinStreams(videoStream.filename, audioStream.filename, safeTitle)
+          else:
+            echo "<failed to download audio stream>"
         else:
-          echo "<failed to download audio stream>"
-      else:
-        echo "<failed to download video stream>"
+          echo "<failed to download video stream>"
+    else:
+      echo '<', code, '>'
+      echo "<failed to obtain channel metadata>"
   else:
+    echo '<', code, '>'
     echo "<failed to obtain channel metadata>"
 
 
@@ -774,6 +779,7 @@ proc getChannel(youtubeUrl: string) =
     for id in ids:
       getVideo(watchUrl & id)
   else:
+    echo '<', code, '>'
     echo "<failed to obtain channel metadata>"
 
 
@@ -802,6 +808,7 @@ proc getPlaylist(youtubeUrl: string) =
       for id in ids:
         getVideo(watchUrl & id)
   else:
+    echo '<', code, '>'
     echo "<failed to obtain playlist metadata>"
 
 
