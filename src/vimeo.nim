@@ -32,6 +32,7 @@ const
   apiUrl = "https://api.vimeo.com"
   profileUrl = "https://api.vimeo.com/users/$1/profile_sections?fields=uri%2Ctitle%2CuserUri%2Curi%2C"
   videosUrl = "https://api.vimeo.com/users/$1/profile_sections/$2/videos?fields=video_details%2Cprofile_section_uri%2Ccolumn_width%2Cclip.uri%2Cclip.name%2Cclip.type%2Cclip.categories.name%2Cclip.categories.uri%2Cclip.config_url%2Cclip.pictures%2Cclip.height%2Cclip.width%2Cclip.duration%2Cclip.description%2Cclip.created_time%2C&page=1&per_page=10"
+  bypassUrl = "https://player.vimeo.com/video/$1?app_id=122963&referrer=https%3A%2F%2Fwww.patreon.com%2F"
 
 
 proc isVerticle(stream: JsonNode): bool =
@@ -153,6 +154,13 @@ proc getProfileIds(vimeoUrl: string): tuple[profileId, sectionId: string] =
     echo "<failed to obtain profile metadata>"
 
 
+proc extractId(cimeoUrl: string): string =
+  if vimeoUrl.contains("/video/"):
+    result = vimeoUrl.captureBetween('/', '?', vimeoUrl.find("video/"))
+  else:
+    result = vimeoUrl.captureBetween('/', '?', vimeoUrl.find(".com/"))
+
+
 proc getVideo(vimeoUrl: string) =
   var
     configResponse: JsonNode
@@ -162,10 +170,7 @@ proc getVideo(vimeoUrl: string) =
     # NOTE: config url already obtained from getProfile
     (code, response) = doGet(vimeoUrl)
   else:
-    if vimeoUrl.contains("/video/"):
-      id = vimeoUrl.captureBetween('/', '?', vimeoUrl.find("video/"))
-    else:
-      id = vimeoUrl.captureBetween('/', '?', vimeoUrl.find(".com/"))
+    id = extractId(vimeoUrl)
     let standardVimeoUrl = "https://vimeo.com/video/" & id
 
     (code, response) = doGet(configUrl % id)
@@ -178,7 +183,7 @@ proc getVideo(vimeoUrl: string) =
         echo "[trying embed url]"
         # HACK: use patreon embed url to get meta data
         headers.add(("referer", "https://cdn.embedly.com/"))
-        (code, response) = doGet("https://player.vimeo.com/video/$1?app_id=122963&referrer=https%3A%2F%2Fwww.patreon.com%2F" % id)
+        (code, response) = doGet(bypassUrl % id)
         let embedResponse = response.captureBetween(' ', ';', response.find("""config =""") + 8)
 
         if embedResponse.contains("cdn_url"):
@@ -189,6 +194,7 @@ proc getVideo(vimeoUrl: string) =
       else:
         (code, response) = doGet(signedConfigUrl.replace("\\"))
     elif not code.is2xx:
+      echo '<', code, '>'
       echo "<failed to obtain meta data>"
       return
 
@@ -262,9 +268,13 @@ proc getProfile(vimeoUrl: string) =
 
 
 proc vimeoDownload*(vimeoUrl: string) =
-  # TODO: find a better approach?
-  try:
-    discard parseInt(vimeoUrl.split('/')[^1])
-    getVideo(vimeoUrl)
-  except ValueError:
+  const nums = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9'}
+  var profile: bool
+  for c in extractId(vimeoUrl):
+    if not nums.contains(c):
+      profile = true
+      break
+  if profile:
     getProfile(vimeoUrl)
+  else:
+    getVideo(vimeoUrl)

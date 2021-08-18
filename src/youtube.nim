@@ -500,28 +500,20 @@ proc getSigCipherUrl(js, signatureCipher: string): string =
 ########################################################
 
 
-proc selectBestVideoStream(streams: JsonNode, itag=0): JsonNode =
+proc selectBestVideoStream(streams: JsonNode): JsonNode =
   # NOTE: zeroth stream always seems to be the overall best* quality
-  if itag > 0:
-    for stream in streams:
-      if stream["itag"].getInt() == itag:
-        result = stream
-  else:
-    result = streams[0]
+  # TODO: investigate significance of video streams with both bitrate and average bitrate
+  # and which is more important
+  result = streams[0]
 
 
-proc selectBestAudioStream(streams: JsonNode, itag=0): JsonNode =
-  if itag > 0:
-    for stream in streams:
-      if stream["itag"].getInt() == itag:
+proc selectBestAudioStream(streams: JsonNode): JsonNode =
+  var largest = 0
+  for stream in streams:
+    if stream.contains("audioQuality"):
+      if stream["bitrate"].getInt() > largest:
+        largest = stream["bitrate"].getInt()
         result = stream
-  else:
-    var largest = 0
-    for stream in streams:
-      if stream.contains("audioQuality"):
-        if stream["bitrate"].getInt() > largest:
-          largest = stream["bitrate"].getInt()
-          result = stream
 
 
 proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime, ext, size, qlt: string] =
@@ -532,7 +524,10 @@ proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime,
     result.size = formatSize(parseInt(stream["contentLength"].getStr()), includeSpace=true)
   else:
     # NOTE: estimate from bitrate
-    result.size = formatSize((stream["bitrate"].getInt() * duration / 8).int, includeSpace=true)
+    if stream.hasKey("averageBitrate"):
+      result.size = formatSize((stream["averageBitrate"].getInt() * duration / 8).int, includeSpace=true)
+    else:
+      result.size = formatSize((stream["bitrate"].getInt() * duration / 8).int, includeSpace=true)
   result.qlt = stream["qualityLabel"].getStr()
 
 
@@ -544,7 +539,10 @@ proc getAudioStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime,
     result.size = formatSize(parseInt(stream["contentLength"].getStr()), includeSpace=true)
   else:
     # NOTE: estimate from bitrate
-    result.size = formatSize((stream["bitrate"].getInt() * duration / 8).int, includeSpace=true)
+    if stream.hasKey("averageBitrate"):
+      result.size = formatSize((stream["averageBitrate"].getInt() * duration / 8).int, includeSpace=true)
+    else:
+      result.size = formatSize((stream["bitrate"].getInt() * duration / 8).int, includeSpace=true)
   result.qlt = stream["audioQuality"].getStr()
 
 
@@ -656,7 +654,7 @@ proc isolatePlaylist(youtubeUrl: string): string =
   result = youtubeUrl.captureBetween('=', '&', youtubeUrl.find("list="))
 
 
-proc getVideo(youtubeUrl: string) =
+proc getVideo(youtubeUrl: string, itag=0) =
   let
     id = isolateId(youtubeUrl)
     standardYoutubeUrl = watchUrl & id
@@ -666,7 +664,7 @@ proc getVideo(youtubeUrl: string) =
     code: HttpCode
     dashManifestUrl: string
 
-  # NOTE: make initial request to get variable youtube values
+  # NOTE: make initial request to get base.js and timestamp
   (code, response) = doGet(standardYoutubeUrl)
   if code.is2xx:
     let sigTimeStamp = response.captureBetween(':', ',', response.find("\"STS\""))
@@ -732,11 +730,9 @@ proc getVideo(youtubeUrl: string) =
         else:
           echo "<failed to download video stream>"
     else:
-      echo '<', code, '>'
       echo "<failed to obtain channel metadata>"
   else:
-    echo '<', code, '>'
-    echo "<failed to obtain channel metadata>"
+    echo '<', code, '>', '\n', "<failed to obtain channel metadata>"
 
 
 proc getChannel(youtubeUrl: string) =
@@ -779,8 +775,7 @@ proc getChannel(youtubeUrl: string) =
     for id in ids:
       getVideo(watchUrl & id)
   else:
-    echo '<', code, '>'
-    echo "<failed to obtain channel metadata>"
+    echo '<', code, '>', '\n', "<failed to obtain channel metadata>"
 
 
 proc getPlaylist(youtubeUrl: string) =
@@ -808,8 +803,7 @@ proc getPlaylist(youtubeUrl: string) =
       for id in ids:
         getVideo(watchUrl & id)
   else:
-    echo '<', code, '>'
-    echo "<failed to obtain playlist metadata>"
+    echo '<', code, '>', '\n', "<failed to obtain playlist metadata>"
 
 
 proc youtubeDownload*(youtubeUrl: string) =
