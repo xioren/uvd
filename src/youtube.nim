@@ -296,7 +296,7 @@ iterator splitThrottleArray(js: string): string =
     item = newString(1)
     context: seq[char]
 
-  discard js.find(re("(?<=,c=\\[)(.+)(?=\\];c)", flags={reDotAll}), match)
+  discard js.find(re("(?<=,c=\\[)(.+)(?=\\];\n?c)", flags={reDotAll}), match)
   for idx, c in match[0]:
     if (c == ',' and context.len == 0 and match[0][min(idx + 3, match[0].high)] != '{') or
        idx == match[0].high:
@@ -525,9 +525,9 @@ proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime,
   else:
     # NOTE: estimate from bitrate
     if stream.hasKey("averageBitrate"):
-      result.size = formatSize((stream["averageBitrate"].getInt() * duration / 8).int, includeSpace=true)
+      result.size = formatSize(int(stream["averageBitrate"].getInt() * duration / 8), includeSpace=true)
     else:
-      result.size = formatSize((stream["bitrate"].getInt() * duration / 8).int, includeSpace=true)
+      result.size = formatSize(int(stream["bitrate"].getInt() * duration / 8), includeSpace=true)
   result.qlt = stream["qualityLabel"].getStr()
 
 

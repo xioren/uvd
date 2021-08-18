@@ -154,7 +154,7 @@ proc getProfileIds(vimeoUrl: string): tuple[profileId, sectionId: string] =
     echo "<failed to obtain profile metadata>"
 
 
-proc extractId(cimeoUrl: string): string =
+proc extractId(vimeoUrl: string): string =
   if vimeoUrl.contains("/video/"):
     result = vimeoUrl.captureBetween('/', '?', vimeoUrl.find("video/"))
   else:
