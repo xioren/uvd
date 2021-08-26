@@ -272,7 +272,7 @@ proc parseThrottleFunctionName(js: string): string =
   # a.C&&(b=a.get("n"))&&(b=kha(b),a.set("n",b))
   # --> kha
   var match: array[1, string]
-  let pattern = re"(a\.C&&\(b=a.get[^}]+)"
+  let pattern = re"(a\.[A-Z]&&\(b=a.[a-z]et[^}]+)"
   discard js.find(pattern, match)
   result = match[0].captureBetween('=', '(', match[0].find("a.set") - 10)
 
@@ -571,6 +571,7 @@ proc urlOrCipher(stream: JsonNode): string =
     nTransforms[n] = calculatedN
     if n != calculatedN:
       result = result.replace(n, calculatedN)
+
   # QUESTION: does this work if not in signed vars?
   if not result.contains("&ratebypass"):
     result.insert("&ratebypass=yes", result.find("requiressl") + 14)
