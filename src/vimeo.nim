@@ -194,8 +194,7 @@ proc getVideo(vimeoUrl: string) =
       else:
         (code, response) = doGet(signedConfigUrl.replace("\\"))
     elif not code.is2xx:
-      echo '<', code, '>'
-      echo "<failed to obtain meta data>"
+      echo '<', code, '>', '\n', "<failed to obtain meta data>"
       return
 
   configResponse = parseJson(response)

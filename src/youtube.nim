@@ -142,10 +142,11 @@ var
 # as a reference
 
 proc index[T](d: openarray[T], item: T): int =
-  ## provide index of item
+  ## provide index of item in d
   for idx, i in d:
     if i == item:
       return idx
+  raise newException(IndexDefect, "$1 not in $2" % [$item, $d.type])
 
 
 proc throttleModFunction(d: string, e: int): int =
@@ -169,10 +170,10 @@ proc throttleUnshift(d: var seq[string], e: int) =
 
 
 proc throttleCipher(d: var string, e: string) =
+  let temp = d
   var
     f = 96
     this = e
-    temp = d
     bVal: int
 
   for idx, c in temp:
@@ -260,10 +261,7 @@ proc setH(code: string) =
               '_']
   var match: array[1, string]
   discard code.find(re"({for\(var\sf=64[^}]+})", match)
-  # if match[0].contains("{case 58"):
-  #   result = charsA
-  # NOTE: case 65 may be exclusive to charsB and thus the better way to match.
-  if match[0].contains("{case 91") or match[0].contains("case 65:"):
+  if match[0].contains("case 65"):
     h = charsB
   else:
     h = charsA
@@ -274,9 +272,8 @@ proc parseThrottleFunctionName(js: string): string =
   # a.C&&(b=a.get("n"))&&(b=kha(b),a.set("n",b))
   # --> kha
   var match: array[1, string]
-  let functionPatterns = [re"(a\.C&&\(b=a.get[^}]+)"]
-  for pattern in functionPatterns:
-    discard js.find(pattern, match)
+  let pattern = re"(a\.C&&\(b=a.get[^}]+)"
+  discard js.find(pattern, match)
   result = match[0].captureBetween('=', '(', match[0].find("a.set") - 10)
 
 
@@ -417,14 +414,13 @@ proc getParts(cipherSignature: string): tuple[url, sc, s: string] =
 
 proc parseFunctionPlan(js: string): seq[string] =
   ## get the scramble functions
-  ## @["ix.Nh(a,2)", "ix.ai(a,5)", "ix.wW(a,62)", "ix.Nh(a,1)", "ix.wW(a,39)",
-  ## "ix.ai(a,41)", "ix.Nh(a,3)"]
-  var match: array[1, string]
+  ## returns: @["ix.Nh(a,2)", "ix.ai(a,5)"...]
+
   # NOTE: matches vy=function(a){a=a.split("");uy.bH(a,3);uy.Fg(a,7);uy.Fg(a,50);
   # uy.S6(a,71);uy.bH(a,2);uy.S6(a,80);uy.Fg(a,38);return a.join("")};
-  let functionPatterns = [re"([a-zA-Z]{2}\=function\(a\)\{a\=a\.split\([^\(]+\);[a-zA-Z]{2}\.[^\n]+)"]
-  for pattern in functionPatterns:
-    discard js.find(pattern, match)
+  let functionPattern = re"([a-zA-Z]{2}\=function\(a\)\{a\=a\.split\([^\(]+\);[a-zA-Z]{2}\.[^\n]+)"
+  var match: array[1, string]
+  discard js.find(functionPattern, match)
   match[0].split(';')[1..^3]
 
 
@@ -452,8 +448,7 @@ proc parseIndex(jsFunction: string): int {.inline.} =
 
 proc createFunctionMap(js, mainFunc: string): Table[string, string] =
   ## map functions to corresponding function names
-  ## {"ai": "function(a,b){var c=a[0];a[0]=a[b%a.length];a[b%a.length]=c}",
-  ## "wW": "function(a){a.reverse()}", "Nh": "function(a,b){a.splice(0,b)}"}
+  ## {"wW": "function(a){a.reverse()}", "Nh": "function(a,b){a.splice(0,b)}"...}
   var match: array[1, string]
   let pattern = re("(?<=var $1={)(.+?)(?=};)" % mainFunc, flags={reDotAll})
   discard js.find(pattern, match)
@@ -566,7 +561,13 @@ proc urlOrCipher(stream: JsonNode): string =
   if nTransforms.haskey(n):
     result = result.replace(n, nTransforms[n])
   else:
-    calculatedN = calculateN(n, response)
+    # TEMP: this is to try and find n values which cause range defects and crash the program
+    try:
+      calculatedN = calculateN(n, response)
+    except RangeDefect as e:
+      echo e.msg
+      echo n
+      doAssert false
     nTransforms[n] = calculatedN
     if n != calculatedN:
       result = result.replace(n, calculatedN)
@@ -654,7 +655,7 @@ proc isolatePlaylist(youtubeUrl: string): string =
   result = youtubeUrl.captureBetween('=', '&', youtubeUrl.find("list="))
 
 
-proc getVideo(youtubeUrl: string, itag=0) =
+proc getVideo(youtubeUrl: string) =
   let
     id = isolateId(youtubeUrl)
     standardYoutubeUrl = watchUrl & id
@@ -698,7 +699,7 @@ proc getVideo(youtubeUrl: string, itag=0) =
               stdout.write(run["text"].getStr())
           return
 
-        # NOTE: hlsManifestUrl seems to be for live streamed videos but is it ever needed?
+        # QUESTION: hlsManifestUrl seems to be for live streamed videos but is it ever needed?
         if playerResponse["streamingData"].hasKey("dashManifestUrl"):
           dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
         let
@@ -730,7 +731,7 @@ proc getVideo(youtubeUrl: string, itag=0) =
         else:
           echo "<failed to download video stream>"
     else:
-      echo "<failed to obtain channel metadata>"
+      echo "<failed to obtain video metadata>"
   else:
     echo '<', code, '>', '\n', "<failed to obtain channel metadata>"
 
@@ -757,11 +758,11 @@ proc getChannel(youtubeUrl: string) =
           (code, response) = doPost(browseUrl, browseContinueContext % [channel, token, date])
           if code.is2xx:
             channelResponse = parseJson(response)
-            for item in channelResponse["onResponseReceivedActions"][0]["appendContinuationItemsAction"]["continuationItems"]:
-              if item.hasKey("continuationItemRenderer"):
-                token = item["continuationItemRenderer"]["continuationEndpoint"]["continuationCommand"]["token"].getStr()
+            for continuationItem in channelResponse["onResponseReceivedActions"][0]["appendContinuationItemsAction"]["continuationItems"]:
+              if continuationItem.hasKey("continuationItemRenderer"):
+                token = continuationItem["continuationItemRenderer"]["continuationEndpoint"]["continuationCommand"]["token"].getStr()
               else:
-                ids.add(item["gridVideoRenderer"]["videoId"].getStr())
+                ids.add(continuationItem["gridVideoRenderer"]["videoId"].getStr())
             if token == lastToken:
               break
             else:
