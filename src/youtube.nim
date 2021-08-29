@@ -272,7 +272,7 @@ proc parseThrottleFunctionName(js: string): string =
   # a.C&&(b=a.get("n"))&&(b=kha(b),a.set("n",b))
   # --> kha
   var match: array[1, string]
-  let pattern = re"(a\.[A-Z]&&\(b=a.[a-z]et[^}]+)"
+  let pattern = re"(a\.[A-Z]&&\(b=a.[sg]et[^}]+)"
   discard js.find(pattern, match)
   result = match[0].captureBetween('=', '(', match[0].find("a.set") - 10)
 
@@ -566,7 +566,7 @@ proc urlOrCipher(stream: JsonNode): string =
       calculatedN = calculateN(n, response)
     except RangeDefect as e:
       echo e.msg
-      echo n
+      echo "dubug: ", n
       doAssert false
     nTransforms[n] = calculatedN
     if n != calculatedN:
@@ -693,6 +693,7 @@ proc getVideo(youtubeUrl: string) =
           playerResponse = parseJson(response)
           if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
             echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
+            return
         elif playerResponse["playabilityStatus"]["status"].getStr() != "OK" or playerResponse["playabilityStatus"].hasKey("liveStreamability"):
           echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
           if playerResponse["playabilityStatus"]["errorScreen"]["playerErrorMessageRenderer"].hasKey("subreason"):
