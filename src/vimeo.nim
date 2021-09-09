@@ -267,10 +267,9 @@ proc getProfile(vimeoUrl: string) =
 
 
 proc vimeoDownload*(vimeoUrl: string) =
-  const nums = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9'}
   var profile: bool
   for c in extractId(vimeoUrl):
-    if not nums.contains(c):
+    if not isDigit(c):
       profile = true
       break
   if profile:

@@ -123,7 +123,7 @@ var
 
 
 ########################################################
-# misc
+# authentication
 ########################################################
 
 
@@ -593,7 +593,6 @@ proc extractDashInfo(dashManifestUrl, itag: string): tuple[baseUrl, segmentList:
 
 
 proc newVideoStream(youtubeUrl, dashManifestUrl, title: string, duration: int, stream: JsonNode): Stream =
-  var segmentList: string
   result.title = title
   (result.itag, result.mime, result.ext, result.size, result.quality) = getVideoStreamInfo(stream, duration)
   result.filename = addFileExt("videostream", result.ext)
@@ -603,6 +602,7 @@ proc newVideoStream(youtubeUrl, dashManifestUrl, title: string, duration: int, s
     result.url = urlOrCipher(stream)
   else:
     # QUESTION: are dash urls or manifest urls ever ciphered?
+    var segmentList: string
     result.dash = true
     (result.baseUrl, segmentList) = extractDashInfo(dashManifestUrl, $result.itag)
     result.urlSegments = produceUrlSegments(result.baseUrl, segmentList)
@@ -610,7 +610,6 @@ proc newVideoStream(youtubeUrl, dashManifestUrl, title: string, duration: int, s
 
 proc newAudioStream(youtubeUrl, dashManifestUrl, title: string, duration: int, stream: JsonNode): Stream =
   # QUESTION: will stream with no audio throw exception?
-  var segmentList: string
   result.title = title
   (result.itag, result.mime, result.ext, result.size, result.quality) = getAudioStreamInfo(stream, duration)
   result.filename = addFileExt("audiostream", result.ext)
@@ -620,6 +619,7 @@ proc newAudioStream(youtubeUrl, dashManifestUrl, title: string, duration: int, s
     result.url = urlOrCipher(stream)
   else:
     # QUESTION: are dash urls or manifest urls ever ciphered?
+    var segmentList: string
     result.dash = true
     (result.baseUrl, segmentList) = extractDashInfo(dashManifestUrl, $result.itag)
     result.urlSegments = produceUrlSegments(result.baseUrl, segmentList)
@@ -696,7 +696,8 @@ proc getVideo(youtubeUrl: string) =
             return
         elif playerResponse["playabilityStatus"]["status"].getStr() != "OK" or playerResponse["playabilityStatus"].hasKey("liveStreamability"):
           echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
-          if playerResponse["playabilityStatus"]["errorScreen"]["playerErrorMessageRenderer"].hasKey("subreason"):
+          # QUESTION: does "errorScreen" always imply "subreason"?
+          if playerResponse["playabilityStatus"].hasKey("errorScreen") and playerResponse["playabilityStatus"]["errorScreen"]["playerErrorMessageRenderer"].hasKey("subreason"):
             for run in playerResponse["playabilityStatus"]["errorScreen"]["playerErrorMessageRenderer"]["subreason"]["runs"]:
               stdout.write(run["text"].getStr())
           return
@@ -739,6 +740,7 @@ proc getVideo(youtubeUrl: string) =
 
 
 proc getChannel(youtubeUrl: string) =
+  # FIXME: does not work: https://www.youtube.com/channel/UCkVUDntIRRN5gqFzYk2mbDA
   let channel = isolateChannel(youtubeUrl)
   var
     channelResponse: JsonNode
