@@ -116,6 +116,7 @@ const
 let date = now().format("yyyyMMdd")
 
 var
+  audio, video: bool
   h: array[64, char]
   jsUrl: string
   cipherPlan: seq[string]
@@ -713,16 +714,18 @@ proc getVideo(youtubeUrl: string) =
                                        selectBestVideoStream(playerResponse["streamingData"]["adaptiveFormats"]))
           audioStream = newAudioStream(standardYoutubeUrl, dashManifestUrl, title, duration,
                                        selectBestAudioStream(playerResponse["streamingData"]["adaptiveFormats"]))
-
-        reportStreamInfo(videoStream)
         var attempt: HttpCode
-        if videoStream.dash:
-          attempt = grabMulti(videoStream.urlSegments, forceFilename=videoStream.filename,
-                              saveLocation=getCurrentDir(), forceDl=true)
-        else:
-          attempt = grab(videoStream.url, forceFilename=videoStream.filename,
-                         saveLocation=getCurrentDir(), forceDl=true)
-        if attempt.is2xx:
+        if video:
+          reportStreamInfo(videoStream)
+          if videoStream.dash:
+            attempt = grabMulti(videoStream.urlSegments, forceFilename=videoStream.filename,
+                                saveLocation=getCurrentDir(), forceDl=true)
+          else:
+            attempt = grab(videoStream.url, forceFilename=videoStream.filename,
+                           saveLocation=getCurrentDir(), forceDl=true)
+          if not attempt.is2xx:
+            echo "<failed to download video stream>"
+        if audio:
           reportStreamInfo(audioStream)
           if audioStream.dash:
             attempt = grabMulti(audioStream.urlSegments, forceFilename=audioStream.filename,
@@ -730,14 +733,18 @@ proc getVideo(youtubeUrl: string) =
           else:
             attempt = grab(audioStream.url, forceFilename=audioStream.filename,
                            saveLocation=getCurrentDir(), forceDl=true)
-          if attempt.is2xx:
-            joinStreams(videoStream.filename, audioStream.filename, safeTitle)
-          else:
+          if not attempt.is2xx:
             echo "<failed to download audio stream>"
+        if audio and video:
+          joinStreams(videoStream.filename, audioStream.filename, safeTitle)
         else:
-          echo "<failed to download video stream>"
+          if not video:
+            toMp3(audioStream.filename, safeTitle)
+          else:
+            moveFile(joinPath(getCurrentDir(), videoStream.filename), finalPath.changeFileExt(videoStream.ext))
+            echo "[complete] ", addFileExt(safeTitle, videoStream.ext)
     else:
-      echo "<failed to obtain video metadata>"
+      echo '<', code, '>', '\n', "<failed to obtain video metadata>"
   else:
     echo '<', code, '>', '\n', "<failed to obtain channel metadata>"
 
@@ -820,7 +827,7 @@ proc getChannel(youtubeUrl: string) =
         videoIds.add(id)
       inc tabIdx
 
-    if title.contains(" - Topic"):
+    if title.endsWith(" - Topic"):
       # NOTE: for now only get playlists for topic channels, as they have no videos
       (code, response) = doPost(browseUrl, browseContext % [channel, date, playlistsTab])
       if code.is2xx:
@@ -860,7 +867,9 @@ proc getChannel(youtubeUrl: string) =
     getPlaylist(playlistUrl & id)
 
 
-proc youtubeDownload*(youtubeUrl: string) =
+proc youtubeDownload*(youtubeUrl: string, getAudio, getVideo: bool) =
+  audio = getAudio
+  video = getVideo
   if "/channel/" in youtubeUrl or "/c/" in youtubeUrl:
     getChannel(youtubeUrl)
   elif "/playlist?" in youtubeUrl:

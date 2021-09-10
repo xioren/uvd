@@ -30,6 +30,18 @@ proc joinStreams*(videoStream, audioStream, filename: string) =
     echo "<error joining streams>"
 
 
+proc toMp3*(audioStream, filename) =
+  ## convert audio stream to mp3
+  let fullFilename = addFileExt(filename)
+
+  echo "[converting stream] ", audioStream
+  if execShellCmd(fmt"ffmpeg -i {audioStream} -acodec libmp3lame {quoteShell(fullFilename)} > /dev/null 2>&1") == 0:
+    removeFile(audioStream)
+    echo "[complete] ", fullFilename
+  else:
+    echo "<error converting stream>"
+
+
 proc clearProgress() =
   stdout.eraseLine()
   stdout.cursorDown()

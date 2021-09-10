@@ -10,7 +10,6 @@ import utils
 # timestamp most likely used in hash as salt
 # QUESTIONS: SAPISIDHASH?
 
-
 type
   Stream = object
     title: string
@@ -24,7 +23,6 @@ type
     urlSegments: seq[string]
     exists: bool
 
-
 const
   configUrl = "https://player.vimeo.com/video/$1/config"
   # detailsUrl = "http://vimeo.com/api/v2/video/$1.json"
@@ -33,6 +31,8 @@ const
   profileUrl = "https://api.vimeo.com/users/$1/profile_sections?fields=uri%2Ctitle%2CuserUri%2Curi%2C"
   videosUrl = "https://api.vimeo.com/users/$1/profile_sections/$2/videos?fields=video_details%2Cprofile_section_uri%2Ccolumn_width%2Cclip.uri%2Cclip.name%2Cclip.type%2Cclip.categories.name%2Cclip.categories.uri%2Cclip.config_url%2Cclip.pictures%2Cclip.height%2Cclip.width%2Cclip.duration%2Cclip.description%2Cclip.created_time%2C&page=1&per_page=10"
   bypassUrl = "https://player.vimeo.com/video/$1?app_id=122963&referrer=https%3A%2F%2Fwww.patreon.com%2F"
+
+var audio, video: bool
 
 
 proc isVerticle(stream: JsonNode): bool =
@@ -218,20 +218,24 @@ proc getVideo(vimeoUrl: string) =
         videoStream = newVideoStream(cdnUrl, title, selectBestVideoStream(cdnResponse["video"]))
         audioStream = newAudioStream(cdnUrl, title, selectBestAudioStream(cdnResponse["audio"]))
 
-      reportStreamInfo(videoStream)
-      if not grabMulti(videoStream.urlSegments, forceFilename=videoStream.filename,
-                       saveLocation=getCurrentDir(), forceDl=true).is2xx:
-        echo "<failed to download video stream>"
-      elif audioStream.exists:
+      if video:
+        reportStreamInfo(videoStream)
+        if not grabMulti(videoStream.urlSegments, forceFilename=videoStream.filename,
+                         saveLocation=getCurrentDir(), forceDl=true).is2xx:
+          echo "<failed to download video stream>"
+      if audio and audioStream.exists:
         reportStreamInfo(audioStream)
         if not grabMulti(audioStream.urlSegments, forceFilename=audioStream.filename,
                          saveLocation=getCurrentDir(), forceDl=true).is2xx:
           echo "<failed to download audio stream>"
-        else:
-          joinStreams(videoStream.filename, audioStream.filename, safeTitle)
+      if audio and video:
+        joinStreams(videoStream.filename, audioStream.filename, safeTitle)
       else:
-        moveFile(joinPath(getCurrentDir(), videoStream.filename), finalPath.changeFileExt(videoStream.ext))
-        echo "[complete] ", addFileExt(safeTitle, videoStream.ext)
+        if not video:
+          toMp3(audioStream.filename, safeTitle)
+        else:
+          moveFile(joinPath(getCurrentDir(), videoStream.filename), finalPath.changeFileExt(videoStream.ext))
+          echo "[complete] ", addFileExt(safeTitle, videoStream.ext)
 
 
 proc getProfile(vimeoUrl: string) =
@@ -266,7 +270,9 @@ proc getProfile(vimeoUrl: string) =
     getVideo(url)
 
 
-proc vimeoDownload*(vimeoUrl: string) =
+proc vimeoDownload*(vimeoUrl: string, getAudio, getVideo: bool) =
+  audio = getAudio
+  video = getVideo
   var profile: bool
   for c in extractId(vimeoUrl):
     if not isDigit(c):
