@@ -59,7 +59,7 @@ const
         }
       }
     },
-    "params": "EgZ2aWRlb3M%3D"
+    "params": "$3"
   }"""
   browseContinueContext = """{
     "context": {
@@ -105,10 +105,13 @@ type
 const
   baseUrl = "https://www.youtube.com"
   watchUrl = "https://www.youtube.com/watch?v="
+  playlistUrl = "https://www.youtube.com/playlist?list="
   playerUrl = "https://youtubei.googleapis.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
   browseUrl = "https://youtubei.googleapis.com/youtubei/v1/browse?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
   nextUrl = "https://youtubei.googleapis.com/youtubei/v1/next?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
   # contextUrl = "https://www.youtube.com/sw.js_data"
+  videosTab = "EgZ2aWRlb3M%3D"
+  playlistsTab = "EglwbGF5bGlzdHM%3D"
 
 let date = now().format("yyyyMMdd")
 
@@ -739,50 +742,6 @@ proc getVideo(youtubeUrl: string) =
     echo '<', code, '>', '\n', "<failed to obtain channel metadata>"
 
 
-proc getChannel(youtubeUrl: string) =
-  # FIXME: does not work: https://www.youtube.com/channel/UCkVUDntIRRN5gqFzYk2mbDA
-  let channel = isolateChannel(youtubeUrl)
-  var
-    channelResponse: JsonNode
-    response: string
-    code: HttpCode
-    token, lastToken: string
-    ids: seq[string]
-
-  (code, response) = doPost(browseUrl, browseContext % [channel, date])
-  if code.is2xx:
-    echo "[collecting videos]"
-    channelResponse = parseJson(response)
-
-    for item in channelResponse["contents"]["twoColumnBrowseResultsRenderer"]["tabs"][1]["tabRenderer"]["content"]["sectionListRenderer"]["contents"][0]["itemSectionRenderer"]["contents"][0]["gridRenderer"]["items"]:
-      if item.hasKey("continuationItemRenderer"):
-        token = item["continuationItemRenderer"]["continuationEndpoint"]["continuationCommand"]["token"].getStr()
-        lastToken = token
-        while true:
-          (code, response) = doPost(browseUrl, browseContinueContext % [channel, token, date])
-          if code.is2xx:
-            channelResponse = parseJson(response)
-            for continuationItem in channelResponse["onResponseReceivedActions"][0]["appendContinuationItemsAction"]["continuationItems"]:
-              if continuationItem.hasKey("continuationItemRenderer"):
-                token = continuationItem["continuationItemRenderer"]["continuationEndpoint"]["continuationCommand"]["token"].getStr()
-              else:
-                ids.add(continuationItem["gridVideoRenderer"]["videoId"].getStr())
-            if token == lastToken:
-              break
-            else:
-              lastToken = token
-          else:
-            echo "<failed to obtain channel metadata>"
-      else:
-        ids.add(item["gridVideoRenderer"]["videoId"].getStr())
-
-    echo '[', ids.len, " videos queued]"
-    for id in ids:
-      getVideo(watchUrl & id)
-  else:
-    echo '<', code, '>', '\n', "<failed to obtain channel metadata>"
-
-
 proc getPlaylist(youtubeUrl: string) =
   let playlist = isolatePlaylist(youtubeUrl)
   var
@@ -809,6 +768,90 @@ proc getPlaylist(youtubeUrl: string) =
         getVideo(watchUrl & id)
   else:
     echo '<', code, '>', '\n', "<failed to obtain playlist metadata>"
+
+
+proc getChannel(youtubeUrl: string) =
+  let channel = isolateChannel(youtubeUrl)
+  var
+    channelResponse: JsonNode
+    response: string
+    code: HttpCode
+    token, lastToken: string
+    videoIds: seq[string]
+    playlistIds: seq[string]
+    tabIdx = 1
+
+  iterator gridRendererExtractor(renderer: string): string =
+    let upperRenderer = capitalizeAscii(renderer)
+    for section in channelResponse["contents"]["twoColumnBrowseResultsRenderer"]["tabs"][tabIdx]["tabRenderer"]["content"]["sectionListRenderer"]["contents"]:
+      if section["itemSectionRenderer"]["contents"][0].hasKey("messageRenderer"):
+        echo '<', section["itemSectionRenderer"]["contents"][0]["messageRenderer"]["text"]["simpleText"].getStr(), '>'
+      else:
+        for item in section["itemSectionRenderer"]["contents"][0]["gridRenderer"]["items"]:
+          if item.hasKey("continuationItemRenderer"):
+            token = item["continuationItemRenderer"]["continuationEndpoint"]["continuationCommand"]["token"].getStr()
+            lastToken = token
+            while true:
+              (code, response) = doPost(browseUrl, browseContinueContext % [channel, token, date])
+              if code.is2xx:
+                channelResponse = parseJson(response)
+                for continuationItem in channelResponse["onResponseReceivedActions"][0]["appendContinuationItemsAction"]["continuationItems"]:
+                  if continuationItem.hasKey("continuationItemRenderer"):
+                    token = continuationItem["continuationItemRenderer"]["continuationEndpoint"]["continuationCommand"]["token"].getStr()
+                  else:
+                    yield continuationItem["grid" & upperRenderer & "Renderer"][renderer & "Id"].getStr()
+                if token == lastToken:
+                  break
+                else:
+                  lastToken = token
+              else:
+                echo "<failed to obtain channel metadata>"
+          else:
+              yield item["grid" & upperRenderer & "Renderer"][renderer & "Id"].getStr()
+
+  (code, response) = doPost(browseUrl, browseContext % [channel, date, videosTab])
+  if code.is2xx:
+    echo "[collecting videos]"
+    channelResponse = parseJson(response)
+    if channelResponse["contents"]["twoColumnBrowseResultsRenderer"]["tabs"][tabIdx]["tabRenderer"]["title"].getStr() == "Videos":
+      for id in gridRendererExtractor("video"):
+        videoIds.add(id)
+      inc tabIdx
+
+  (code, response) = doPost(browseUrl, browseContext % [channel, date, playlistsTab])
+  if code.is2xx:
+    echo "[collecting playlists]"
+    channelResponse = parseJson(response)
+    if channelResponse["contents"]["twoColumnBrowseResultsRenderer"]["tabs"][tabIdx]["tabRenderer"]["title"].getStr() == "Playlists":
+      for section in channelResponse["contents"]["twoColumnBrowseResultsRenderer"]["tabs"][tabIdx]["tabRenderer"]["content"]["sectionListRenderer"]["contents"]:
+        if section["itemSectionRenderer"]["contents"][0].hasKey("messageRenderer"):
+          echo '<', section["itemSectionRenderer"]["contents"][0]["messageRenderer"]["text"]["simpleText"].getStr(), '>'
+        else:
+          if section["itemSectionRenderer"]["contents"][0].hasKey("gridRenderer"):
+            # NOTE: gridRenderer
+            for id in gridRendererExtractor("playlist"):
+              playlistIds.add(id)
+          elif section["itemSectionRenderer"]["contents"][0].hasKey("shelfRenderer"):
+            if section["itemSectionRenderer"]["contents"][0]["shelfRenderer"]["content"].hasKey("expandedShelfContentsRenderer"):
+              # NOTE: expandedShelfContentsRenderer
+              for item in section["itemSectionRenderer"]["contents"][0]["shelfRenderer"]["content"]["expandedShelfContentsRenderer"]["items"]:
+                playlistIds.add(item["playlistRenderer"]["playlistId"].getStr())
+            elif section["itemSectionRenderer"]["contents"][0]["shelfRenderer"]["content"].hasKey("horizontalListRenderer"):
+              # NOTE: horizontalListRenderer
+              for item in section["itemSectionRenderer"]["contents"][0]["shelfRenderer"]["content"]["horizontalListRenderer"]["items"]:
+                playlistIds.add(item["gridPlaylistRenderer"]["playlistId"].getStr())
+            else:
+              echo "<failed to obtain channel metadata>"
+          else:
+            echo "<failed to obtain channel metadata>"
+
+    echo '[', videoIds.len, " videos queued]", '\n', '[', playlistIds.len, " playlists queued]"
+    for id in videoIds:
+      getVideo(watchUrl & id)
+    for id in playlistIds:
+      getPlaylist(playlistUrl & id)
+  else:
+    echo '<', code, '>', '\n', "<failed to obtain channel metadata>"
 
 
 proc youtubeDownload*(youtubeUrl: string) =
