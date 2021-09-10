@@ -15,3 +15,12 @@
 *vimeo:*
   + videos
   + profiles
+
+```
+Usage: uvd [options] url
+
+Options:
+  -a, --audio                     Audio only
+  -v, --video                     Video only
+  -h, --help                      Print this help
+```
