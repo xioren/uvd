@@ -819,39 +819,39 @@ proc getChannel(youtubeUrl: string) =
       for id in gridRendererExtractor("video"):
         videoIds.add(id)
       inc tabIdx
-  else:
-    echo '<', code, '>', '\n', "<failed to obtain channel metadata>"
 
-  if title.contains(" - Topic"):
-    # NOTE: for now only get playlists for topic channels, as they have no videos
-    (code, response) = doPost(browseUrl, browseContext % [channel, date, playlistsTab])
-    if code.is2xx:
-      echo "[collecting playlists]"
-      channelResponse = parseJson(response)
-      if channelResponse["contents"]["twoColumnBrowseResultsRenderer"]["tabs"][tabIdx]["tabRenderer"]["title"].getStr() == "Playlists":
-        for section in channelResponse["contents"]["twoColumnBrowseResultsRenderer"]["tabs"][tabIdx]["tabRenderer"]["content"]["sectionListRenderer"]["contents"]:
-          if section["itemSectionRenderer"]["contents"][0].hasKey("messageRenderer"):
-            echo '<', section["itemSectionRenderer"]["contents"][0]["messageRenderer"]["text"]["simpleText"].getStr(), '>'
-          else:
-            if section["itemSectionRenderer"]["contents"][0].hasKey("gridRenderer"):
-              # NOTE: gridRenderer
-              for id in gridRendererExtractor("playlist"):
-                playlistIds.add(id)
-            elif section["itemSectionRenderer"]["contents"][0].hasKey("shelfRenderer"):
-              if section["itemSectionRenderer"]["contents"][0]["shelfRenderer"]["content"].hasKey("expandedShelfContentsRenderer"):
-                # NOTE: expandedShelfContentsRenderer
-                for item in section["itemSectionRenderer"]["contents"][0]["shelfRenderer"]["content"]["expandedShelfContentsRenderer"]["items"]:
-                  playlistIds.add(item["playlistRenderer"]["playlistId"].getStr())
-              elif section["itemSectionRenderer"]["contents"][0]["shelfRenderer"]["content"].hasKey("horizontalListRenderer"):
-                # NOTE: horizontalListRenderer
-                for item in section["itemSectionRenderer"]["contents"][0]["shelfRenderer"]["content"]["horizontalListRenderer"]["items"]:
-                  playlistIds.add(item["gridPlaylistRenderer"]["playlistId"].getStr())
+    if title.contains(" - Topic"):
+      # NOTE: for now only get playlists for topic channels, as they have no videos
+      (code, response) = doPost(browseUrl, browseContext % [channel, date, playlistsTab])
+      if code.is2xx:
+        echo "[collecting playlists]"
+        channelResponse = parseJson(response)
+        if channelResponse["contents"]["twoColumnBrowseResultsRenderer"]["tabs"][tabIdx]["tabRenderer"]["title"].getStr() == "Playlists":
+          for section in channelResponse["contents"]["twoColumnBrowseResultsRenderer"]["tabs"][tabIdx]["tabRenderer"]["content"]["sectionListRenderer"]["contents"]:
+            if section["itemSectionRenderer"]["contents"][0].hasKey("messageRenderer"):
+              echo '<', section["itemSectionRenderer"]["contents"][0]["messageRenderer"]["text"]["simpleText"].getStr(), '>'
+            else:
+              if section["itemSectionRenderer"]["contents"][0].hasKey("gridRenderer"):
+                # NOTE: gridRenderer
+                for id in gridRendererExtractor("playlist"):
+                  playlistIds.add(id)
+              elif section["itemSectionRenderer"]["contents"][0].hasKey("shelfRenderer"):
+                if section["itemSectionRenderer"]["contents"][0]["shelfRenderer"]["content"].hasKey("expandedShelfContentsRenderer"):
+                  # NOTE: expandedShelfContentsRenderer
+                  for item in section["itemSectionRenderer"]["contents"][0]["shelfRenderer"]["content"]["expandedShelfContentsRenderer"]["items"]:
+                    playlistIds.add(item["playlistRenderer"]["playlistId"].getStr())
+                elif section["itemSectionRenderer"]["contents"][0]["shelfRenderer"]["content"].hasKey("horizontalListRenderer"):
+                  # NOTE: horizontalListRenderer
+                  for item in section["itemSectionRenderer"]["contents"][0]["shelfRenderer"]["content"]["horizontalListRenderer"]["items"]:
+                    playlistIds.add(item["gridPlaylistRenderer"]["playlistId"].getStr())
+                else:
+                  echo "<failed to obtain channel metadata>"
               else:
                 echo "<failed to obtain channel metadata>"
-            else:
-              echo "<failed to obtain channel metadata>"
-    else:
-      echo '<', code, '>', '\n', "<failed to obtain channel metadata>"
+      else:
+        echo '<', code, '>', '\n', "<failed to obtain channel metadata>"
+  else:
+    echo '<', code, '>', '\n', "<failed to obtain channel metadata>"
 
   echo '[', videoIds.len, " videos queued]", '\n', '[', playlistIds.len, " playlists queued]"
   for id in videoIds:
