@@ -22,7 +22,7 @@ proc joinStreams*(videoStream, audioStream, filename: string) =
   let fullFilename = addFileExt(filename, "mkv")
 
   echo "[joining streams] ", videoStream, " + ", audioStream
-  if execShellCmd(fmt"ffmpeg -i {videoStream} -i {audioStream} -c copy {quoteShell(fullFilename)} > /dev/null 2>&1") == 0:
+  if execShellCmd(fmt"ffmpeg -y -i {videoStream} -i {audioStream} -c copy {quoteShell(fullFilename)} > /dev/null 2>&1") == 0:
     removeFile(videoStream)
     removeFile(audioStream)
     echo "[complete] ", fullFilename
@@ -35,7 +35,7 @@ proc toMp3*(audioStream, filename: string) =
   let fullFilename = addFileExt(filename, "mp3")
 
   echo "[converting stream] ", audioStream
-  if execShellCmd(fmt"ffmpeg -i {audioStream} -acodec libmp3lame {quoteShell(fullFilename)} > /dev/null 2>&1") == 0:
+  if execShellCmd(fmt"ffmpeg -y -i {audioStream} -codec:a libmp3lame -qscale:a 0 {quoteShell(fullFilename)} > /dev/null 2>&1") == 0:
     removeFile(audioStream)
     echo "[complete] ", fullFilename
   else:
