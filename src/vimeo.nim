@@ -39,6 +39,29 @@ var
   showStreams: bool
 
 
+########################################################
+# authentication
+########################################################
+
+
+proc authorize() =
+  var
+    authResponse: JsonNode
+    response: string
+    code: HttpCode
+  (code, response) = doGet(authorizationUrl)
+  if code.is2xx:
+    authResponse = parseJson(response)
+    headers.add(("authorization", "jwt " & authResponse["jwt"].getStr()))
+  else:
+    echo "<authorization failed>"
+
+
+########################################################
+# stream logic
+########################################################
+
+
 proc isVerticle(stream: JsonNode): bool =
   # NOTE: streams are always w x h
   stream["height"].getInt() > stream["width"].getInt()
@@ -148,19 +171,6 @@ proc reportStreams(cdnResponse: JsonNode) =
          " mime: ", mime, " size: ", size
 
 
-proc authorize() =
-  var
-    authResponse: JsonNode
-    response: string
-    code: HttpCode
-  (code, response) = doGet(authorizationUrl)
-  if code.is2xx:
-    authResponse = parseJson(response)
-    headers.add(("authorization", "jwt " & authResponse["jwt"].getStr()))
-  else:
-    echo "<authorization failed>"
-
-
 proc getProfileIds(vimeoUrl: string): tuple[profileId, sectionId: string] =
   var
     profileResponse: JsonNode
@@ -180,6 +190,11 @@ proc extractId(vimeoUrl: string): string =
     result = vimeoUrl.captureBetween('/', '?', vimeoUrl.find("video/"))
   else:
     result = vimeoUrl.captureBetween('/', '?', vimeoUrl.find(".com/"))
+
+
+########################################################
+# main
+########################################################
 
 
 proc getVideo(vimeoUrl: string) =
@@ -301,6 +316,7 @@ proc vimeoDownload*(vimeoUrl: string, audio, video, streams: bool, format: strin
   audioFormat = format
   showStreams = streams
   var profile: bool
+
   for c in extractId(vimeoUrl):
     if not isDigit(c):
       profile = true

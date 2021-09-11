@@ -97,6 +97,7 @@ type
     ext: string
     size: string
     quality: string
+    resolution: string
     bitrate: string
     url: string
     baseUrl: string
@@ -106,6 +107,7 @@ type
 const
   baseUrl = "https://www.youtube.com"
   watchUrl = "https://www.youtube.com/watch?v="
+  # channelUrl = "https://www.youtube.com/channel/"
   playlistUrl = "https://www.youtube.com/playlist?list="
   playerUrl = "https://youtubei.googleapis.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
   browseUrl = "https://youtubei.googleapis.com/youtubei/v1/browse?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
@@ -113,6 +115,22 @@ const
   # contextUrl = "https://www.youtube.com/sw.js_data"
   videosTab = "EgZ2aWRlb3M%3D"
   playlistsTab = "EglwbGF5bGlzdHM%3D"
+  forward = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
+             'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R',
+             'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a',
+             'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j',
+             'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's',
+             't', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1',
+             '2', '3', '4', '5', '6', '7', '8', '9', '-',
+             '_']
+  reverse = ['0', '1', '2', '3', '4', '5', '6', '7', '8',
+             '9', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h',
+             'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q',
+             'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+             'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
+             'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R',
+             'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '-',
+             '_']
 
 let date = now().format("yyyyMMdd")
 
@@ -172,7 +190,7 @@ proc throttleUnshift(d: var string, e: int) =
 
 
 proc throttleUnshift(d: var seq[string], e: int) =
-  ## handleds prepend also
+  ## handles prepend also
   d.rotateLeft(d.len - throttleModFunction(d, e))
 
 
@@ -212,16 +230,11 @@ proc throttlePush(d: var seq[string], e: string) =
   d.add(e)
 
 
-proc splice(d: var string, fromIdx: int, toIdx=0): string =
+proc splice(d: var string, fromIdx: int): string =
   ## javascript splice analogue*
-  if fromIdx < 0 or fromIdx > d.len:
-    return
-  if toIdx <= 0:
-    result = d[fromIdx..d.high]
-    d.delete(fromIdx, d.high)
-  else:
-    result = d[fromIdx..min(fromIdx + pred(toIdx), d.high)]
-    d.delete(fromIdx, min(fromIdx + pred(toIdx), d.high))
+  # function(d,e){e=(e%d.length+d.length)%d.length;d.splice(e,1)};
+  let idx = (fromIdx mod d.len + d.len) mod d.len
+  d.delete(idx, idx)
 
 
 proc splice(d: var seq[string], fromIdx: int, toIdx=0): seq[string] =
@@ -245,33 +258,6 @@ proc throttleSwap(d: var seq[string], e: int) =
     swap(d[0], d[d.len + z])
   else:
     swap(d[0], d[z])
-
-
-proc setH(code: string) =
-  ## set h char set used in calculating n throttle value
-  const
-    charsA = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
-              'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R',
-              'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a',
-              'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j',
-              'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's',
-              't', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1',
-              '2', '3', '4', '5', '6', '7', '8', '9', '-',
-              '_']
-    charsB = ['0', '1', '2', '3', '4', '5', '6', '7', '8',
-              '9', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h',
-              'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q',
-              'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
-              'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
-              'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R',
-              'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '-',
-              '_']
-  var match: array[1, string]
-  discard code.find(re"({for\(var\sf=64[^}]+})", match)
-  if match[0].contains("case 65"):
-    h = charsB
-  else:
-    h = charsA
 
 
 proc parseThrottleFunctionName(js: string): string =
@@ -325,7 +311,10 @@ proc parseThrottleFunctionArray(js: string): seq[string] =
       if item.contains("pop"):
         result.add("throttleUnshift")
       elif item.contains("case"):
-        result.add("throttleCipher")
+        if item.contains("case 65"):
+          result.add("throttleCipherReverse")
+        else:
+          result.add("throttleCipherForward")
       elif item.contains("reverse") and item.contains("unshift"):
         result.add("throttlePrepend")
       elif item.contains("reverse"):
@@ -358,7 +347,6 @@ proc calculateN(n, js: string): string =
     let throttleCode = parseThrottleCode(parseThrottleFunctionName(js), js)
     throttlePlan = parseThrottlePlan(throttleCode)
     throttleArray = parseThrottleFunctionArray(throttleCode)
-    setH(throttleCode)
   var
     tempArray = throttleArray
     firstArg, secondArg, currFunc: string
@@ -380,7 +368,11 @@ proc calculateN(n, js: string): string =
     if firstArg == "null":
       if currFunc == "throttleUnshift" or currFunc == "throttlePrepend":
         throttleUnshift(tempArray, parseInt(secondArg))
-      elif currFunc == "throttleCipher":
+      elif currFunc.contains("throttleCipher"):
+        if currFunc.contains("Forward"):
+          h = forward
+        else:
+          h = reverse
         throttleCipher(tempArray, secondArg)
       elif currFunc == "throttleReverse":
         throttleReverse(tempArray)
@@ -393,7 +385,11 @@ proc calculateN(n, js: string): string =
     else:
       if currFunc == "throttleUnshift" or currFunc == "throttlePrepend":
         throttleUnshift(initialN, parseInt(secondArg))
-      elif currFunc == "throttleCipher":
+      elif currFunc.contains("throttleCipher"):
+        if currFunc.contains("Forward"):
+          h = forward
+        else:
+          h = reverse
         throttleCipher(initialN, secondArg)
       elif currFunc == "throttleReverse":
         throttleReverse(initialN)
@@ -502,54 +498,6 @@ proc getSigCipherUrl(js, signatureCipher: string): string =
 ########################################################
 
 
-proc selectBestVideoStream(streams: JsonNode): JsonNode =
-  # NOTE: zeroth stream always seems to be the overall best* quality
-  # TODO: investigate significance of video streams with both bitrate and average bitrate
-  # and which is more important
-  result = streams[0]
-
-
-proc selectBestAudioStream(streams: JsonNode): JsonNode =
-  var largest = 0
-  for stream in streams:
-    if stream.contains("audioQuality"):
-      if stream["bitrate"].getInt() > largest:
-        largest = stream["bitrate"].getInt()
-        result = stream
-
-
-proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime, ext, size, qlt, bitrate: string] =
-  result.itag = stream["itag"].getInt()
-  result.mime = stream["mimeType"].getStr().split(";")[0]
-  result.ext = extensions[result.mime]
-  if stream.hasKey("contentLength"):
-    result.size = formatSize(parseInt(stream["contentLength"].getStr()), includeSpace=true)
-  else:
-    # NOTE: estimate from bitrate
-    if stream.hasKey("averageBitrate"):
-      result.size = formatSize(int(stream["averageBitrate"].getInt() * duration / 8), includeSpace=true)
-    else:
-      result.size = formatSize(int(stream["bitrate"].getInt() * duration / 8), includeSpace=true)
-  result.qlt = stream["qualityLabel"].getStr()
-  if stream.hasKey("averageBitrate"):
-    result.bitrate = formatSize(stream["averageBitrate"].getInt(), includeSpace=true) & "/s"
-  else:
-    result.bitrate = formatSize(stream["bitrate"].getInt(), includeSpace=true) & "/s"
-
-
-proc getAudioStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime, ext, size, qlt, bitrate: string] =
-  result.itag = stream["itag"].getInt()
-  result.mime = stream["mimeType"].getStr().split(";")[0]
-  result.ext = extensions[result.mime]
-  if stream.hasKey("contentLength"):
-    result.size = formatSize(parseInt(stream["contentLength"].getStr()), includeSpace=true)
-  else:
-    # NOTE: estimate from bitrate
-    result.size = formatSize((stream["averageBitrate"].getInt() * duration / 8).int, includeSpace=true)
-  result.qlt = stream["audioQuality"].getStr()
-  result.bitrate = formatSize(stream["averageBitrate"].getInt(), includeSpace=true) & "/s"
-
-
 proc urlOrCipher(stream: JsonNode): string =
   ## produce stream url, deciphering if necessary
   var
@@ -570,13 +518,7 @@ proc urlOrCipher(stream: JsonNode): string =
   if nTransforms.haskey(n):
     result = result.replace(n, nTransforms[n])
   else:
-    # TEMP: this is to try and find n values which cause range defects and crash the program
-    try:
-      calculatedN = calculateN(n, response)
-    except RangeDefect as e:
-      echo e.msg
-      echo "dubug: ", n
-      doAssert false
+    calculatedN = calculateN(n, response)
     nTransforms[n] = calculatedN
     if n != calculatedN:
       result = result.replace(n, calculatedN)
@@ -601,9 +543,58 @@ proc extractDashInfo(dashManifestUrl, itag: string): tuple[baseUrl, segmentList:
   result.segmentList = match[0]
 
 
+proc selectBestVideoStream(streams: JsonNode): JsonNode =
+  # NOTE: zeroth stream always seems to be the overall best* quality
+  # TODO: investigate significance of video streams with both bitrate and average bitrate
+  # and which is more important
+  result = streams[0]
+
+
+proc selectBestAudioStream(streams: JsonNode): JsonNode =
+  var largest = 0
+  for stream in streams:
+    if stream.contains("audioQuality"):
+      if stream["bitrate"].getInt() > largest:
+        largest = stream["bitrate"].getInt()
+        result = stream
+
+
+proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime, ext, size, qlt, resolution, bitrate: string] =
+  result.itag = stream["itag"].getInt()
+  result.mime = stream["mimeType"].getStr().split(";")[0]
+  result.ext = extensions[result.mime]
+  if stream.hasKey("contentLength"):
+    result.size = formatSize(parseInt(stream["contentLength"].getStr()), includeSpace=true)
+  else:
+    # NOTE: estimate from bitrate
+    if stream.hasKey("averageBitrate"):
+      result.size = formatSize(int(stream["averageBitrate"].getInt() * duration / 8), includeSpace=true)
+    else:
+      result.size = formatSize(int(stream["bitrate"].getInt() * duration / 8), includeSpace=true)
+  result.qlt = stream["qualityLabel"].getStr()
+  result.resolution = $stream["width"].getInt() & 'x' & $stream["height"].getInt()
+  if stream.hasKey("averageBitrate"):
+    result.bitrate = formatSize(stream["averageBitrate"].getInt(), includeSpace=true) & "/s"
+  else:
+    result.bitrate = formatSize(stream["bitrate"].getInt(), includeSpace=true) & "/s"
+
+
+proc getAudioStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime, ext, size, qlt, bitrate: string] =
+  result.itag = stream["itag"].getInt()
+  result.mime = stream["mimeType"].getStr().split(";")[0]
+  result.ext = extensions[result.mime]
+  if stream.hasKey("contentLength"):
+    result.size = formatSize(parseInt(stream["contentLength"].getStr()), includeSpace=true)
+  else:
+    # NOTE: estimate from bitrate
+    result.size = formatSize((stream["averageBitrate"].getInt() * duration / 8).int, includeSpace=true)
+  result.qlt = stream["audioQuality"].getStr()
+  result.bitrate = formatSize(stream["averageBitrate"].getInt(), includeSpace=true) & "/s"
+
+
 proc newVideoStream(youtubeUrl, dashManifestUrl, title: string, duration: int, stream: JsonNode): Stream =
   result.title = title
-  (result.itag, result.mime, result.ext, result.size, result.quality, result.bitrate) = getVideoStreamInfo(stream, duration)
+  (result.itag, result.mime, result.ext, result.size, result.quality, result.resolution, result.bitrate) = getVideoStreamInfo(stream, duration)
   result.filename = addFileExt("videostream", result.ext)
   # NOTE: "initRange" is a best guess id for non-segmented streams, may not be universal
   # and may lead to erroneos stream selection.
@@ -640,7 +631,6 @@ proc reportStreamInfo(stream: Stream) =
        "itag: ", stream.itag, '\n',
        "size: ", stream.size, '\n',
        "quality: ", stream.quality, '\n',
-       "bitrate: ", stream.bitrate, '\n',
        "mime: ", stream.mime
   if stream.dash:
     echo "segments: ", stream.urlSegments.len
@@ -649,17 +639,17 @@ proc reportStreamInfo(stream: Stream) =
 proc reportStreams(playerResponse: JsonNode, duration: int) =
   var
     itag: int
-    mime, ext, size, quality, bitrate: string
+    mime, ext, size, quality, resolution, bitrate: string
   for item in playerResponse["streamingData"]["adaptiveFormats"]:
     if item.hasKey("audioQuality"):
       (itag, mime, ext, size, quality, bitrate) = getAudioStreamInfo(item, duration)
       echo "[audio]", " itag: ", itag, " quality: ", quality,
            " bitrate: ", bitrate, " mime: ", mime, " size: ", size
     else:
-      (itag, mime, ext, size, quality, bitrate) = getVideoStreamInfo(item, duration)
+      (itag, mime, ext, size, quality, resolution, bitrate) = getVideoStreamInfo(item, duration)
       echo "[video]", " itag: ", itag, " quality: ", quality,
-           " resolution: ", item["width"].getInt(), 'x', item["height"].getInt(),
-           " bitrate: ", bitrate, " mime: ", mime, " size: ", size
+           " resolution: ", resolution, " bitrate: ", bitrate, " mime: ", mime,
+           " size: ", size
 
 
 proc isolateId(youtubeUrl: string): string =
@@ -680,6 +670,11 @@ proc isolateChannel(youtubeUrl: string): string =
 
 proc isolatePlaylist(youtubeUrl: string): string =
   result = youtubeUrl.captureBetween('=', '&', youtubeUrl.find("list="))
+
+
+########################################################
+# main
+########################################################
 
 
 proc getVideo(youtubeUrl: string) =
