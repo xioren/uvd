@@ -13,8 +13,8 @@ proc main() =
       -v, --video                     Video Only
       -f, --format                    Audio Output Format
       -s, --show                      Show Available Streams
-      -ai, -aid, --aitag              Audio Stream id/itag
-      -vi, -vid, --vitag              Video Stream id/itag
+      -ai, --aid, --aitag              Audio Stream id/itag
+      -vi, --vid, --vitag              Video Stream id/itag
       -h, --help                      Print This Help
     """
   # WIP
