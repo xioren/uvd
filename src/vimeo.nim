@@ -32,7 +32,10 @@ const
   videosUrl = "https://api.vimeo.com/users/$1/profile_sections/$2/videos?fields=video_details%2Cprofile_section_uri%2Ccolumn_width%2Cclip.uri%2Cclip.name%2Cclip.type%2Cclip.categories.name%2Cclip.categories.uri%2Cclip.config_url%2Cclip.pictures%2Cclip.height%2Cclip.width%2Cclip.duration%2Cclip.description%2Cclip.created_time%2C&page=1&per_page=10"
   bypassUrl = "https://player.vimeo.com/video/$1?app_id=122963&referrer=https%3A%2F%2Fwww.patreon.com%2F"
 
-var audio, video: bool
+var
+  includeAudio, includeVideo: bool
+  audioFormat = "mp3"
+  showStreams: bool
 
 
 proc isVerticle(stream: JsonNode): bool =
@@ -81,7 +84,7 @@ proc getVideoStreamInfo(stream: JsonNode): tuple[mime, ext, size, qlt: string] =
 proc getAudioStreamInfo(stream: JsonNode): tuple[mime, ext, size, qlt: string] =
   result.mime = stream["mime_type"].getStr()
   result.ext = extensions[result.mime]
-  result.qlt = $stream["sample_rate"].getInt()
+  result.qlt = formatSize(stream["avg_bitrate"].getInt(), includeSpace=true) & "/s"
   var size = 0
   for segment in stream["segments"]:
     size.inc(segment["size"].getInt())
@@ -125,6 +128,19 @@ proc reportStreamInfo(stream: Stream) =
        "quality: ", stream.quality, '\n',
        "mime: ", stream.mime, '\n',
        "segments: ", stream.urlSegments.len
+
+
+proc reportStreams(cdnResponse: JsonNode) =
+  var mime, ext, size, quality, dimensions: string
+  for item in cdnResponse["video"]:
+    dimensions = $item["width"].getInt() & "x" & $item["height"].getInt()
+    (mime, ext, size, quality) = getVideoStreamInfo(item)
+    echo "[video]", " id: ", item["id"].getStr(), " quality: ", quality,
+         " resolution: ", dimensions, " mime: ", mime, " size: ", size
+  for item in cdnResponse["audio"]:
+    (mime, ext, size, quality) = getAudioStreamInfo(item)
+    echo "[audio]", " id: ", item["id"].getStr(), " avg_bitrate: ", quality,
+         " mime: ", mime, " size: ", size
 
 
 proc authorize() =
@@ -206,7 +222,7 @@ proc getVideo(vimeoUrl: string) =
       safeTitle = title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"))
       finalPath = addFileExt(joinPath(getCurrentDir(), safeTitle), ".mkv")
 
-    if fileExists(finalPath):
+    if fileExists(finalPath) and not showStreams:
       echo "<file exists> ", safeTitle
     else:
       let
@@ -218,21 +234,25 @@ proc getVideo(vimeoUrl: string) =
         videoStream = newVideoStream(cdnUrl, title, selectBestVideoStream(cdnResponse["video"]))
         audioStream = newAudioStream(cdnUrl, title, selectBestAudioStream(cdnResponse["audio"]))
 
-      if video:
+      if showStreams:
+        reportStreams(cdnResponse)
+        return
+
+      if includeVideo:
         reportStreamInfo(videoStream)
         if not grabMulti(videoStream.urlSegments, forceFilename=videoStream.filename,
                          saveLocation=getCurrentDir(), forceDl=true).is2xx:
           echo "<failed to download video stream>"
-      if audio and audioStream.exists:
+      if includeAudio and audioStream.exists:
         reportStreamInfo(audioStream)
         if not grabMulti(audioStream.urlSegments, forceFilename=audioStream.filename,
                          saveLocation=getCurrentDir(), forceDl=true).is2xx:
           echo "<failed to download audio stream>"
-      if audio and video:
+      if includeAudio and includeVideo:
         joinStreams(videoStream.filename, audioStream.filename, safeTitle)
       else:
-        if not video:
-          toMp3(audioStream.filename, safeTitle)
+        if not includeVideo:
+          toMp3(audioStream.filename, safeTitle, audioFormat)
         else:
           moveFile(joinPath(getCurrentDir(), videoStream.filename), finalPath.changeFileExt(videoStream.ext))
           echo "[complete] ", addFileExt(safeTitle, videoStream.ext)
@@ -270,9 +290,11 @@ proc getProfile(vimeoUrl: string) =
     getVideo(url)
 
 
-proc vimeoDownload*(vimeoUrl: string, getAudio, getVideo: bool) =
-  audio = getAudio
-  video = getVideo
+proc vimeoDownload*(vimeoUrl: string, audio, video, streams: bool, format: string) =
+  includeAudio = audio
+  includeVideo = video
+  audioFormat = format
+  showStreams = streams
   var profile: bool
   for c in extractId(vimeoUrl):
     if not isDigit(c):

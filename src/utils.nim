@@ -30,9 +30,9 @@ proc joinStreams*(videoStream, audioStream, filename: string) =
     echo "<error joining streams>"
 
 
-proc toMp3*(audioStream, filename: string) =
+proc toMp3*(audioStream, filename, format: string) =
   ## convert audio stream to mp3
-  let fullFilename = addFileExt(filename, "mp3")
+  let fullFilename = addFileExt(filename, format)
 
   echo "[converting stream] ", audioStream
   if execShellCmd(fmt"ffmpeg -y -i {audioStream} -codec:a libmp3lame -qscale:a 0 {quoteShell(fullFilename)} > /dev/null 2>&1") == 0:

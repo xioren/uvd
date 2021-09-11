@@ -2,8 +2,8 @@
 
 
 + minimal downloader for youtube and vimeo
-+ downloads the best audio and video streams by default with no options
-+ requires ffmpeg to join streams
++ downloads the best audio and video streams by default
++ requires ffmpeg
 + *nix only
 
 
@@ -20,7 +20,10 @@
 Usage: uvd [options] url
 
 Options:
-  -a, --audio                     Audio only
-  -v, --video                     Video only
-  -h, --help                      Print this help
+  -a, --audio                     Audio Only
+  -v, --video                     Video Only
+  -f, --format                    Audio Output Format
+  -s, --show                      Show Available Streams
+  -i, --id                        Stream Id
+  -h, --help                      Print This Help
 ```

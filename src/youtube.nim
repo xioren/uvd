@@ -116,7 +116,9 @@ const
 let date = now().format("yyyyMMdd")
 
 var
-  audio, video: bool
+  includeAudio, includeVideo: bool
+  audioFormat = "mp3"
+  showStreams: bool
   h: array[64, char]
   jsUrl: string
   cipherPlan: seq[string]
@@ -542,7 +544,7 @@ proc getAudioStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime,
       result.size = formatSize((stream["averageBitrate"].getInt() * duration / 8).int, includeSpace=true)
     else:
       result.size = formatSize((stream["bitrate"].getInt() * duration / 8).int, includeSpace=true)
-  result.qlt = stream["audioQuality"].getStr()
+  result.qlt = formatSize(stream["averageBitrate"].getInt(), includeSpace=true) & "/s"
 
 
 proc urlOrCipher(stream: JsonNode): string =
@@ -640,6 +642,22 @@ proc reportStreamInfo(stream: Stream) =
     echo "segments: ", stream.urlSegments.len
 
 
+proc reportStreams(playerResponse: JsonNode, duration: int) =
+  var
+    itag: int
+    mime, ext, size, quality: string
+  for item in playerResponse["streamingData"]["adaptiveFormats"]:
+    if item.hasKey("audioQuality"):
+      (itag, mime, ext, size, quality) = getAudioStreamInfo(item, duration)
+      echo "[audio]", " itag: ", itag, " quality: ", quality,
+           " mime: ", mime, " size: ", size
+    else:
+      (itag, mime, ext, size, quality) = getVideoStreamInfo(item, duration)
+      echo "[video]", " itag: ", itag, " quality: ", quality,
+           " resolution: ", item["width"].getInt(), 'x', item["height"].getInt(),
+           " mime: ", mime, " size: ", size
+
+
 proc isolateId(youtubeUrl: string): string =
   if youtubeUrl.contains("youtu.be"):
     result = youtubeUrl.captureBetween('/', '?', 8)
@@ -706,6 +724,9 @@ proc getVideo(youtubeUrl: string) =
               stdout.write(run["text"].getStr())
           return
 
+        if showStreams:
+          reportStreams(playerResponse, duration)
+          return
         # QUESTION: hlsManifestUrl seems to be for live streamed videos but is it ever needed?
         if playerResponse["streamingData"].hasKey("dashManifestUrl"):
           dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
@@ -715,7 +736,7 @@ proc getVideo(youtubeUrl: string) =
           audioStream = newAudioStream(standardYoutubeUrl, dashManifestUrl, title, duration,
                                        selectBestAudioStream(playerResponse["streamingData"]["adaptiveFormats"]))
         var attempt: HttpCode
-        if video:
+        if includeVideo:
           reportStreamInfo(videoStream)
           if videoStream.dash:
             attempt = grabMulti(videoStream.urlSegments, forceFilename=videoStream.filename,
@@ -725,7 +746,7 @@ proc getVideo(youtubeUrl: string) =
                            saveLocation=getCurrentDir(), forceDl=true)
           if not attempt.is2xx:
             echo "<failed to download video stream>"
-        if audio:
+        if includeAudio:
           reportStreamInfo(audioStream)
           if audioStream.dash:
             attempt = grabMulti(audioStream.urlSegments, forceFilename=audioStream.filename,
@@ -735,11 +756,11 @@ proc getVideo(youtubeUrl: string) =
                            saveLocation=getCurrentDir(), forceDl=true)
           if not attempt.is2xx:
             echo "<failed to download audio stream>"
-        if audio and video:
+        if includeAudio and includeVideo:
           joinStreams(videoStream.filename, audioStream.filename, safeTitle)
         else:
-          if not video:
-            toMp3(audioStream.filename, safeTitle)
+          if not includeVideo:
+            toMp3(audioStream.filename, safeTitle, audioFormat)
           else:
             moveFile(joinPath(getCurrentDir(), videoStream.filename), finalPath.changeFileExt(videoStream.ext))
             echo "[complete] ", addFileExt(safeTitle, videoStream.ext)
@@ -867,9 +888,12 @@ proc getChannel(youtubeUrl: string) =
     getPlaylist(playlistUrl & id)
 
 
-proc youtubeDownload*(youtubeUrl: string, getAudio, getVideo: bool) =
-  audio = getAudio
-  video = getVideo
+proc youtubeDownload*(youtubeUrl: string, audio, video, streams: bool, format: string) =
+  includeAudio = audio
+  includeVideo = video
+  audioFormat = format
+  showStreams = streams
+
   if "/channel/" in youtubeUrl or "/c/" in youtubeUrl:
     getChannel(youtubeUrl)
   elif "/playlist?" in youtubeUrl:
