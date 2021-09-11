@@ -5,21 +5,18 @@ import vimeo, youtube
 
 
 proc main() =
-  const
-    acceptedOpts = ["-a", "--audio", "-v", "--video", "-h", "--help",
-                    "-f", "--format", "-s", "--show", "-i", "--id", "--itag"]
-    help = """
-  Usage: uvd [options] url
+  const help = """
+    Usage: uvd [options] url
 
-  Options:
-    -a, --audio                     Audio Only
-    -v, --video                     Video Only
-    -f, --format                    Audio Output Format
-    -s, --show                      Show Available Streams
-    -ai, -aid, --aitag              Audio Stream id/itag
-    -vi, -vid, --vitag              Video Stream id/itag
-    -h, --help                      Print This Help
-  """
+    Options:
+      -a, --audio                     Audio Only
+      -v, --video                     Video Only
+      -f, --format                    Audio Output Format
+      -s, --show                      Show Available Streams
+      -ai, -aid, --aitag              Audio Stream id/itag
+      -vi, -vid, --vitag              Video Stream id/itag
+      -h, --help                      Print This Help
+    """
   # WIP
   # NOTE: each encoder will require different ffmpeg settings
   # TODO: add logic to check if audio stream is already in the desired format
