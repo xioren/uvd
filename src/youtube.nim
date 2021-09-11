@@ -543,20 +543,35 @@ proc extractDashInfo(dashManifestUrl, itag: string): tuple[baseUrl, segmentList:
   result.segmentList = match[0]
 
 
-proc selectBestVideoStream(streams: JsonNode): JsonNode =
-  # NOTE: zeroth stream always seems to be the overall best* quality
-  # TODO: investigate significance of video streams with both bitrate and average bitrate
-  # and which is more important
-  result = streams[0]
-
-
-proc selectBestAudioStream(streams: JsonNode): JsonNode =
-  var largest = 0
-  for stream in streams:
-    if stream.contains("audioQuality"):
-      if stream["bitrate"].getInt() > largest:
-        largest = stream["bitrate"].getInt()
+proc selectBestVideoStream(streams: JsonNode, itag: int): JsonNode =
+  # NOTE: zeroth stream usually seems to be the overall best quality
+  if itag == 0:
+    var largest = 0
+    for stream in streams:
+      if stream.hasKey("width"):
+        if stream["bitrate"].getInt() > largest:
+          largest = stream["bitrate"].getInt()
+          result = stream
+  else:
+    for stream in streams:
+      if stream["itag"].getInt() == itag:
         result = stream
+        break
+
+
+proc selectBestAudioStream(streams: JsonNode, itag: int): JsonNode =
+  if itag == 0:
+    var largest = 0
+    for stream in streams:
+      if stream.hasKey("audioQuality"):
+        if stream["averageBitrate"].getInt() > largest:
+          largest = stream["averageBitrate"].getInt()
+          result = stream
+  else:
+    for stream in streams:
+      if stream["itag"].getInt() == itag:
+        result = stream
+        break
 
 
 proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime, ext, size, qlt, resolution, bitrate: string] =
@@ -677,15 +692,16 @@ proc isolatePlaylist(youtubeUrl: string): string =
 ########################################################
 
 
-proc getVideo(youtubeUrl: string) =
+proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
   let
     id = isolateId(youtubeUrl)
     standardYoutubeUrl = watchUrl & id
   var
-    playerResponse: JsonNode
-    response: string
     code: HttpCode
+    response: string
+    playerResponse: JsonNode
     dashManifestUrl: string
+    videoStream, audioStream: Stream
 
   # NOTE: make initial request to get base.js and timestamp
   (code, response) = doGet(standardYoutubeUrl)
@@ -705,7 +721,7 @@ proc getVideo(youtubeUrl: string) =
         finalPath = addFileExt(joinPath(getCurrentDir(), safeTitle), ".mkv")
         duration = parseInt(playerResponse["videoDetails"]["lengthSeconds"].getStr())
 
-      if fileExists(finalPath):
+      if fileExists(finalPath) and not showStreams:
         echo "<file exists> ", safeTitle
       else:
         if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
@@ -729,13 +745,11 @@ proc getVideo(youtubeUrl: string) =
         # QUESTION: hlsManifestUrl seems to be for live streamed videos but is it ever needed?
         if playerResponse["streamingData"].hasKey("dashManifestUrl"):
           dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
-        let
-          videoStream = newVideoStream(standardYoutubeUrl, dashManifestUrl, title, duration,
-                                       selectBestVideoStream(playerResponse["streamingData"]["adaptiveFormats"]))
-          audioStream = newAudioStream(standardYoutubeUrl, dashManifestUrl, title, duration,
-                                       selectBestAudioStream(playerResponse["streamingData"]["adaptiveFormats"]))
+
         var attempt: HttpCode
         if includeVideo:
+          videoStream = newVideoStream(standardYoutubeUrl, dashManifestUrl, title, duration,
+                                       selectBestVideoStream(playerResponse["streamingData"]["adaptiveFormats"], vItag))
           reportStreamInfo(videoStream)
           if videoStream.dash:
             attempt = grabMulti(videoStream.urlSegments, forceFilename=videoStream.filename,
@@ -745,7 +759,10 @@ proc getVideo(youtubeUrl: string) =
                            saveLocation=getCurrentDir(), forceDl=true)
           if not attempt.is2xx:
             echo "<failed to download video stream>"
+            includeVideo = false
         if includeAudio:
+          audioStream = newAudioStream(standardYoutubeUrl, dashManifestUrl, title, duration,
+                                       selectBestAudioStream(playerResponse["streamingData"]["adaptiveFormats"], aItag))
           reportStreamInfo(audioStream)
           if audioStream.dash:
             attempt = grabMulti(audioStream.urlSegments, forceFilename=audioStream.filename,
@@ -755,14 +772,17 @@ proc getVideo(youtubeUrl: string) =
                            saveLocation=getCurrentDir(), forceDl=true)
           if not attempt.is2xx:
             echo "<failed to download audio stream>"
+            includeAudio = false
         if includeAudio and includeVideo:
           joinStreams(videoStream.filename, audioStream.filename, safeTitle)
         else:
-          if not includeVideo:
+          if includeAudio and not includeVideo:
             toMp3(audioStream.filename, safeTitle, audioFormat)
-          else:
+          elif includeVideo:
             moveFile(joinPath(getCurrentDir(), videoStream.filename), finalPath.changeFileExt(videoStream.ext))
             echo "[complete] ", addFileExt(safeTitle, videoStream.ext)
+          else:
+            echo "<no streams were downloaded>"
     else:
       echo '<', code, '>', '\n', "<failed to obtain video metadata>"
   else:
@@ -887,7 +907,7 @@ proc getChannel(youtubeUrl: string) =
     getPlaylist(playlistUrl & id)
 
 
-proc youtubeDownload*(youtubeUrl: string, audio, video, streams: bool, format: string) =
+proc youtubeDownload*(youtubeUrl: string, audio, video, streams: bool, format, aItag, vItag: string) =
   includeAudio = audio
   includeVideo = video
   audioFormat = format
@@ -898,4 +918,4 @@ proc youtubeDownload*(youtubeUrl: string, audio, video, streams: bool, format: s
   elif "/playlist?" in youtubeUrl:
     getPlaylist(youtubeUrl)
   else:
-    getVideo(youtubeUrl)
+    getVideo(youtubeUrl, parseInt(aItag), parseInt(vItag))

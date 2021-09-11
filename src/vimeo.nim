@@ -14,6 +14,7 @@ type
   Stream = object
     title: string
     filename: string
+    id: string
     mime: string
     ext: string
     size: string
@@ -67,32 +68,44 @@ proc isVerticle(stream: JsonNode): bool =
   stream["height"].getInt() > stream["width"].getInt()
 
 
-proc selectBestVideoStream(streams: JsonNode): JsonNode =
-  var
-    largest = 0
-    dimension: string
-  if isVerticle(streams[0]):
-    dimension = "width"
+proc selectBestVideoStream(streams: JsonNode, id: string): JsonNode =
+  if id == "0":
+    var
+      largest = 0
+      dimension: string
+    if isVerticle(streams[0]):
+      dimension = "width"
+    else:
+      dimension = "height"
+    for stream in streams:
+      if stream[dimension].getInt() > largest:
+        largest = stream[dimension].getInt()
+        result = stream
   else:
-    dimension = "height"
-  for stream in streams:
-    if stream[dimension].getInt() > largest:
-      largest = stream[dimension].getInt()
-      result = stream
+    for stream in streams:
+      if stream["id"].getStr() == id:
+        result = stream
+        break
 
 
-proc selectBestAudioStream(streams: JsonNode): JsonNode =
+proc selectBestAudioStream(streams: JsonNode, id: string): JsonNode =
   if streams.kind == JNull:
     result = streams
-  else:
+  elif id == "0":
     var largest = 0
     for stream in streams:
       if stream["bitrate"].getInt() > largest:
         largest = stream["bitrate"].getInt()
         result = stream
+  else:
+    for stream in streams:
+      if stream["id"].getStr() == id:
+        result = stream
+        break
 
 
-proc getVideoStreamInfo(stream: JsonNode): tuple[mime, ext, size, qlt, bitrate: string] =
+proc getVideoStreamInfo(stream: JsonNode): tuple[id, mime, ext, size, qlt, bitrate: string] =
+  result.id = stream["id"].getStr()
   result.mime = stream["mime_type"].getStr()
   result.ext = extensions[result.mime]
   if isVerticle(stream):
@@ -106,7 +119,8 @@ proc getVideoStreamInfo(stream: JsonNode): tuple[mime, ext, size, qlt, bitrate: 
   result.bitrate = formatSize(stream["avg_bitrate"].getInt(), includeSpace=true) & "/s"
 
 
-proc getAudioStreamInfo(stream: JsonNode): tuple[mime, ext, size, qlt, bitrate: string] =
+proc getAudioStreamInfo(stream: JsonNode): tuple[id, mime, ext, size, qlt, bitrate: string] =
+  result.id = stream["id"].getStr()
   result.mime = stream["mime_type"].getStr()
   result.ext = extensions[result.mime]
   result.qlt = formatSize(stream["avg_bitrate"].getInt(), includeSpace=true) & "/s"
@@ -117,44 +131,55 @@ proc getAudioStreamInfo(stream: JsonNode): tuple[mime, ext, size, qlt, bitrate: 
   result.bitrate = formatSize(stream["avg_bitrate"].getInt(), includeSpace=true) & "/s"
 
 
-proc produceUrlSegments(cdnUrl, baseUrl, initUrl: string, stream: JsonNode): seq[string] =
+proc produceUrlSegments(cdnUrl, baseUrl, initUrl: string, stream: JsonNode, audio: bool): seq[string] =
   let cdn = parseUri(cdnUrl)
-  result.add($(cdn / baseUrl / initUrl))
-  for segment in stream["segments"]:
-    result.add($(cdn / baseUrl / segment["url"].getStr()))
+  if audio:
+    if baseUrl.contains("parcel"):
+      result.add($(cdn / baseUrl) & initUrl)
+    else:
+      result.add($(cdn / "sep" / baseUrl) & initUrl)
+      for segment in stream["segments"]:
+          result.add($(cdn / "sep" / baseUrl) & segment["url"].getStr())
+  else:
+    if baseUrl.contains("parcel"):
+      result.add($(cdn / baseUrl) & initUrl)
+    else:
+      result.add($(cdn / "sep/video" / baseUrl) & initUrl)
+      for segment in stream["segments"]:
+        result.add($(cdn / "sep/video" / baseUrl) & segment["url"].getStr())
 
 
 proc newVideoStream(cdnUrl, title: string, stream: JsonNode): Stream =
   result.title = title
-  (result.mime, result.ext, result.size, result.quality, result.bitrate) = getVideoStreamInfo(stream)
+  (result.id, result.mime, result.ext, result.size, result.quality, result.bitrate) = getVideoStreamInfo(stream)
   result.filename = addFileExt("videostream", result.ext)
-  result.baseUrl = stream["base_url"].getStr()
+  result.baseUrl = stream["base_url"].getStr().replace("../")
   result.initUrl = stream["init_segment"].getStr()
-  result.urlSegments = produceUrlSegments(cdnUrl.split("sep/")[0] & "sep/video",
-                                          result.baseUrl, result.initUrl, stream)
+  result.urlSegments = produceUrlSegments(cdnUrl.split("sep/")[0], result.baseUrl,
+                                          result.initUrl, stream, false)
   result.exists = true
 
 
 proc newAudioStream(cdnUrl, title: string, stream: JsonNode): Stream =
   if stream.kind != JNull:
     result.title = title
-    (result.mime, result.ext, result.size, result.quality, result.bitrate) = getAudioStreamInfo(stream)
+    (result.id, result.mime, result.ext, result.size, result.quality, result.bitrate) = getAudioStreamInfo(stream)
     result.filename = addFileExt("audiostream", result.ext)
-    result.baseUrl = stream["base_url"].getStr().strip(leading=true, chars={'.'})
+    result.baseUrl = stream["base_url"].getStr().replace("../")
     result.initUrl = stream["init_segment"].getStr()
-    result.urlSegments = produceUrlSegments(cdnUrl.split("sep/")[0] & "sep/",
-                                            result.baseUrl, result.initUrl, stream)
+    result.urlSegments = produceUrlSegments(cdnUrl.split("sep/")[0], result.baseUrl,
+                                            result.initUrl, stream, true)
     result.exists = true
 
 
 proc reportStreamInfo(stream: Stream) =
   echo "title: ", stream.title, '\n',
        "stream: ", stream.filename, '\n',
+       "id: ", stream.id, '\n',
        "size: ", stream.size
   if not stream.quality.isEmptyOrWhitespace():
     echo "quality: ", stream.quality
-  echo "bitrate: ", stream.bitrate, '\n',
-       "mime: ", stream.mime, '\n',
+  echo "mime: ", stream.mime, '\n',
        "segments: ", stream.urlSegments.len
 
 
@@ -197,11 +222,12 @@ proc extractId(vimeoUrl: string): string =
 ########################################################
 
 
-proc getVideo(vimeoUrl: string) =
+proc getVideo(vimeoUrl: string, aId="0", vId="0") =
   var
     configResponse: JsonNode
     id, response: string
     code: HttpCode
+    audioStream, videoStream: Stream
   if vimeoUrl.contains("/config?"):
     # NOTE: config url already obtained from getProfile
     (code, response) = doGet(vimeoUrl)
@@ -249,33 +275,39 @@ proc getVideo(vimeoUrl: string) =
         defaultCdn = configResponse["request"]["files"]["dash"]["default_cdn"].getStr()
         cdnUrl = configResponse["request"]["files"]["dash"]["cdns"][defaultCdn]["url"].getStr()
       (code, response) = doGet(cdnUrl.dequery())
-      let
-        cdnResponse = parseJson(response)
-        videoStream = newVideoStream(cdnUrl, title, selectBestVideoStream(cdnResponse["video"]))
-        audioStream = newAudioStream(cdnUrl, title, selectBestAudioStream(cdnResponse["audio"]))
+      let cdnResponse = parseJson(response)
 
       if showStreams:
         reportStreams(cdnResponse)
         return
 
       if includeVideo:
+        videoStream = newVideoStream(cdnUrl, title, selectBestVideoStream(cdnResponse["video"], vId))
         reportStreamInfo(videoStream)
         if not grabMulti(videoStream.urlSegments, forceFilename=videoStream.filename,
                          saveLocation=getCurrentDir(), forceDl=true).is2xx:
           echo "<failed to download video stream>"
-      if includeAudio and audioStream.exists:
-        reportStreamInfo(audioStream)
-        if not grabMulti(audioStream.urlSegments, forceFilename=audioStream.filename,
-                         saveLocation=getCurrentDir(), forceDl=true).is2xx:
-          echo "<failed to download audio stream>"
+          includeVideo = false
+      if includeAudio:
+        audioStream = newAudioStream(cdnUrl, title, selectBestAudioStream(cdnResponse["audio"], aId))
+        if audioStream.exists:
+          reportStreamInfo(audioStream)
+          if not grabMulti(audioStream.urlSegments, forceFilename=audioStream.filename,
+                           saveLocation=getCurrentDir(), forceDl=true).is2xx:
+            echo "<failed to download audio stream>"
+            includeAudio = false
+        else:
+          includeAudio = false
       if includeAudio and includeVideo:
         joinStreams(videoStream.filename, audioStream.filename, safeTitle)
       else:
-        if not includeVideo:
+        if includeAudio and not includeVideo:
           toMp3(audioStream.filename, safeTitle, audioFormat)
-        else:
+        elif includeVideo:
           moveFile(joinPath(getCurrentDir(), videoStream.filename), finalPath.changeFileExt(videoStream.ext))
           echo "[complete] ", addFileExt(safeTitle, videoStream.ext)
+        else:
+          echo "<no streams were downloaded>"
 
 
 proc getProfile(vimeoUrl: string) =
@@ -310,7 +342,7 @@ proc getProfile(vimeoUrl: string) =
     getVideo(url)
 
 
-proc vimeoDownload*(vimeoUrl: string, audio, video, streams: bool, format: string) =
+proc vimeoDownload*(vimeoUrl: string, audio, video, streams: bool, format, aId, vId: string) =
   includeAudio = audio
   includeVideo = video
   audioFormat = format
@@ -324,4 +356,4 @@ proc vimeoDownload*(vimeoUrl: string, audio, video, streams: bool, format: strin
   if profile:
     getProfile(vimeoUrl)
   else:
-    getVideo(vimeoUrl)
+    getVideo(vimeoUrl, aId, vId)

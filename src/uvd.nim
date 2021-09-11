@@ -1,7 +1,5 @@
+import std/[parseopt, strutils]
 from os import commandLineParams
-from sequtils import keepIF
-from strutils import contains
-# import tables
 
 import vimeo, youtube
 
@@ -9,7 +7,7 @@ import vimeo, youtube
 proc main() =
   const
     acceptedOpts = ["-a", "--audio", "-v", "--video", "-h", "--help",
-                    "-f", "--format", "-s", "--show", "-i", "--id"]
+                    "-f", "--format", "-s", "--show", "-i", "--id", "--itag"]
     help = """
   Usage: uvd [options] url
 
@@ -18,7 +16,7 @@ proc main() =
     -v, --video                     Video Only
     -f, --format                    Audio Output Format
     -s, --show                      Show Available Streams
-    -i, --id                        Stream Id
+    -i, --id, --itag                Stream id/itag
     -h, --help                      Print This Help
   """
   # WIP
@@ -32,52 +30,48 @@ proc main() =
     audio = true
     video = true
     streams: bool
-    id: string
+    aItag = "0"
+    vItag = "0"
     format = "mp3"
+    unknownUrl: string
 
-  proc filter(x: string): bool =
-    ## filter out parsed options
-    not acceptedOpts.contains(x)
+  const
+    sNoVal = {'a', 'v', 's', 'h'}
+    lNoVal = @["audio", "video", "show", "help"]
 
   if args.len < 1:
     echo help
   else:
-    for arg in args:
-      case arg
-      of "-a", "--audio":
-        video = false
-      of "-v", "--video":
-        audio = false
-      of "-f", "--format":
-        format = arg
-        # WIP
-        # if audioExtensions.contains(arg):
-        #   format = audioExtensions[arg]
-        # else:
-        #   echo "<invalid audio format>"
-        #   return
-      of "-s", "--show":
-        streams = true
-      of "-i", "--id":
-        id = arg
-      of "-h", "--help":
-        echo help
+    for kind, key, val in getopt(shortNoVal=sNoVal, longNoVal=lNoVal):
+      case kind
+      of cmdEnd:
         return
-      else:
-        discard
+      of cmdArgument:
+        unknownUrl = key
+      of cmdShortOption, cmdLongOption:
+        case key
+        of "h", "help":
+          echo help
+          return
+        of "a", "audio":
+          video = false
+        of "v", "video":
+          audio = false
+        of "s", "show":
+          streams = true
+        of "f", "format":
+          format = val
+        of "ai", "aid", "aitag":
+          aItag = val
+        of "vi", "vid", "vitag":
+          vItag = val
 
-    args.keepIf(filter)
-
-    if args.len != 1:
-      echo "<invalid arguments>"
+    if unknownUrl.contains("vimeo"):
+      vimeoDownload(unknownUrl, audio, video, streams, format, aItag, vItag)
+    elif unknownUrl.contains("youtu"):
+      youtubeDownload(unknownUrl, audio, video, streams, format, aItag, vItag)
     else:
-      let unknownUrl = args[0]
-      if unknownUrl.contains("vimeo"):
-        vimeoDownload(unknownUrl, audio, video, streams, format)
-      elif unknownUrl.contains("youtu"):
-        youtubeDownload(unknownUrl, audio, video, streams, format)
-      else:
-        echo "<invalid url>"
+      echo "<invalid url>"
 
 
 when isMainModule:
