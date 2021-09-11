@@ -24,6 +24,7 @@ Options:
   -v, --video                     Video Only
   -f, --format                    Audio Output Format
   -s, --show                      Show Available Streams
-  -i, --id                        Stream Id
+  -ai, -aid, --aitag              Audio Stream id/itag Selection
+  -vi, -vid, --vitag              Video Stream id/itag Selection
   -h, --help                      Print This Help
 ```
