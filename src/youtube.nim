@@ -97,6 +97,7 @@ type
     ext: string
     size: string
     quality: string
+    bitrate: string
     url: string
     baseUrl: string
     urlSegments: seq[string]
@@ -517,7 +518,7 @@ proc selectBestAudioStream(streams: JsonNode): JsonNode =
         result = stream
 
 
-proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime, ext, size, qlt: string] =
+proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime, ext, size, qlt, bitrate: string] =
   result.itag = stream["itag"].getInt()
   result.mime = stream["mimeType"].getStr().split(";")[0]
   result.ext = extensions[result.mime]
@@ -530,9 +531,13 @@ proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime,
     else:
       result.size = formatSize(int(stream["bitrate"].getInt() * duration / 8), includeSpace=true)
   result.qlt = stream["qualityLabel"].getStr()
+  if stream.hasKey("averageBitrate"):
+    result.bitrate = formatSize(stream["averageBitrate"].getInt(), includeSpace=true) & "/s"
+  else:
+    result.bitrate = formatSize(stream["bitrate"].getInt(), includeSpace=true) & "/s"
 
 
-proc getAudioStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime, ext, size, qlt: string] =
+proc getAudioStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime, ext, size, qlt, bitrate: string] =
   result.itag = stream["itag"].getInt()
   result.mime = stream["mimeType"].getStr().split(";")[0]
   result.ext = extensions[result.mime]
@@ -540,11 +545,9 @@ proc getAudioStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime,
     result.size = formatSize(parseInt(stream["contentLength"].getStr()), includeSpace=true)
   else:
     # NOTE: estimate from bitrate
-    if stream.hasKey("averageBitrate"):
-      result.size = formatSize((stream["averageBitrate"].getInt() * duration / 8).int, includeSpace=true)
-    else:
-      result.size = formatSize((stream["bitrate"].getInt() * duration / 8).int, includeSpace=true)
-  result.qlt = formatSize(stream["averageBitrate"].getInt(), includeSpace=true) & "/s"
+    result.size = formatSize((stream["averageBitrate"].getInt() * duration / 8).int, includeSpace=true)
+  result.qlt = stream["audioQuality"].getStr()
+  result.bitrate = formatSize(stream["averageBitrate"].getInt(), includeSpace=true) & "/s"
 
 
 proc urlOrCipher(stream: JsonNode): string =
@@ -600,7 +603,7 @@ proc extractDashInfo(dashManifestUrl, itag: string): tuple[baseUrl, segmentList:
 
 proc newVideoStream(youtubeUrl, dashManifestUrl, title: string, duration: int, stream: JsonNode): Stream =
   result.title = title
-  (result.itag, result.mime, result.ext, result.size, result.quality) = getVideoStreamInfo(stream, duration)
+  (result.itag, result.mime, result.ext, result.size, result.quality, result.bitrate) = getVideoStreamInfo(stream, duration)
   result.filename = addFileExt("videostream", result.ext)
   # NOTE: "initRange" is a best guess id for non-segmented streams, may not be universal
   # and may lead to erroneos stream selection.
@@ -617,7 +620,7 @@ proc newVideoStream(youtubeUrl, dashManifestUrl, title: string, duration: int, s
 proc newAudioStream(youtubeUrl, dashManifestUrl, title: string, duration: int, stream: JsonNode): Stream =
   # QUESTION: will stream with no audio throw exception?
   result.title = title
-  (result.itag, result.mime, result.ext, result.size, result.quality) = getAudioStreamInfo(stream, duration)
+  (result.itag, result.mime, result.ext, result.size, result.quality, result.bitrate) = getAudioStreamInfo(stream, duration)
   result.filename = addFileExt("audiostream", result.ext)
   # NOTE: "initRange" is a best guess id for non-segmented streams, may not be universal
   # and may lead to erroneos stream selection.
@@ -637,6 +640,7 @@ proc reportStreamInfo(stream: Stream) =
        "itag: ", stream.itag, '\n',
        "size: ", stream.size, '\n',
        "quality: ", stream.quality, '\n',
+       "bitrate: ", stream.bitrate, '\n',
        "mime: ", stream.mime
   if stream.dash:
     echo "segments: ", stream.urlSegments.len
@@ -645,17 +649,17 @@ proc reportStreamInfo(stream: Stream) =
 proc reportStreams(playerResponse: JsonNode, duration: int) =
   var
     itag: int
-    mime, ext, size, quality: string
+    mime, ext, size, quality, bitrate: string
   for item in playerResponse["streamingData"]["adaptiveFormats"]:
     if item.hasKey("audioQuality"):
-      (itag, mime, ext, size, quality) = getAudioStreamInfo(item, duration)
+      (itag, mime, ext, size, quality, bitrate) = getAudioStreamInfo(item, duration)
       echo "[audio]", " itag: ", itag, " quality: ", quality,
-           " mime: ", mime, " size: ", size
+           " bitrate: ", bitrate, " mime: ", mime, " size: ", size
     else:
-      (itag, mime, ext, size, quality) = getVideoStreamInfo(item, duration)
+      (itag, mime, ext, size, quality, bitrate) = getVideoStreamInfo(item, duration)
       echo "[video]", " itag: ", itag, " quality: ", quality,
            " resolution: ", item["width"].getInt(), 'x', item["height"].getInt(),
-           " mime: ", mime, " size: ", size
+           " bitrate: ", bitrate, " mime: ", mime, " size: ", size
 
 
 proc isolateId(youtubeUrl: string): string =

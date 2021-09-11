@@ -18,6 +18,7 @@ type
     ext: string
     size: string
     quality: string
+    bitrate: string
     initUrl: string
     baseUrl: string
     urlSegments: seq[string]
@@ -68,7 +69,7 @@ proc selectBestAudioStream(streams: JsonNode): JsonNode =
         result = stream
 
 
-proc getVideoStreamInfo(stream: JsonNode): tuple[mime, ext, size, qlt: string] =
+proc getVideoStreamInfo(stream: JsonNode): tuple[mime, ext, size, qlt, bitrate: string] =
   result.mime = stream["mime_type"].getStr()
   result.ext = extensions[result.mime]
   if isVerticle(stream):
@@ -79,9 +80,10 @@ proc getVideoStreamInfo(stream: JsonNode): tuple[mime, ext, size, qlt: string] =
   for segment in stream["segments"]:
     size.inc(segment["size"].getInt())
   result.size = formatSize(size, includeSpace=true)
+  result.bitrate = formatSize(stream["avg_bitrate"].getInt(), includeSpace=true) & "/s"
 
 
-proc getAudioStreamInfo(stream: JsonNode): tuple[mime, ext, size, qlt: string] =
+proc getAudioStreamInfo(stream: JsonNode): tuple[mime, ext, size, qlt, bitrate: string] =
   result.mime = stream["mime_type"].getStr()
   result.ext = extensions[result.mime]
   result.qlt = formatSize(stream["avg_bitrate"].getInt(), includeSpace=true) & "/s"
@@ -89,6 +91,7 @@ proc getAudioStreamInfo(stream: JsonNode): tuple[mime, ext, size, qlt: string] =
   for segment in stream["segments"]:
     size.inc(segment["size"].getInt())
   result.size = formatSize(size, includeSpace=true)
+  result.bitrate = formatSize(stream["avg_bitrate"].getInt(), includeSpace=true) & "/s"
 
 
 proc produceUrlSegments(cdnUrl, baseUrl, initUrl: string, stream: JsonNode): seq[string] =
@@ -100,7 +103,7 @@ proc produceUrlSegments(cdnUrl, baseUrl, initUrl: string, stream: JsonNode): seq
 
 proc newVideoStream(cdnUrl, title: string, stream: JsonNode): Stream =
   result.title = title
-  (result.mime, result.ext, result.size, result.quality) = getVideoStreamInfo(stream)
+  (result.mime, result.ext, result.size, result.quality, result.bitrate) = getVideoStreamInfo(stream)
   result.filename = addFileExt("videostream", result.ext)
   result.baseUrl = stream["base_url"].getStr()
   result.initUrl = stream["init_segment"].getStr()
@@ -112,7 +115,7 @@ proc newVideoStream(cdnUrl, title: string, stream: JsonNode): Stream =
 proc newAudioStream(cdnUrl, title: string, stream: JsonNode): Stream =
   if stream.kind != JNull:
     result.title = title
-    (result.mime, result.ext, result.size, result.quality) = getAudioStreamInfo(stream)
+    (result.mime, result.ext, result.size, result.quality, result.bitrate) = getAudioStreamInfo(stream)
     result.filename = addFileExt("audiostream", result.ext)
     result.baseUrl = stream["base_url"].getStr().strip(leading=true, chars={'.'})
     result.initUrl = stream["init_segment"].getStr()
@@ -124,22 +127,24 @@ proc newAudioStream(cdnUrl, title: string, stream: JsonNode): Stream =
 proc reportStreamInfo(stream: Stream) =
   echo "title: ", stream.title, '\n',
        "stream: ", stream.filename, '\n',
-       "size: ", stream.size, '\n',
-       "quality: ", stream.quality, '\n',
+       "size: ", stream.size
+  if not stream.quality.isEmptyOrWhitespace():
+    echo "quality: ", stream.quality
+  echo "bitrate: ", stream.bitrate, '\n',
        "mime: ", stream.mime, '\n',
        "segments: ", stream.urlSegments.len
 
 
 proc reportStreams(cdnResponse: JsonNode) =
-  var mime, ext, size, quality, dimensions: string
+  var mime, ext, size, quality, dimensions, bitrate: string
   for item in cdnResponse["video"]:
     dimensions = $item["width"].getInt() & "x" & $item["height"].getInt()
-    (mime, ext, size, quality) = getVideoStreamInfo(item)
+    (mime, ext, size, quality, bitrate) = getVideoStreamInfo(item)
     echo "[video]", " id: ", item["id"].getStr(), " quality: ", quality,
-         " resolution: ", dimensions, " mime: ", mime, " size: ", size
+         " resolution: ", dimensions, " bitrate: ", bitrate, " mime: ", mime, " size: ", size
   for item in cdnResponse["audio"]:
-    (mime, ext, size, quality) = getAudioStreamInfo(item)
-    echo "[audio]", " id: ", item["id"].getStr(), " avg_bitrate: ", quality,
+    (mime, ext, size, quality, bitrate) = getAudioStreamInfo(item)
+    echo "[audio]", " id: ", item["id"].getStr(), " bitrate: ", bitrate,
          " mime: ", mime, " size: ", size
 
 
