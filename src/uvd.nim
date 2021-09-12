@@ -9,12 +9,12 @@ proc main() =
     Usage: uvd [options] url
 
     Options:
-      -ao, --audio-only               Audio Only
-      -vo, --video-only               Video Only
+      -a, --audio-only                Audio Only
+      -v, --video-only                Video Only
       -f, --format                    Audio Output Format
       -s, --show                      Show Available Streams
-      -ai, --audio-id, --audio-itag   Audio Stream id/itag
-      -vi, --video-id, --video-itag   Video Stream id/itag
+      --audio-id, --audio-itag        Audio Stream id/itag
+      --video-id, --video-itag        Video Stream id/itag
       -h, --help                      Print This Help
     """
   # WIP
@@ -35,7 +35,7 @@ proc main() =
 
   const
     sNoVal = {'a', 'v', 's', 'h'}
-    lNoVal = @["audio", "video", "show", "help"]
+    lNoVal = @["audio-only", "video-only", "show", "help"]
 
   if args.len < 1:
     echo help
@@ -51,17 +51,17 @@ proc main() =
         of "h", "help":
           echo help
           return
-        of "a", "audio":
+        of "a", "audio-only":
           video = false
-        of "v", "video":
+        of "v", "video-only":
           audio = false
         of "s", "show":
           streams = true
         of "f", "format":
           format = val
-        of "ai", "aid", "aitag":
+        of "audio-id", "audio-itag":
           aItag = val
-        of "vi", "vid", "vitag":
+        of "video-id", "video-itag":
           vItag = val
 
     if unknownUrl.contains("vimeo"):

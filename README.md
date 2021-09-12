@@ -20,11 +20,11 @@
 Usage: uvd [options] url
 
 Options:
-  -ao, --audio-only               Audio Only
-  -vo, --video-only               Video Only
+  -a, --audio-only                Audio Only
+  -v, --video-only                Video Only
   -f, --format                    Audio Output Format
   -s, --show                      Show Available Streams
-  -ai, --audio-id, --audio-itag   Audio Stream id/itag
-  -vi, --video-id, --video-itag   Video Stream id/itag
+  --audio-id, --audio-itag        Audio Stream id/itag
+  --video-id, --video-itag        Video Stream id/itag
   -h, --help                      Print This Help
 ```
