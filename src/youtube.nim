@@ -218,6 +218,7 @@ proc throttleModFunction(d: seq[string], e: int): int =
 
 proc throttleUnshift(d: var string, e: int) =
   ## handles prepend also
+  # function(d,e){e=(e%d.length+d.length)%d.length;d.splice(-e).reverse().forEach(function(f){d.unshift(f)})}
   d.rotateLeft(d.len - throttleModFunction(d, e))
 
 
@@ -227,6 +228,17 @@ proc throttleUnshift(d: var seq[string], e: int) =
 
 
 proc throttleCipher(d: var string, e: string) =
+  #[
+  forward: function(d,e){for(var f=64,h=[];++f-h.length-32;){switch(f)
+  {case 58:f-=14;case 91:case 92:case 93:continue;case 123:f=47;case 94:case 95:
+  case 96:continue;case 46:f=95}h.push(String.fromCharCode(f))}
+  d.forEach(function(l,m,n){this.push(n[m]=h[(h.indexOf(l)-h.indexOf(this[m])+m-32+f--)%h.length])}
+
+  reverse: function(d,e){for(var f=64,h=[];++f-h.length-32;){switch(f){case 91:f=44;continue;
+  case 123:f=65;break;case 65:f-=18;continue;case 58:f=96;continue;case 46:f=95}
+  h.push(String.fromCharCode(f))}d.forEach(function(l,m,n){this.push(n[m]
+  =h[(h.indexOf(l)-h.indexOf(this[m])+m-32+f--)%h.length])},e.split(""))}
+  ]#
   let temp = d
   var
     f = 96
@@ -246,6 +258,7 @@ proc throttleCipher(d: var seq[string], e: string) =
 
 
 proc throttleReverse(d: var string) =
+  # function(d){d.reverse()}
   d.reverse()
 
 
@@ -259,14 +272,15 @@ proc throttlePush(d: var string, e: string) =
 
 
 proc throttlePush(d: var seq[string], e: string) =
+  # function(d,e){d.push(e)}
   d.add(e)
 
 
-proc splice(d: var string, fromIdx: int): string =
-  ## javascript splice analogue*
+proc splice(d: var string, fromIdx: int) =
+  ## javascript splice
   # function(d,e){e=(e%d.length+d.length)%d.length;d.splice(e,1)};
-  let idx = (fromIdx mod d.len + d.len) mod d.len
-  d.delete(idx, idx)
+  let e = (fromIdx mod d.len + d.len) mod d.len
+  d.delete(e, e)
 
 
 proc splice(d: var seq[string], fromIdx: int, toIdx=0): seq[string] =
@@ -276,6 +290,8 @@ proc splice(d: var seq[string], fromIdx: int, toIdx=0): seq[string] =
 
 proc throttleSwap(d: var string, e: int) =
   ## handles nested splice also
+  # swap: function(d,e){e=(e%d.length+d.length)%d.length;var f=d[0];d[0]=d[e];d[e]=f}
+  # nested splice: function(d,e){e=(e%d.length+d.length)%d.length;d.splice(0,1,d.splice(e,1,d[0])[0])}
   let z = throttleModFunction(d, e)
   if z < 0:
     swap(d[0], d[d.len + z])
@@ -293,7 +309,7 @@ proc throttleSwap(d: var seq[string], e: int) =
 
 
 proc parseThrottleFunctionName(js: string): string =
-  # # parse main throttle function
+  ## parse main throttle function
   # a.C&&(b=a.get("n"))&&(b=kha(b),a.set("n",b))
   # --> kha
   var match: array[1, string]
@@ -413,7 +429,7 @@ proc calculateN(n, js: string): string =
       elif currFunc == "throttleSwap" or currFunc == "throttleNestedSplice":
         throttleSwap(tempArray, parseInt(secondArg))
       elif currFunc == "splice":
-        discard splice(tempArray, parseInt(secondArg))
+        splice(tempArray, parseInt(secondArg))
     else:
       if currFunc == "throttleUnshift" or currFunc == "throttlePrepend":
         throttleUnshift(initialN, parseInt(secondArg))
@@ -430,7 +446,7 @@ proc calculateN(n, js: string): string =
       elif currFunc == "throttleSwap" or currFunc == "throttleNestedSplice":
         throttleSwap(initialN, parseInt(secondArg))
       elif currFunc == "splice":
-        discard splice(initialN, parseInt(secondArg))
+        splice(initialN, parseInt(secondArg))
 
   result = initialN
 
