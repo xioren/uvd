@@ -12,10 +12,7 @@ const
       "client": {
         "hl": "en",
         "clientName": "WEB",
-        "clientVersion": "2.$3.00.00",
-        "mainAppWebInfo": {
-          "graftUrl": "/watch?v=$1"
-        }
+        "clientVersion": "2.$3.00.00"
       }
     },
     "playbackContext": {
@@ -27,15 +24,52 @@ const
     "racyCheckOk": true,
     "videoId": "$1"
   }"""
-  playerBypassContext = """{
+  playerBypassContextTier1 = """{
     "context": {
       "client": {
         "hl": "en",
         "clientName": "WEB_EMBEDDED_PLAYER",
+        "clientVersion": "2.$3.00.00"
+      }
+    },
+    "playbackContext": {
+      "contentPlaybackContext": {
+        "signatureTimestamp": $2
+      }
+    },
+    "contentCheckOk": true,
+    "racyCheckOk": true,
+    "videoId": "$1"
+  }"""
+  # FIXME: does not work
+  # playerBypassContextTier2 = """{
+  #   "context": {
+  #     "client": {
+  #       "hl": "en",
+  #       "clientName": "WEB",
+  #       "clientVersion": "2.$3.00.00",
+  #       "clientScreen": "EMBED"
+  #     }
+  #   },
+  #   "playbackContext": {
+  #     "contentPlaybackContext": {
+  #       "signatureTimestamp": $2
+  #     }
+  #   },
+  #   "thirdParty": {
+  #     "embedUrl": "https://google.com"
+  #   },
+  #   "contentCheckOk": true,
+  #   "racyCheckOk": true,
+  #   "videoId": "$1"
+  # }"""
+  playerBypassContextTier2 = """{
+    "context": {
+      "client": {
+        "hl": "en",
+        "clientName": "WEB",
         "clientVersion": "2.$3.00.00",
-        "mainAppWebInfo": {
-          "graftUrl": "/watch?v=$1"
-        }
+        "clientScreen": "EMBED"
       }
     },
     "playbackContext": {
@@ -53,10 +87,7 @@ const
       "client": {
         "hl": "en",
         "clientName": "WEB",
-        "clientVersion": "2.$2.00.00",
-        "mainAppWebInfo": {
-          "graftUrl": "/channel/$1/videos"
-        }
+        "clientVersion": "2.$2.00.00"
       }
     },
     "params": "$3"
@@ -725,12 +756,17 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         echo "<file exists> ", safeTitle
       else:
         if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
-          echo "[attempting age-gate bypass]"
-          (code, response) = doPost(playerUrl, playerBypassContext % [id, sigTimeStamp, date])
+          echo "[attempting age-gate bypass tier 1]"
+          (code, response) = doPost(playerUrl, playerBypassContextTier1 % [id, sigTimeStamp, date])
           playerResponse = parseJson(response)
           if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
             echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
-            return
+            echo "[attempting age-gate bypass tier 2]"
+            (code, response) = doPost(playerUrl, playerBypassContextTier2 % [id, sigTimeStamp, date])
+            playerResponse = parseJson(response)
+            if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
+              echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
+              return
         elif playerResponse["playabilityStatus"]["status"].getStr() != "OK" or playerResponse["playabilityStatus"].hasKey("liveStreamability"):
           echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
           # QUESTION: does "errorScreen" always imply "subreason"?

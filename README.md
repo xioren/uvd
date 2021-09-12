@@ -1,4 +1,4 @@
-### uvd: yo[u]tube[v]imeo[d]ownloader
+### uvd: yo[u]tube [v]imeo [d]ownloader
 
 
 + minimal downloader for youtube and vimeo
