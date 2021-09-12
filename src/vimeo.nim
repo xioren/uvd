@@ -26,17 +26,17 @@ type
     exists: bool
 
 const
+  apiUrl = "https://api.vimeo.com"
   configUrl = "https://player.vimeo.com/video/$1/config"
   # detailsUrl = "http://vimeo.com/api/v2/video/$1.json"
   authorizationUrl = "https://vimeo.com/_rv/viewer"
-  apiUrl = "https://api.vimeo.com"
   profileUrl = "https://api.vimeo.com/users/$1/profile_sections?fields=uri%2Ctitle%2CuserUri%2Curi%2C"
   videosUrl = "https://api.vimeo.com/users/$1/profile_sections/$2/videos?fields=video_details%2Cprofile_section_uri%2Ccolumn_width%2Cclip.uri%2Cclip.name%2Cclip.type%2Cclip.categories.name%2Cclip.categories.uri%2Cclip.config_url%2Cclip.pictures%2Cclip.height%2Cclip.width%2Cclip.duration%2Cclip.description%2Cclip.created_time%2C&page=1&per_page=10"
   bypassUrl = "https://player.vimeo.com/video/$1?app_id=122963&referrer=https%3A%2F%2Fwww.patreon.com%2F"
 
 var
   includeAudio, includeVideo: bool
-  audioFormat = "mp3"
+  audioFormat: string
   showStreams: bool
 
 
@@ -68,7 +68,7 @@ proc isVerticle(stream: JsonNode): bool =
   stream["height"].getInt() > stream["width"].getInt()
 
 
-proc selectBestVideoStream(streams: JsonNode, id: string): JsonNode =
+proc selectVideoStream(streams: JsonNode, id: string): JsonNode =
   if id == "0":
     var
       largest = 0
@@ -88,7 +88,7 @@ proc selectBestVideoStream(streams: JsonNode, id: string): JsonNode =
         break
 
 
-proc selectBestAudioStream(streams: JsonNode, id: string): JsonNode =
+proc selectAudioStream(streams: JsonNode, id: string): JsonNode =
   if streams.kind == JNull:
     result = streams
   elif id == "0":
@@ -184,6 +184,7 @@ proc reportStreamInfo(stream: Stream) =
 
 
 proc reportStreams(cdnResponse: JsonNode) =
+  # TODO: sort streams by quality
   var mime, ext, size, quality, dimensions, bitrate: string
   for item in cdnResponse["video"]:
     dimensions = $item["width"].getInt() & "x" & $item["height"].getInt()
@@ -251,12 +252,12 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
         if embedResponse.contains("cdn_url"):
           response = embedResponse
         else:
-          echo "<failed to obtain meta data>"
+          echo "<failed to obtain video metadata>"
           return
       else:
         (code, response) = doGet(signedConfigUrl.replace("\\"))
     elif not code.is2xx:
-      echo '<', code, '>', '\n', "<failed to obtain meta data>"
+      echo '<', code, '>', '\n', "<failed to obtain video metadata>"
       return
 
   configResponse = parseJson(response)
@@ -282,14 +283,14 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
         return
 
       if includeVideo:
-        videoStream = newVideoStream(cdnUrl, title, selectBestVideoStream(cdnResponse["video"], vId))
+        videoStream = newVideoStream(cdnUrl, title, selectVideoStream(cdnResponse["video"], vId))
         reportStreamInfo(videoStream)
         if not grabMulti(videoStream.urlSegments, forceFilename=videoStream.filename,
                          saveLocation=getCurrentDir(), forceDl=true).is2xx:
           echo "<failed to download video stream>"
           includeVideo = false
       if includeAudio:
-        audioStream = newAudioStream(cdnUrl, title, selectBestAudioStream(cdnResponse["audio"], aId))
+        audioStream = newAudioStream(cdnUrl, title, selectAudioStream(cdnResponse["audio"], aId))
         if audioStream.exists:
           reportStreamInfo(audioStream)
           if not grabMulti(audioStream.urlSegments, forceFilename=audioStream.filename,

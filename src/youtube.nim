@@ -168,7 +168,7 @@ let date = now().format("yyyyMMdd")
 
 var
   includeAudio, includeVideo: bool
-  audioFormat = "mp3"
+  audioFormat: string
   showStreams: bool
   h: array[64, char]
   jsUrl: string
@@ -591,7 +591,7 @@ proc extractDashInfo(dashManifestUrl, itag: string): tuple[baseUrl, segmentList:
   result.segmentList = match[0]
 
 
-proc selectBestVideoStream(streams: JsonNode, itag: int): JsonNode =
+proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
   # NOTE: zeroth stream usually seems to be the overall best quality
   if itag == 0:
     var largest = 0
@@ -607,7 +607,7 @@ proc selectBestVideoStream(streams: JsonNode, itag: int): JsonNode =
         break
 
 
-proc selectBestAudioStream(streams: JsonNode, itag: int): JsonNode =
+proc selectAudioStream(streams: JsonNode, itag: int): JsonNode =
   if itag == 0:
     var largest = 0
     for stream in streams:
@@ -802,7 +802,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         var attempt: HttpCode
         if includeVideo:
           videoStream = newVideoStream(standardYoutubeUrl, dashManifestUrl, title, duration,
-                                       selectBestVideoStream(playerResponse["streamingData"]["adaptiveFormats"], vItag))
+                                       selectVideoStream(playerResponse["streamingData"]["adaptiveFormats"], vItag))
           reportStreamInfo(videoStream)
           if videoStream.dash:
             attempt = grabMulti(videoStream.urlSegments, forceFilename=videoStream.filename,
@@ -815,7 +815,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
             includeVideo = false
         if includeAudio:
           audioStream = newAudioStream(standardYoutubeUrl, dashManifestUrl, title, duration,
-                                       selectBestAudioStream(playerResponse["streamingData"]["adaptiveFormats"], aItag))
+                                       selectAudioStream(playerResponse["streamingData"]["adaptiveFormats"], aItag))
           reportStreamInfo(audioStream)
           if audioStream.dash:
             attempt = grabMulti(audioStream.urlSegments, forceFilename=audioStream.filename,
