@@ -42,6 +42,7 @@ const
     "videoId": "$1"
   }"""
   # FIXME: does not work
+  # NOTE: anecdotally, should work for https://www.youtube.com/watch?v=HsUATh_Nc2U
   # playerBypassContextTier2 = """{
   #   "context": {
   #     "client": {

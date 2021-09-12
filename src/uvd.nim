@@ -9,12 +9,12 @@ proc main() =
     Usage: uvd [options] url
 
     Options:
-      -a, --audio                     Audio Only
-      -v, --video                     Video Only
+      -ao, --audio-only               Audio Only
+      -vo, --video-only               Video Only
       -f, --format                    Audio Output Format
       -s, --show                      Show Available Streams
-      -ai, --aid, --aitag              Audio Stream id/itag
-      -vi, --vid, --vitag              Video Stream id/itag
+      -ai, --audio-id, --audio-itag   Audio Stream id/itag
+      -vi, --video-id, --video-itag   Video Stream id/itag
       -h, --help                      Print This Help
     """
   # WIP
