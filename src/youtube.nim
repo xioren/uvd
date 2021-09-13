@@ -280,7 +280,7 @@ proc splice(d: var string, fromIdx: int) =
   d.delete(e, e)
 
 
-proc splice(d: var seq[string], fromIdx: int, toIdx=0): seq[string] =
+proc splice(d: var seq[string], fromIdx: int, toIdx=0) =
   # NOTE: needed to compile
   doAssert false
 
