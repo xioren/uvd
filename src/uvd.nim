@@ -6,16 +6,16 @@ import vimeo, youtube
 
 proc main() =
   const help = """
-    Usage: uvd [options] url
+    usage: uvd [options] url
 
-    Options:
-      -a, --audio-only                Audio Only
-      -v, --video-only                Video Only
-      -f, --format                    Audio Output Format
-      -s, --show                      Show Available Streams
-      --audio-id, --audio-itag        Audio Stream id/itag
-      --video-id, --video-itag        Video Stream id/itag
-      -h, --help                      Print This Help
+    options:
+      -a, --audio-only                audio only
+      -v, --video-only                video only
+      -f, --format                    audio output format
+      -s, --show                      show available streams
+      --audio-id, --audio-itag        audio stream id/itag
+      --video-id, --video-itag        video stream id/itag
+      -h, --help                      print this help
     """
   # WIP
   # NOTE: each encoder will require different ffmpeg settings
