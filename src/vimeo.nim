@@ -150,14 +150,16 @@ proc produceUrlSegments(cdnUrl, baseUrl, initUrl: string, stream: JsonNode, audi
 
 
 proc newVideoStream(cdnUrl, title: string, stream: JsonNode): Stream =
-  result.title = title
-  (result.id, result.mime, result.ext, result.size, result.quality, result.bitrate) = getVideoStreamInfo(stream)
-  result.filename = addFileExt("videostream", result.ext)
-  result.baseUrl = stream["base_url"].getStr().replace("../")
-  result.initUrl = stream["init_segment"].getStr()
-  result.urlSegments = produceUrlSegments(cdnUrl.split("sep/")[0], result.baseUrl,
-                                          result.initUrl, stream, false)
-  result.exists = true
+  if stream.kind != JNull:
+    # NOTE: should NEVER be JNull but go through the motions anyway for parity with getAudioStreamInfo
+    result.title = title
+    (result.id, result.mime, result.ext, result.size, result.quality, result.bitrate) = getVideoStreamInfo(stream)
+    result.filename = addFileExt("videostream", result.ext)
+    result.baseUrl = stream["base_url"].getStr().replace("../")
+    result.initUrl = stream["init_segment"].getStr()
+    result.urlSegments = produceUrlSegments(cdnUrl.split("sep/")[0], result.baseUrl,
+                                            result.initUrl, stream, false)
+    result.exists = true
 
 
 proc newAudioStream(cdnUrl, title: string, stream: JsonNode): Stream =
@@ -185,16 +187,17 @@ proc reportStreamInfo(stream: Stream) =
 
 proc reportStreams(cdnResponse: JsonNode) =
   # TODO: sort streams by quality
-  var mime, ext, size, quality, dimensions, bitrate: string
+  var id, mime, ext, size, quality, dimensions, bitrate: string
   for item in cdnResponse["video"]:
     dimensions = $item["width"].getInt() & "x" & $item["height"].getInt()
-    (mime, ext, size, quality, bitrate) = getVideoStreamInfo(item)
-    echo "[video]", " id: ", item["id"].getStr(), " quality: ", quality,
+    (id, mime, ext, size, quality, bitrate) = getVideoStreamInfo(item)
+    echo "[video]", " id: ", id, " quality: ", quality,
          " resolution: ", dimensions, " bitrate: ", bitrate, " mime: ", mime, " size: ", size
-  for item in cdnResponse["audio"]:
-    (mime, ext, size, quality, bitrate) = getAudioStreamInfo(item)
-    echo "[audio]", " id: ", item["id"].getStr(), " bitrate: ", bitrate,
-         " mime: ", mime, " size: ", size
+  if cdnResponse["audio"].kind != JNull:
+    for item in cdnResponse["audio"]:
+      (id, mime, ext, size, quality, bitrate) = getAudioStreamInfo(item)
+      echo "[audio]", " id: ", id, " bitrate: ", bitrate,
+           " mime: ", mime, " size: ", size
 
 
 proc getProfileIds(vimeoUrl: string): tuple[profileId, sectionId: string] =
