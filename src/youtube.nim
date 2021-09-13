@@ -241,15 +241,12 @@ proc throttleCipher(d: var string, e: string) =
   ]#
   let temp = d
   var
-    f = 96
     this = e
     bVal: int
-
   for idx, c in temp:
-    bVal = (h.index(c) - h.index(this[idx]) + idx - 32 + f) mod h.len
+    bVal = (h.index(c) - h.index(this[idx]) + 64) mod h.len
     this.add(h[bVal])
     d[idx] = h[bVal]
-    dec f
 
 
 proc throttleCipher(d: var seq[string], e: string) =

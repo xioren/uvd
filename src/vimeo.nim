@@ -1,4 +1,4 @@
-import std/[json, uri, parseutils]
+import std/[json, uri, parseutils, sequtils]
 
 import utils
 
@@ -348,13 +348,8 @@ proc vimeoDownload*(vimeoUrl: string, audio, video, streams: bool, format, aId, 
   includeVideo = video
   audioFormat = format
   showStreams = streams
-  var profile: bool
 
-  for c in extractId(vimeoUrl):
-    if not isDigit(c):
-      profile = true
-      break
-  if profile:
-    getProfile(vimeoUrl)
-  else:
+  if extractId(vimeoUrl).all(isDigit):
     getVideo(vimeoUrl, aId, vId)
+  else:
+    getProfile(vimeoUrl)
