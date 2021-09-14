@@ -151,7 +151,7 @@ proc produceUrlSegments(cdnUrl, baseUrl, initUrl: string, stream: JsonNode, audi
 
 proc newVideoStream(cdnUrl, title: string, stream: JsonNode): Stream =
   if stream.kind != JNull:
-    # NOTE: should NEVER be JNull but go through the motions anyway for parity with getAudioStreamInfo
+    # NOTE: should NEVER be JNull but go through the motions anyway for parity with newAudioStream
     result.title = title
     (result.id, result.mime, result.ext, result.size, result.quality, result.bitrate) = getVideoStreamInfo(stream)
     result.filename = addFileExt("videostream", result.ext)

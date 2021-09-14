@@ -608,6 +608,7 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
 proc selectAudioStream(streams: JsonNode, itag: int): JsonNode =
   # NOTE: in tests, it seems youtube videos "without audio" still contain an empty
   # audio stream
+  # "audio-less" video: https://www.youtube.com/watch?v=fW2e0CZjnFM
   if itag == 0:
     var largest = 0
     for stream in streams:
@@ -663,7 +664,7 @@ proc getAudioStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime,
 
 proc newVideoStream(youtubeUrl, dashManifestUrl, title: string, duration: int, stream: JsonNode): Stream =
   if stream.kind != JNull:
-    # NOTE: should NEVER be JNull but go through the motions anyway for parity with getAudioStreamInfo
+    # NOTE: should NEVER be JNull but go through the motions anyway for parity with newAudioStream
     result.title = title
     (result.itag, result.mime, result.ext, result.size, result.quality, result.resolution, result.bitrate) = getVideoStreamInfo(stream, duration)
     result.filename = addFileExt("videostream", result.ext)
@@ -695,7 +696,7 @@ proc newAudioStream(youtubeUrl, dashManifestUrl, title: string, duration: int, s
       result.dash = true
       (result.baseUrl, segmentList) = extractDashInfo(dashManifestUrl, $result.itag)
       result.urlSegments = produceUrlSegments(result.baseUrl, segmentList)
-      result.exists = true
+    result.exists = true
 
 
 proc reportStreamInfo(stream: Stream) =
