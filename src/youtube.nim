@@ -122,8 +122,6 @@ const
 
 type
   Stream = object
-    title: string
-    filename: string
     itag: int
     mime: string
     ext: string
@@ -134,8 +132,17 @@ type
     url: string
     baseUrl: string
     urlSegments: seq[string]
+    filename: string
     dash: bool
     exists: bool
+
+  Video = object
+    title: string
+    videoId: string
+    url: string
+    audioStream: Stream
+    videoStream: Stream
+
 
 const
   baseUrl = "https://www.youtube.com"
@@ -662,12 +669,11 @@ proc getAudioStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime,
     result.bitrate = formatSize(stream["bitrate"].getInt(), includeSpace=true) & "/s"
 
 
-proc newVideoStream(youtubeUrl, dashManifestUrl, title: string, duration: int, stream: JsonNode): Stream =
+proc newVideoStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int, stream: JsonNode): Stream =
   if stream.kind != JNull:
     # NOTE: should NEVER be JNull but go through the motions anyway for parity with newAudioStream
-    result.title = title
     (result.itag, result.mime, result.ext, result.size, result.quality, result.resolution, result.bitrate) = getVideoStreamInfo(stream, duration)
-    result.filename = addFileExt("videostream", result.ext)
+    result.filename = addFileExt(videoId, result.ext)
     # NOTE: "initRange" is a best guess id for non-segmented streams, may not be universal
     # and may lead to erroneos stream selection.
     if dashManifestUrl.isEmptyOrWhitespace() or stream.hasKey("initRange"):
@@ -681,11 +687,10 @@ proc newVideoStream(youtubeUrl, dashManifestUrl, title: string, duration: int, s
     result.exists = true
 
 
-proc newAudioStream(youtubeUrl, dashManifestUrl, title: string, duration: int, stream: JsonNode): Stream =
+proc newAudioStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int, stream: JsonNode): Stream =
   if stream.kind != JNull:
-    result.title = title
     (result.itag, result.mime, result.ext, result.size, result.quality, result.bitrate) = getAudioStreamInfo(stream, duration)
-    result.filename = addFileExt("audiostream", result.ext)
+    result.filename = addFileExt(videoId, result.ext)
     # NOTE: "initRange" is a best guess id for non-segmented streams, may not be universal
     # and may lead to erroneos stream selection.
     if dashManifestUrl.isEmptyOrWhitespace() or stream.hasKey("initRange"):
@@ -697,11 +702,21 @@ proc newAudioStream(youtubeUrl, dashManifestUrl, title: string, duration: int, s
       (result.baseUrl, segmentList) = extractDashInfo(dashManifestUrl, $result.itag)
       result.urlSegments = produceUrlSegments(result.baseUrl, segmentList)
     result.exists = true
+
+
+proc newVideo(youtubeUrl, dashManifestUrl, title, videoId: string, duration: int,
+              adaptiveFormats: JsonNode, aItag, vItag: int): Video =
+  result.title = title
+  result.url = youtubeUrl
+  result.videoId = videoId
+  result.videoStream = newVideoStream(youtubeUrl, dashManifestUrl, videoId, duration,
+                                      selectVideoStream(adaptiveFormats, vItag))
+  result.audioStream = newAudioStream(youtubeUrl, dashManifestUrl, videoId, duration,
+                                      selectAudioStream(adaptiveFormats, aItag))
 
 
 proc reportStreamInfo(stream: Stream) =
-  echo "title: ", stream.title, '\n',
-       "stream: ", stream.filename, '\n',
+  echo "stream: ", stream.filename, '\n',
        "itag: ", stream.itag, '\n',
        "size: ", stream.size, '\n',
        "quality: ", stream.quality, '\n',
@@ -726,7 +741,7 @@ proc reportStreams(playerResponse: JsonNode, duration: int) =
            " size: ", size
 
 
-proc isolateId(youtubeUrl: string): string =
+proc isolateVideoId(youtubeUrl: string): string =
   if youtubeUrl.contains("youtu.be"):
     result = youtubeUrl.captureBetween('/', '?', 8)
   else:
@@ -753,14 +768,13 @@ proc isolatePlaylist(youtubeUrl: string): string =
 
 proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
   let
-    id = isolateId(youtubeUrl)
-    standardYoutubeUrl = watchUrl & id
+    videoId = isolateVideoId(youtubeUrl)
+    standardYoutubeUrl = watchUrl & videoId
   var
     code: HttpCode
     response: string
     playerResponse: JsonNode
     dashManifestUrl: string
-    videoStream, audioStream: Stream
 
   # NOTE: make initial request to get base.js and timestamp
   (code, response) = doGet(standardYoutubeUrl)
@@ -768,7 +782,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
     let sigTimeStamp = response.captureBetween(':', ',', response.find("\"STS\""))
     jsUrl = baseUrl & response.captureBetween('"', '"', response.find("\"jsUrl\":\"") + 7)
 
-    (code, response) = doPost(playerUrl, playerContext % [id, sigTimeStamp, date])
+    (code, response) = doPost(playerUrl, playerContext % [videoId, sigTimeStamp, date])
     if code.is2xx:
       playerResponse = parseJson(response)
       if playerResponse["playabilityStatus"]["status"].getStr() == "ERROR":
@@ -785,12 +799,12 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
       else:
         if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
           echo "[attempting age-gate bypass tier 1]"
-          (code, response) = doPost(playerUrl, playerBypassContextTier1 % [id, sigTimeStamp, date])
+          (code, response) = doPost(playerUrl, playerBypassContextTier1 % [videoId, sigTimeStamp, date])
           playerResponse = parseJson(response)
           if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
             echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
             echo "[attempting age-gate bypass tier 2]"
-            (code, response) = doPost(playerUrl, playerBypassContextTier2 % [id, sigTimeStamp, date])
+            (code, response) = doPost(playerUrl, playerBypassContextTier2 % [videoId, sigTimeStamp, date])
             playerResponse = parseJson(response)
             if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
               echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
@@ -810,30 +824,30 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         if playerResponse["streamingData"].hasKey("dashManifestUrl"):
           dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
 
+        let video = newVideo(standardYoutubeUrl, dashManifestUrl, title, videoId, duration,
+                             playerResponse["streamingData"]["adaptiveFormats"], aItag, vItag)
+        echo "title: ", video.title
+
         var attempt: HttpCode
         if includeVideo:
-          videoStream = newVideoStream(standardYoutubeUrl, dashManifestUrl, title, duration,
-                                       selectVideoStream(playerResponse["streamingData"]["adaptiveFormats"], vItag))
-          reportStreamInfo(videoStream)
-          if videoStream.dash:
-            attempt = grabMulti(videoStream.urlSegments, forceFilename=videoStream.filename,
+          reportStreamInfo(video.videoStream)
+          if video.videoStream.dash:
+            attempt = grabMulti(video.videoStream.urlSegments, forceFilename=video.videoStream.filename,
                                 saveLocation=getCurrentDir(), forceDl=true)
           else:
-            attempt = grab(videoStream.url, forceFilename=videoStream.filename,
+            attempt = grab(video.videoStream.url, forceFilename=video.videoStream.filename,
                            saveLocation=getCurrentDir(), forceDl=true)
           if not attempt.is2xx:
             echo "<failed to download video stream>"
             includeVideo = false
         if includeAudio:
-          audioStream = newAudioStream(standardYoutubeUrl, dashManifestUrl, title, duration,
-                                       selectAudioStream(playerResponse["streamingData"]["adaptiveFormats"], aItag))
-          if audioStream.exists:
-            reportStreamInfo(audioStream)
-            if audioStream.dash:
-              attempt = grabMulti(audioStream.urlSegments, forceFilename=audioStream.filename,
+          if video.audioStream.exists:
+            reportStreamInfo(video.audioStream)
+            if video.audioStream.dash:
+              attempt = grabMulti(video.audioStream.urlSegments, forceFilename=video.audioStream.filename,
                                   saveLocation=getCurrentDir(), forceDl=true)
             else:
-              attempt = grab(audioStream.url, forceFilename=audioStream.filename,
+              attempt = grab(video.audioStream.url, forceFilename=video.audioStream.filename,
                              saveLocation=getCurrentDir(), forceDl=true)
             if not attempt.is2xx:
               echo "<failed to download audio stream>"
@@ -841,13 +855,13 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
           else:
             includeAudio = false
         if includeAudio and includeVideo:
-          joinStreams(videoStream.filename, audioStream.filename, safeTitle)
+          joinStreams(video.videoStream.filename, video.audioStream.filename, safeTitle)
         else:
           if includeAudio and not includeVideo:
-            toMp3(audioStream.filename, safeTitle, audioFormat)
+            toMp3(video.audioStream.filename, safeTitle, audioFormat)
           elif includeVideo:
-            moveFile(joinPath(getCurrentDir(), videoStream.filename), finalPath.changeFileExt(videoStream.ext))
-            echo "[complete] ", addFileExt(safeTitle, videoStream.ext)
+            moveFile(joinPath(getCurrentDir(), video.videoStream.filename), finalPath.changeFileExt(video.videoStream.ext))
+            echo "[complete] ", addFileExt(safeTitle, video.videoStream.ext)
           else:
             echo "<no streams were downloaded>"
     else:

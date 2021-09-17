@@ -12,8 +12,6 @@ import utils
 
 type
   Stream = object
-    title: string
-    filename: string
     id: string
     mime: string
     ext: string
@@ -23,7 +21,15 @@ type
     initUrl: string
     baseUrl: string
     urlSegments: seq[string]
+    filename: string
     exists: bool
+
+  Video = object
+    title: string
+    videoId: string
+    url: string
+    audioStream: Stream
+    videoStream: Stream
 
 const
   apiUrl = "https://api.vimeo.com"
@@ -149,12 +155,11 @@ proc produceUrlSegments(cdnUrl, baseUrl, initUrl: string, stream: JsonNode, audi
         result.add($(cdn / "sep/video" / baseUrl) & segment["url"].getStr())
 
 
-proc newVideoStream(cdnUrl, title: string, stream: JsonNode): Stream =
+proc newVideoStream(cdnUrl, videoId: string, stream: JsonNode): Stream =
   if stream.kind != JNull:
     # NOTE: should NEVER be JNull but go through the motions anyway for parity with newAudioStream
-    result.title = title
     (result.id, result.mime, result.ext, result.size, result.quality, result.bitrate) = getVideoStreamInfo(stream)
-    result.filename = addFileExt("videostream", result.ext)
+    result.filename = addFileExt(videoId, result.ext)
     result.baseUrl = stream["base_url"].getStr().replace("../")
     result.initUrl = stream["init_segment"].getStr()
     result.urlSegments = produceUrlSegments(cdnUrl.split("sep/")[0], result.baseUrl,
@@ -162,11 +167,10 @@ proc newVideoStream(cdnUrl, title: string, stream: JsonNode): Stream =
     result.exists = true
 
 
-proc newAudioStream(cdnUrl, title: string, stream: JsonNode): Stream =
+proc newAudioStream(cdnUrl, videoId: string, stream: JsonNode): Stream =
   if stream.kind != JNull:
-    result.title = title
     (result.id, result.mime, result.ext, result.size, result.quality, result.bitrate) = getAudioStreamInfo(stream)
-    result.filename = addFileExt("audiostream", result.ext)
+    result.filename = addFileExt(videoId, result.ext)
     result.baseUrl = stream["base_url"].getStr().replace("../")
     result.initUrl = stream["init_segment"].getStr()
     result.urlSegments = produceUrlSegments(cdnUrl.split("sep/")[0], result.baseUrl,
@@ -174,9 +178,16 @@ proc newAudioStream(cdnUrl, title: string, stream: JsonNode): Stream =
     result.exists = true
 
 
+proc newVideo(vimeoUrl, cdnUrl, title, videoId: string, cdnResponse: JsonNode, aId, vId: string): Video =
+  result.title = title
+  result.url = vimeoUrl
+  result.videoId = videoId
+  result.videoStream = newVideoStream(cdnUrl, videoId, selectVideoStream(cdnResponse["video"], vId))
+  result.audioStream = newAudioStream(cdnUrl, videoId, selectAudioStream(cdnResponse["audio"], aId))
+
+
 proc reportStreamInfo(stream: Stream) =
-  echo "title: ", stream.title, '\n',
-       "stream: ", stream.filename, '\n',
+  echo "stream: ", stream.filename, '\n',
        "id: ", stream.id, '\n',
        "size: ", stream.size
   if not stream.quality.isEmptyOrWhitespace():
@@ -215,7 +226,9 @@ proc getProfileIds(vimeoUrl: string): tuple[profileId, sectionId: string] =
 
 
 proc extractId(vimeoUrl: string): string =
-  if vimeoUrl.contains("/video/"):
+  if vimeoUrl.contains("/config"):
+    result = vimeoUrl.captureBetween('/', '/', vimeoUrl.find("video/"))
+  elif vimeoUrl.contains("/video/"):
     result = vimeoUrl.captureBetween('/', '?', vimeoUrl.find("video/"))
   else:
     result = vimeoUrl.captureBetween('/', '?', vimeoUrl.find(".com/"))
@@ -229,17 +242,17 @@ proc extractId(vimeoUrl: string): string =
 proc getVideo(vimeoUrl: string, aId="0", vId="0") =
   var
     configResponse: JsonNode
-    id, response: string
+    response: string
     code: HttpCode
-    audioStream, videoStream: Stream
+  let
+    videoId = extractId(vimeoUrl)
+    standardVimeoUrl = "https://vimeo.com/video/" & videoId
+
   if vimeoUrl.contains("/config?"):
     # NOTE: config url already obtained from getProfile
     (code, response) = doGet(vimeoUrl)
   else:
-    id = extractId(vimeoUrl)
-    let standardVimeoUrl = "https://vimeo.com/video/" & id
-
-    (code, response) = doGet(configUrl % id)
+    (code, response) = doGet(configUrl % videoId)
     if code == Http403:
       echo "[trying signed config url]"
       (code, response) = doGet(standardVimeoUrl)
@@ -249,7 +262,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
         echo "[trying embed url]"
         # HACK: use patreon embed url to get meta data
         headers.add(("referer", "https://cdn.embedly.com/"))
-        (code, response) = doGet(bypassUrl % id)
+        (code, response) = doGet(bypassUrl % videoId)
         let embedResponse = response.captureBetween(' ', ';', response.find("""config =""") + 8)
 
         if embedResponse.contains("cdn_url"):
@@ -285,31 +298,32 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
         reportStreams(cdnResponse)
         return
 
+      let video = newVideo(standardVimeoUrl, cdnUrl, title, videoId, cdnResponse, aId, vId)
+      echo "title: ", video.title
+
       if includeVideo:
-        videoStream = newVideoStream(cdnUrl, title, selectVideoStream(cdnResponse["video"], vId))
-        reportStreamInfo(videoStream)
-        if not grabMulti(videoStream.urlSegments, forceFilename=videoStream.filename,
+        reportStreamInfo(video.videoStream)
+        if not grabMulti(video.videoStream.urlSegments, forceFilename=video.videoStream.filename,
                          saveLocation=getCurrentDir(), forceDl=true).is2xx:
           echo "<failed to download video stream>"
           includeVideo = false
       if includeAudio:
-        audioStream = newAudioStream(cdnUrl, title, selectAudioStream(cdnResponse["audio"], aId))
-        if audioStream.exists:
-          reportStreamInfo(audioStream)
-          if not grabMulti(audioStream.urlSegments, forceFilename=audioStream.filename,
+        if video.audioStream.exists:
+          reportStreamInfo(video.audioStream)
+          if not grabMulti(video.audioStream.urlSegments, forceFilename=video.audioStream.filename,
                            saveLocation=getCurrentDir(), forceDl=true).is2xx:
             echo "<failed to download audio stream>"
             includeAudio = false
         else:
           includeAudio = false
       if includeAudio and includeVideo:
-        joinStreams(videoStream.filename, audioStream.filename, safeTitle)
+        joinStreams(video.videoStream.filename, video.audioStream.filename, safeTitle)
       else:
         if includeAudio and not includeVideo:
-          toMp3(audioStream.filename, safeTitle, audioFormat)
+          toMp3(video.audioStream.filename, safeTitle, audioFormat)
         elif includeVideo:
-          moveFile(joinPath(getCurrentDir(), videoStream.filename), finalPath.changeFileExt(videoStream.ext))
-          echo "[complete] ", addFileExt(safeTitle, videoStream.ext)
+          moveFile(joinPath(getCurrentDir(), video.videoStream.filename), finalPath.changeFileExt(video.videoStream.ext))
+          echo "[complete] ", addFileExt(safeTitle, video.videoStream.ext)
         else:
           echo "<no streams were downloaded>"
 
@@ -327,8 +341,8 @@ proc getProfile(vimeoUrl: string) =
   let userSlug = dequery(vimeoUrl).split('/')[^1]
   authorize()
   (userId, sectionId) = getProfileIds(profileUrl % userSlug)
-
   nextUrl = videosUrl % [userId, sectionId]
+
   echo "[collecting videos]"
   while nextUrl != apiUrl:
     (code, response) = doGet(nextUrl)
