@@ -36,6 +36,7 @@ proc main() =
   const
     sNoVal = {'a', 'v', 's', 'h'}
     lNoVal = @["audio-only", "video-only", "show", "help"]
+    acceptedFormats = ["aac", "ac3", "flac", "mp3", "ogg", "wave", "wav"]
 
   if args.len < 1:
     echo help
@@ -58,7 +59,11 @@ proc main() =
         of "s", "show":
           streams = true
         of "f", "format":
-          format = val
+          if val in acceptedFormats:
+            format = val
+          else:
+            echo "accepted audio formats: ", acceptedFormats
+            return
         of "audio-id", "audio-itag":
           aItag = val
         of "video-id", "video-itag":
