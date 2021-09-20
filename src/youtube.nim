@@ -858,7 +858,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
           joinStreams(video.videoStream.filename, video.audioStream.filename, safeTitle)
         else:
           if includeAudio and not includeVideo:
-            toMp3(video.audioStream.filename, safeTitle, audioFormat)
+            convertAudio(video.audioStream.filename, safeTitle, audioFormat)
           elif includeVideo:
             moveFile(joinPath(getCurrentDir(), video.videoStream.filename), finalPath.changeFileExt(video.videoStream.ext))
             echo "[complete] ", addFileExt(safeTitle, video.videoStream.ext)
@@ -949,7 +949,7 @@ proc getChannel(youtubeUrl: string) =
       inc tabIdx
 
     if title.endsWith(" - Topic"):
-      # NOTE: for now only get playlists for topic channels, as they have no videos
+      # NOTE: for now only get playlists for topic channels
       (code, response) = doPost(browseUrl, browseContext % [channel, date, playlistsTab])
       if code.is2xx:
         echo "[collecting playlists]"

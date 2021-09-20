@@ -36,7 +36,7 @@ proc main() =
   const
     sNoVal = {'a', 'v', 's', 'h'}
     lNoVal = @["audio-only", "video-only", "show", "help"]
-    acceptedFormats = ["aac", "ac3", "flac", "mp3", "ogg", "wave", "wav"]
+    acceptedFormats = ["ac3", "flac", "m4a", "mp3", "ogg", "wav"]
 
   if args.len < 1:
     echo help

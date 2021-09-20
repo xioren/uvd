@@ -7,9 +7,9 @@ export asyncdispatch, os, strutils, re, tables, httpclient, times
 
 const
   extensions* = {"video/mp4": ".mp4", "video/webm": ".webm",
-                 "audio/mp4": ".mp4a", "audio/webm": ".weba"}.toTable
-  audioCodecs = {"aac": "aac", "ac3": "ac3", "flac": "flac", "mp3": "libmp3lame",
-                 "ogg": "libopus", "wave": "pcm_s32le", "wav": "pcm_s32le"}.toTable
+                 "audio/mp4": ".m4a", "audio/webm": ".weba"}.toTable
+  audioCodecs = {"ac3": "ac3", "flac": "flac", "m4a": "aac", "mp3": "libmp3lame",
+                 "ogg": "libopus", "wav": "pcm_s32le"}.toTable
 var
   headers* = @[("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.115 Safari/537.36"),
                ("accept", "*/*")]
@@ -32,16 +32,17 @@ proc joinStreams*(videoStream, audioStream, filename: string) =
     echo "<error joining streams>"
 
 
-proc toMp3*(audioStream, filename, format: string) =
-  ## convert audio stream to mp3
-  let fullFilename = addFileExt(filename, format)
+proc convertAudio*(audioStream, filename, format: string) =
+  ## convert audio stream to desired format
+  if not audioStream.endsWith(format):
+    let fullFilename = addFileExt(filename, format)
 
-  echo "[converting stream] ", audioStream
-  if execShellCmd(fmt"ffmpeg -y -i {audioStream} -codec:a {audioCodecs[format]} -qscale:a 0 {quoteShell(fullFilename)} > /dev/null 2>&1") == 0:
-    removeFile(audioStream)
-    echo "[complete] ", fullFilename
-  else:
-    echo "<error converting stream>"
+    echo "[converting stream] ", audioStream
+    if execShellCmd(fmt"ffmpeg -y -i {audioStream} -codec:a {audioCodecs[format]} -qscale:a 0 {quoteShell(fullFilename)} > /dev/null 2>&1") == 0:
+      removeFile(audioStream)
+      echo "[complete] ", fullFilename
+    else:
+      echo "<error converting stream>"
 
 
 proc clearProgress() =
