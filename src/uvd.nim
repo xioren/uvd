@@ -17,12 +17,7 @@ proc main() =
       --video-id, --video-itag        video stream id/itag
       -h, --help                      print this help
     """
-  # WIP
-  # NOTE: each encoder will require different ffmpeg settings
-  # TODO: add logic to check if audio stream is already in the desired format
-  # audioExtensions = {"aac": "aac", "flac": "flac", "mp3": "mp3", "m4a": "mp4a",
-  #                    "mp4a": "mp4a", "opus": "opus", "vorbis": "ogg", "ogg": "ogg",
-  #                    "wav": "wave", "wave": "wave"}.toTable()
+
   var
     args = commandLineParams()
     audio = true
@@ -30,13 +25,13 @@ proc main() =
     streams: bool
     aItag = "0"
     vItag = "0"
-    format = "mp3"
+    format = "ogg"
     unknownUrl: string
 
   const
     sNoVal = {'a', 'v', 's', 'h'}
     lNoVal = @["audio-only", "video-only", "show", "help"]
-    acceptedFormats = ["ac3", "flac", "m4a", "mp3", "ogg", "wav"]
+    acceptedFormats = ["aac", "flac", "m4a", "mp3", "ogg", "wav"]
 
   if args.len < 1:
     echo help
