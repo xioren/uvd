@@ -337,11 +337,11 @@ iterator splitThrottleArray(js: string): string =
   var
     match: array[1, string]
     item = newString(1)
-    context: seq[char]
+    context: int
 
   discard js.find(re("(?<=,c=\\[)(.+)(?=\\];\n?c)", flags={reDotAll}), match)
   for idx, c in match[0]:
-    if (c == ',' and context.len == 0 and match[0][min(idx + 3, match[0].high)] != '{') or
+    if (c == ',' and context == 0 and match[0][min(idx + 3, match[0].high)] != '{') or
        idx == match[0].high:
       if idx == match[0].high:
         item.add(c)
@@ -349,9 +349,9 @@ iterator splitThrottleArray(js: string): string =
       item = newString(1)
       continue
     elif c == '{':
-      context.add(c)
+      inc context
     elif c == '}':
-      discard context.pop()
+      dec context
     item.add(c)
 
 
@@ -791,10 +791,10 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
       let
         title = playerResponse["videoDetails"]["title"].getStr()
         safeTitle = title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"))
-        finalPath = addFileExt(joinPath(getCurrentDir(), safeTitle), ".mkv")
+        finalFilename = addFileExt(safeTitle, ".mkv")
         duration = parseInt(playerResponse["videoDetails"]["lengthSeconds"].getStr())
 
-      if fileExists(finalPath) and not showStreams:
+      if fileExists(finalFilename) and not showStreams:
         echo "<file exists> ", safeTitle
       else:
         if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
@@ -833,10 +833,10 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
           reportStreamInfo(video.videoStream)
           if video.videoStream.dash:
             attempt = grabMulti(video.videoStream.urlSegments, forceFilename=video.videoStream.filename,
-                                saveLocation=getCurrentDir(), forceDl=true)
+                                forceDl=true)
           else:
             attempt = grab(video.videoStream.url, forceFilename=video.videoStream.filename,
-                           saveLocation=getCurrentDir(), forceDl=true)
+                           forceDl=true)
           if not attempt.is2xx:
             echo "<failed to download video stream>"
             includeVideo = false
@@ -845,10 +845,10 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
             reportStreamInfo(video.audioStream)
             if video.audioStream.dash:
               attempt = grabMulti(video.audioStream.urlSegments, forceFilename=video.audioStream.filename,
-                                  saveLocation=getCurrentDir(), forceDl=true)
+                                  forceDl=true)
             else:
               attempt = grab(video.audioStream.url, forceFilename=video.audioStream.filename,
-                             saveLocation=getCurrentDir(), forceDl=true)
+                             forceDl=true)
             if not attempt.is2xx:
               echo "<failed to download audio stream>"
               includeAudio = false
@@ -860,7 +860,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
           if includeAudio and not includeVideo:
             convertAudio(video.audioStream.filename, safeTitle, audioFormat)
           elif includeVideo:
-            moveFile(joinPath(getCurrentDir(), video.videoStream.filename), finalPath.changeFileExt(video.videoStream.ext))
+            moveFile(video.videoStream.filename, finalFilename.changeFileExt(video.videoStream.ext))
             echo "[complete] ", addFileExt(safeTitle, video.videoStream.ext)
           else:
             echo "<no streams were downloaded>"

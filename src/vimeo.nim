@@ -283,9 +283,9 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
     let
       title = configResponse["video"]["title"].getStr()
       safeTitle = title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"))
-      finalPath = addFileExt(joinPath(getCurrentDir(), safeTitle), ".mkv")
+      finalFilename = addFileExt(safeTitle, ".mkv")
 
-    if fileExists(finalPath) and not showStreams:
+    if fileExists(finalFilename) and not showStreams:
       echo "<file exists> ", safeTitle
     else:
       let
@@ -304,14 +304,14 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
       if includeVideo:
         reportStreamInfo(video.videoStream)
         if not grabMulti(video.videoStream.urlSegments, forceFilename=video.videoStream.filename,
-                         saveLocation=getCurrentDir(), forceDl=true).is2xx:
+                         forceDl=true).is2xx:
           echo "<failed to download video stream>"
           includeVideo = false
       if includeAudio:
         if video.audioStream.exists:
           reportStreamInfo(video.audioStream)
           if not grabMulti(video.audioStream.urlSegments, forceFilename=video.audioStream.filename,
-                           saveLocation=getCurrentDir(), forceDl=true).is2xx:
+                           forceDl=true).is2xx:
             echo "<failed to download audio stream>"
             includeAudio = false
         else:
@@ -322,7 +322,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
         if includeAudio and not includeVideo:
           convertAudio(video.audioStream.filename, safeTitle, audioFormat)
         elif includeVideo:
-          moveFile(joinPath(getCurrentDir(), video.videoStream.filename), finalPath.changeFileExt(video.videoStream.ext))
+          moveFile(video.videoStream.filename, finalFilename.changeFileExt(video.videoStream.ext))
           echo "[complete] ", addFileExt(safeTitle, video.videoStream.ext)
         else:
           echo "<no streams were downloaded>"

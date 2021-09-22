@@ -44,6 +44,8 @@ proc convertAudio*(audioStream, filename, format: string) =
       returnCode = execShellCmd(fmt"ffmpeg -y -i {audioStream} -codec:a copy {quoteShell(fullFilename)} > /dev/null 2>&1")
     else:
       returnCode = execShellCmd(fmt"ffmpeg -y -i {audioStream} -codec:a {audioCodecs[format]} {codecOptions[format]} {quoteShell(fullFilename)} > /dev/null 2>&1")
+  else:
+    moveFile(audioStream, fullFilename)
   if returnCode == 0:
     removeFile(audioStream)
     echo "[complete] ", fullFilename
@@ -131,8 +133,7 @@ proc downloadParts(parts: seq[string], filepath: string): Future[HttpCode] {.asy
     client.close()
 
 
-proc grab*(url: string, forceFilename="",
-           saveLocation=joinPath(getHomeDir(), "Downloads"), forceDl=false): HttpCode =
+proc grab*(url: string, forceFilename="", saveLocation=getCurrentDir(), forceDl=false): HttpCode =
   ## download front end
   var filename: string
 
@@ -152,8 +153,7 @@ proc grab*(url: string, forceFilename="",
       echo '<', result, '>'
 
 
-proc grabMulti*(urls: seq[string], forceFilename="",
-                saveLocation=joinPath(getHomeDir(), "Downloads"), forceDl=false): HttpCode =
+proc grabMulti*(urls: seq[string], forceFilename="", saveLocation=getCurrentDir(), forceDl=false): HttpCode =
   ## downloadParts front end
   var filename: string
 
