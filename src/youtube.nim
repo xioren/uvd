@@ -155,7 +155,7 @@ const
   playerUrl = "https://youtubei.googleapis.com/youtubei/v1/player?key=" & apiKey
   browseUrl = "https://youtubei.googleapis.com/youtubei/v1/browse?key=" & apiKey
   nextUrl = "https://youtubei.googleapis.com/youtubei/v1/next?key=" & apiKey
-  baseJsUrl = "https://www.youtube.com/s/player/$1/player_ias.vflset/en_US/base.js"
+  baseJsUrl = "https://www.youtube.com/s/player/$1/player_ias.vflset/$2/base.js"
   # contextUrl = "https://www.youtube.com/sw.js_data"
   videosTab = "EgZ2aWRlb3M%3D"
   playlistsTab = "EglwbGF5bGlzdHM%3D"
@@ -179,6 +179,7 @@ const
 let date = now().format("yyyyMMdd")
 
 var
+  apiLocale: string
   includeAudio, includeVideo: bool
   audioFormat: string
   showStreams: bool
@@ -736,12 +737,12 @@ proc reportStreams(playerResponse: JsonNode, duration: int) =
 ########################################################
 
 
-proc parseJs() =
+proc parseBaseJs() =
   var
     code: HttpCode
     response: string
 
-  (code, response) = doGet(baseJsUrl % globalBaseJsVersion)
+  (code, response) = doGet(baseJsUrl % [globalBaseJsVersion, apiLocale])
   if code.is2xx:
     cipherPlan = parseFunctionPlan(response)
     cipherFunctionMap = createFunctionMap(response, parseParentFunctionName(cipherPlan[0]))
@@ -788,12 +789,13 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
   # NOTE: make initial request to get base.js and timestamp
   (code, response) = doGet(standardYoutubeUrl)
   if code.is2xx:
+    apiLocale = response.captureBetween('\"', '\"', response.find("GAPI_LOCALE\":") + 12)
     let
       sigTimeStamp = response.captureBetween(':', ',', response.find("\"STS\""))
       thisBaseJsVersion = response.captureBetween('/', '/', response.find("""baseJsUrl":"/s/player/""") + 11)
     if thisBaseJsVersion != globalBaseJsVersion:
       globalBaseJsVersion = thisBaseJsVersion
-      parseJs()
+      parseBaseJs()
     (code, response) = doPost(playerUrl, playerContext % [videoId, sigTimeStamp, date])
     if code.is2xx:
       playerResponse = parseJson(response)
