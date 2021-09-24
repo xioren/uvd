@@ -567,10 +567,6 @@ proc urlOrCipher(stream: JsonNode): string =
     if n != calculatedN:
       result = result.replace(n, calculatedN)
 
-  # QUESTION: does this work if not in signed vars?
-  if not result.contains("&ratebypass"):
-    result.insert("&ratebypass=yes", result.find("requiressl") + 14)
-
 
 proc produceUrlSegments(baseUrl, segmentList: string): seq[string] =
   let base = parseUri(baseUrl)
@@ -792,7 +788,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
     apiLocale = response.captureBetween('\"', '\"', response.find("GAPI_LOCALE\":") + 12)
     let
       sigTimeStamp = response.captureBetween(':', ',', response.find("\"STS\""))
-      thisBaseJsVersion = response.captureBetween('/', '/', response.find("""baseJsUrl":"/s/player/""") + 11)
+      thisBaseJsVersion = response.captureBetween('/', '/', response.find("""jsUrl":"/s/player/""") + 11)
     if thisBaseJsVersion != globalBaseJsVersion:
       globalBaseJsVersion = thisBaseJsVersion
       parseBaseJs()
