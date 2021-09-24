@@ -13,6 +13,8 @@ const
   codecOptions = {"aac": "-f adts", "flac": "", "m4a": "-bsf:a aac_adtstoasc",
                   "mp3": "-qscale:a 0", "ogg": "", "wav": ""}.toTable
 var
+  # HACK: a not ideal solution to erroneosly clearing progress from terminal when no progress was made (e.g. 403 forbidden)
+  madeProgress: bool
   headers* = @[("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.115 Safari/537.36"),
                ("accept", "*/*")]
 
@@ -60,10 +62,12 @@ proc convertAudio*(audioStream, filename, format: string) =
 
 
 proc clearProgress() =
-  stdout.eraseLine()
-  stdout.cursorDown()
-  stdout.eraseLine()
-  stdout.cursorUp()
+  if madeProgress:
+    stdout.eraseLine()
+    stdout.cursorDown()
+    stdout.eraseLine()
+    stdout.cursorUp()
+    madeProgress = false
 
 
 proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
@@ -80,6 +84,8 @@ proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
   stdout.setCursorXPos(0)
   stdout.cursorUp()
   stdout.flushFile()
+  if not madeProgress:
+    madeProgress = true
 
 
 proc doPost*(url, body: string): tuple[httpcode: HttpCode, body: string] =
