@@ -282,7 +282,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
   else:
     let
       title = configResponse["video"]["title"].getStr()
-      safeTitle = title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"))
+      safeTitle = makeSafe(title)
       finalFilename = addFileExt(safeTitle, ".mkv")
 
     if fileExists(finalFilename) and not showStreams:

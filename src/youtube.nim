@@ -3,7 +3,9 @@ import std/[json, uri, algorithm, sequtils, parseutils]
 
 import utils
 
-# NOTE: test age gate video https://www.youtube.com/watch?v=HtVdAasjOgU
+# NOTE: age gate tier 1: https://www.youtube.com/watch?v=HtVdAasjOgU
+# NOTE: age gate tier 2: https://www.youtube.com/watch?v=Tq92D6wQ1mg
+# NOTE: age gate tier 3: https://www.youtube.com/watch?v=7iAQCPmpSUI
 
 # NOTE: clientVersion can be found in contextUrl response (along with api key)
 const
@@ -145,13 +147,15 @@ type
 
 
 const
+  apiKey = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
   baseUrl = "https://www.youtube.com"
   watchUrl = "https://www.youtube.com/watch?v="
   # channelUrl = "https://www.youtube.com/channel/"
   playlistUrl = "https://www.youtube.com/playlist?list="
-  playerUrl = "https://youtubei.googleapis.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
-  browseUrl = "https://youtubei.googleapis.com/youtubei/v1/browse?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
-  nextUrl = "https://youtubei.googleapis.com/youtubei/v1/next?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
+  playerUrl = "https://youtubei.googleapis.com/youtubei/v1/player?key=" & apiKey
+  browseUrl = "https://youtubei.googleapis.com/youtubei/v1/browse?key=" & apiKey
+  nextUrl = "https://youtubei.googleapis.com/youtubei/v1/next?key=" & apiKey
+  baseJsUrl = "https://www.youtube.com/s/player/$1/player_ias.vflset/en_US/base.js"
   # contextUrl = "https://www.youtube.com/sw.js_data"
   videosTab = "EgZ2aWRlb3M%3D"
   playlistsTab = "EglwbGF5bGlzdHM%3D"
@@ -179,7 +183,7 @@ var
   audioFormat: string
   showStreams: bool
   h: array[64, char]
-  jsUrl: string
+  globalBaseJsVersion: string
   cipherPlan: seq[string]
   cipherFunctionMap: Table[string, string]
   nTransforms: Table[string, string]
@@ -394,12 +398,8 @@ proc parseThrottlePlan(js: string): seq[seq[string]] =
     result.add(part.findAll(re"(?<=\[)(\d+)(?=\])"))
 
 
-proc calculateN(n, js: string): string =
+proc calculateN(n: string): string =
   ## calculate new n value to prevent throttling
-  once:
-    let throttleCode = parseThrottleCode(parseThrottleFunctionName(js), js)
-    throttlePlan = parseThrottlePlan(throttleCode)
-    throttleArray = parseThrottleFunctionArray(throttleCode)
   var
     tempArray = throttleArray
     firstArg, secondArg, currFunc: string
@@ -513,13 +513,8 @@ proc createFunctionMap(js, mainFunc: string): Table[string, string] =
     result[parts[0]] = parts[1]
 
 
-proc decipher(js, signature: string): string =
+proc decipher(signature: string): string =
   ## decipher signature
-  # TODO: major assumption that all videos downloaded will have same base.js.
-  # find a more robust approach; maybe caching?
-  once:
-    cipherPlan = parseFunctionPlan(js)
-    cipherFunctionMap = createFunctionMap(js, parseParentFunctionName(cipherPlan[0]))
   var splitSig = @signature
 
   for item in cipherPlan:
@@ -540,10 +535,10 @@ proc decipher(js, signature: string): string =
   result = splitSig.join()
 
 
-proc getSigCipherUrl(js, signatureCipher: string): string =
+proc getSigCipherUrl(signatureCipher: string): string =
   ## produce url with deciphered signature
   let parts = getParts(signatureCipher)
-  result = parts.url & "&" & parts.sc & "=" & encodeUrl(decipher(js, parts.s))
+  result = parts.url & "&" & parts.sc & "=" & encodeUrl(decipher(parts.s))
 
 
 ########################################################
@@ -554,24 +549,19 @@ proc getSigCipherUrl(js, signatureCipher: string): string =
 proc urlOrCipher(stream: JsonNode): string =
   ## produce stream url, deciphering if necessary
   var
-    code: HttpCode
-    response: string
     n: string
     calculatedN: string
 
-  # echo "[deciphering url]"
-  once:
-    (code, response) = doGet(jsUrl)
   if stream.hasKey("url"):
     result = stream["url"].getStr()
   elif stream.hasKey("signatureCipher"):
-    result = getSigCipherUrl(response, stream["signatureCipher"].getStr())
+    result = getSigCipherUrl(stream["signatureCipher"].getStr())
 
   n = result.captureBetween('=', '&', result.find("&n="))
   if nTransforms.haskey(n):
     result = result.replace(n, nTransforms[n])
   else:
-    calculatedN = calculateN(n, response)
+    calculatedN = calculateN(n)
     nTransforms[n] = calculatedN
     if n != calculatedN:
       result = result.replace(n, calculatedN)
@@ -662,7 +652,7 @@ proc getAudioStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime,
       result.size = formatSize(int(stream["averageBitrate"].getInt() * duration / 8), includeSpace=true)
     else:
       result.size = formatSize(int(stream["bitrate"].getInt() * duration / 8), includeSpace=true)
-  result.qlt = stream["audioQuality"].getStr()
+  result.qlt = stream["audioQuality"].getStr().replace("AUDIO_QUALITY_").toLowerAscii()
   if stream.hasKey("averageBitrate"):
     result.bitrate = formatSize(stream["averageBitrate"].getInt(), includeSpace=true) & "/s"
   else:
@@ -674,7 +664,7 @@ proc newVideoStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
     # NOTE: should NEVER be JNull but go through the motions anyway for parity with newAudioStream
     (result.itag, result.mime, result.ext, result.size, result.quality, result.resolution, result.bitrate) = getVideoStreamInfo(stream, duration)
     result.filename = addFileExt(videoId, result.ext)
-    # NOTE: "initRange" is a best guess id for non-segmented streams, may not be universal
+    # WARNING: "initRange" is a best guess id for non-segmented streams, may not be universal
     # and may lead to erroneos stream selection.
     if dashManifestUrl.isEmptyOrWhitespace() or stream.hasKey("initRange"):
       result.url = urlOrCipher(stream)
@@ -741,6 +731,25 @@ proc reportStreams(playerResponse: JsonNode, duration: int) =
            " size: ", size
 
 
+########################################################
+# misc
+########################################################
+
+
+proc parseJs() =
+  var
+    code: HttpCode
+    response: string
+
+  (code, response) = doGet(baseJsUrl % globalBaseJsVersion)
+  if code.is2xx:
+    cipherPlan = parseFunctionPlan(response)
+    cipherFunctionMap = createFunctionMap(response, parseParentFunctionName(cipherPlan[0]))
+    let throttleCode = parseThrottleCode(parseThrottleFunctionName(response), response)
+    throttlePlan = parseThrottlePlan(throttleCode)
+    throttleArray = parseThrottleFunctionArray(throttleCode)
+
+
 proc isolateVideoId(youtubeUrl: string): string =
   if youtubeUrl.contains("youtu.be"):
     result = youtubeUrl.captureBetween('/', '?', 8)
@@ -779,9 +788,12 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
   # NOTE: make initial request to get base.js and timestamp
   (code, response) = doGet(standardYoutubeUrl)
   if code.is2xx:
-    let sigTimeStamp = response.captureBetween(':', ',', response.find("\"STS\""))
-    jsUrl = baseUrl & response.captureBetween('"', '"', response.find("\"jsUrl\":\"") + 7)
-
+    let
+      sigTimeStamp = response.captureBetween(':', ',', response.find("\"STS\""))
+      thisBaseJsVersion = response.captureBetween('/', '/', response.find("""baseJsUrl":"/s/player/""") + 11)
+    if thisBaseJsVersion != globalBaseJsVersion:
+      globalBaseJsVersion = thisBaseJsVersion
+      parseJs()
     (code, response) = doPost(playerUrl, playerContext % [videoId, sigTimeStamp, date])
     if code.is2xx:
       playerResponse = parseJson(response)
@@ -790,7 +802,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         return
       let
         title = playerResponse["videoDetails"]["title"].getStr()
-        safeTitle = title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"))
+        safeTitle = makeSafe(title)
         finalFilename = addFileExt(safeTitle, ".mkv")
         duration = parseInt(playerResponse["videoDetails"]["lengthSeconds"].getStr())
 
@@ -809,10 +821,12 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
             if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
               echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
               return
-        elif playerResponse["playabilityStatus"]["status"].getStr() != "OK" or playerResponse["playabilityStatus"].hasKey("liveStreamability"):
+        elif playerResponse["playabilityStatus"]["status"].getStr() != "OK" or
+             playerResponse["playabilityStatus"].hasKey("liveStreamability"):
           echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
           # QUESTION: does "errorScreen" always imply "subreason"?
-          if playerResponse["playabilityStatus"].hasKey("errorScreen") and playerResponse["playabilityStatus"]["errorScreen"]["playerErrorMessageRenderer"].hasKey("subreason"):
+          if playerResponse["playabilityStatus"].hasKey("errorScreen") and
+             playerResponse["playabilityStatus"]["errorScreen"]["playerErrorMessageRenderer"].hasKey("subreason"):
             for run in playerResponse["playabilityStatus"]["errorScreen"]["playerErrorMessageRenderer"]["subreason"]["runs"]:
               stdout.write(run["text"].getStr())
           return
