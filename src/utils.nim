@@ -25,8 +25,7 @@ func dequery*(url: string): string =
 
 proc makeSafe*(title: string): string =
   ## make video titles suitable for filenames
-  title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"), ("#", ""),
-                     ("\\", ""))
+  title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"), ("#", ""), ("\\", ""))
 
 
 proc joinStreams*(videoStream, audioStream, filename: string) =

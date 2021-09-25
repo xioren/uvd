@@ -289,11 +289,11 @@ proc throttlePush(d: var seq[string], e: string) =
 proc splice(d: var string, fromIdx: int) =
   ## javascript splice
   # function(d,e){e=(e%d.length+d.length)%d.length;d.splice(e,1)};
-  let e = (fromIdx mod d.len + d.len) mod d.len
+  let e = throttleModFunction(d, fromIdx)
   d.delete(e, e)
 
 
-proc splice(d: var seq[string], fromIdx: int, toIdx=0) =
+proc splice(d: var seq[string], fromIdx: int) =
   # NOTE: needed to compile
   doAssert false
 
@@ -405,7 +405,6 @@ proc calculateN(n: string): string =
     tempArray = throttleArray
     firstArg, secondArg, currFunc: string
     initialN = n
-    k, e: string
 
   for step in throttlePlan:
     currFunc = tempArray[parseInt(step[0])]
@@ -415,7 +414,7 @@ proc calculateN(n: string): string =
       secondArg = tempArray[parseInt(step[2])]
       # NOTE: arg in exponential notation
       if secondArg.contains('E') and not secondArg.contains("Each"):
-        (k, e) = secondArg.split('E')
+        let (k, e) = secondArg.split('E')
         secondArg = k & '0'.repeat(parseInt(e))
 
     # TODO: im sure there is a clever way to compact this
@@ -549,20 +548,16 @@ proc getSigCipherUrl(signatureCipher: string): string =
 
 proc urlOrCipher(stream: JsonNode): string =
   ## produce stream url, deciphering if necessary
-  var
-    n: string
-    calculatedN: string
-
   if stream.hasKey("url"):
     result = stream["url"].getStr()
   elif stream.hasKey("signatureCipher"):
     result = getSigCipherUrl(stream["signatureCipher"].getStr())
 
-  n = result.captureBetween('=', '&', result.find("&n="))
+  let n = result.captureBetween('=', '&', result.find("&n="))
   if nTransforms.haskey(n):
     result = result.replace(n, nTransforms[n])
   else:
-    calculatedN = calculateN(n)
+    let calculatedN = calculateN(n)
     nTransforms[n] = calculatedN
     if n != calculatedN:
       result = result.replace(n, calculatedN)
@@ -734,11 +729,7 @@ proc reportStreams(playerResponse: JsonNode, duration: int) =
 
 
 proc parseBaseJs() =
-  var
-    code: HttpCode
-    response: string
-
-  (code, response) = doGet(baseJsUrl % [globalBaseJsVersion, apiLocale])
+  let (code, response) = doGet(baseJsUrl % [globalBaseJsVersion, apiLocale])
   if code.is2xx:
     cipherPlan = parseFunctionPlan(response)
     cipherFunctionMap = createFunctionMap(response, parseParentFunctionName(cipherPlan[0]))
@@ -782,7 +773,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
     playerResponse: JsonNode
     dashManifestUrl: string
 
-  # NOTE: make initial request to get base.js and timestamp
+  # NOTE: make initial request to get base.js version and timestamp
   (code, response) = doGet(standardYoutubeUrl)
   if code.is2xx:
     apiLocale = response.captureBetween('\"', '\"', response.find("GAPI_LOCALE\":") + 12)
@@ -883,15 +874,13 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
 
 
 proc getPlaylist(youtubeUrl: string) =
-  let playlist = isolatePlaylist(youtubeUrl)
   var
     playlistResponse: JsonNode
-    response: string
-    code: HttpCode
     ids: seq[string]
     title: string
+  let playlist = isolatePlaylist(youtubeUrl)
 
-  (code, response) = doPost(nextUrl, playlistContext % [date, playlist])
+  let (code, response) = doPost(nextUrl, playlistContext % [date, playlist])
   if code.is2xx:
     playlistResponse = parseJson(response)
     title = playlistResponse["contents"]["twoColumnWatchNextResults"]["playlist"]["playlist"]["title"].getStr()
