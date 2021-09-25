@@ -405,6 +405,7 @@ proc calculateN(n: string): string =
     tempArray = throttleArray
     firstArg, secondArg, currFunc: string
     initialN = n
+    k, e: string
 
   for step in throttlePlan:
     currFunc = tempArray[parseInt(step[0])]
@@ -414,7 +415,7 @@ proc calculateN(n: string): string =
       secondArg = tempArray[parseInt(step[2])]
       # NOTE: arg in exponential notation
       if secondArg.contains('E') and not secondArg.contains("Each"):
-        let (k, e) = secondArg.split('E')
+        (k, e) = secondArg.split('E')
         secondArg = k & '0'.repeat(parseInt(e))
 
     # TODO: im sure there is a clever way to compact this
