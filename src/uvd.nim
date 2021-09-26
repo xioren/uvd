@@ -63,6 +63,9 @@ proc main() =
           aItag = val
         of "video-id", "video-itag":
           vItag = val
+        else:
+          echo "<invalid arguments>"
+          return
 
     if unknownUrl.contains("vimeo"):
       vimeoDownload(unknownUrl, audio, video, streams, format, aItag, vItag)
