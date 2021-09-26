@@ -56,6 +56,7 @@ proc authorize() =
     authResponse: JsonNode
     response: string
     code: HttpCode
+
   (code, response) = doGet(authorizationUrl)
   if code.is2xx:
     authResponse = parseJson(response)
@@ -114,15 +115,17 @@ proc getVideoStreamInfo(stream: JsonNode): tuple[id, mime, ext, size, qlt, bitra
   result.id = stream["id"].getStr()
   result.mime = stream["mime_type"].getStr()
   result.ext = extensions[result.mime]
+  result.bitrate = formatSize(stream["avg_bitrate"].getInt(), includeSpace=true) & "/s"
+
   if isVerticle(stream):
     result.qlt = $stream["width"].getInt() & 'p'
   else:
     result.qlt = $stream["height"].getInt() & 'p'
-  var size = 0
+
+  var size: int
   for segment in stream["segments"]:
     size.inc(segment["size"].getInt())
   result.size = formatSize(size, includeSpace=true)
-  result.bitrate = formatSize(stream["avg_bitrate"].getInt(), includeSpace=true) & "/s"
 
 
 proc getAudioStreamInfo(stream: JsonNode): tuple[id, mime, ext, size, qlt, bitrate: string] =
@@ -130,11 +133,12 @@ proc getAudioStreamInfo(stream: JsonNode): tuple[id, mime, ext, size, qlt, bitra
   result.mime = stream["mime_type"].getStr()
   result.ext = extensions[result.mime]
   result.qlt = formatSize(stream["avg_bitrate"].getInt(), includeSpace=true) & "/s"
-  var size = 0
+  result.bitrate = formatSize(stream["avg_bitrate"].getInt(), includeSpace=true) & "/s"
+
+  var size: int
   for segment in stream["segments"]:
     size.inc(segment["size"].getInt())
   result.size = formatSize(size, includeSpace=true)
-  result.bitrate = formatSize(stream["avg_bitrate"].getInt(), includeSpace=true) & "/s"
 
 
 proc produceUrlSegments(cdnUrl, baseUrl, initUrl: string, stream: JsonNode, audio: bool): seq[string] =
@@ -199,6 +203,7 @@ proc reportStreamInfo(stream: Stream) =
 proc reportStreams(cdnResponse: JsonNode) =
   # TODO: sort streams by quality
   var id, mime, ext, size, quality, dimensions, bitrate: string
+
   for item in cdnResponse["video"]:
     dimensions = $item["width"].getInt() & "x" & $item["height"].getInt()
     (id, mime, ext, size, quality, bitrate) = getVideoStreamInfo(item)
@@ -216,6 +221,7 @@ proc getProfileIds(vimeoUrl: string): tuple[profileId, sectionId: string] =
     profileResponse: JsonNode
     response: string
     code: HttpCode
+
   (code, response) = doGet(vimeoUrl)
   if code.is2xx:
     profileResponse = parseJson(response)
@@ -307,6 +313,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
                          forceDl=true).is2xx:
           echo "<failed to download video stream>"
           includeVideo = false
+
       if includeAudio:
         if video.audioStream.exists:
           reportStreamInfo(video.audioStream)
@@ -316,6 +323,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
             includeAudio = false
         else:
           includeAudio = false
+
       if includeAudio and includeVideo:
         joinStreams(video.videoStream.filename, video.audioStream.filename, safeTitle)
       else:

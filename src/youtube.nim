@@ -193,7 +193,7 @@ var
 
 
 ########################################################
-# authentication
+# authentication (wip)
 ########################################################
 
 
@@ -617,6 +617,9 @@ proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime,
   result.itag = stream["itag"].getInt()
   result.mime = stream["mimeType"].getStr().split(";")[0]
   result.ext = extensions[result.mime]
+  result.qlt = stream["qualityLabel"].getStr()
+  result.resolution = $stream["width"].getInt() & 'x' & $stream["height"].getInt()
+
   if stream.hasKey("contentLength"):
     result.size = formatSize(parseInt(stream["contentLength"].getStr()), includeSpace=true)
   else:
@@ -625,8 +628,7 @@ proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime,
       result.size = formatSize(int(stream["averageBitrate"].getInt() * duration / 8), includeSpace=true)
     else:
       result.size = formatSize(int(stream["bitrate"].getInt() * duration / 8), includeSpace=true)
-  result.qlt = stream["qualityLabel"].getStr()
-  result.resolution = $stream["width"].getInt() & 'x' & $stream["height"].getInt()
+
   if stream.hasKey("averageBitrate"):
     result.bitrate = formatSize(stream["averageBitrate"].getInt(), includeSpace=true) & "/s"
   else:
@@ -637,6 +639,8 @@ proc getAudioStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime,
   result.itag = stream["itag"].getInt()
   result.mime = stream["mimeType"].getStr().split(";")[0]
   result.ext = extensions[result.mime]
+  result.qlt = stream["audioQuality"].getStr().replace("AUDIO_QUALITY_").toLowerAscii()
+
   if stream.hasKey("contentLength"):
     result.size = formatSize(parseInt(stream["contentLength"].getStr()), includeSpace=true)
   else:
@@ -645,7 +649,7 @@ proc getAudioStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime,
       result.size = formatSize(int(stream["averageBitrate"].getInt() * duration / 8), includeSpace=true)
     else:
       result.size = formatSize(int(stream["bitrate"].getInt() * duration / 8), includeSpace=true)
-  result.qlt = stream["audioQuality"].getStr().replace("AUDIO_QUALITY_").toLowerAscii()
+
   if stream.hasKey("averageBitrate"):
     result.bitrate = formatSize(stream["averageBitrate"].getInt(), includeSpace=true) & "/s"
   else:
@@ -712,6 +716,7 @@ proc reportStreams(playerResponse: JsonNode, duration: int) =
   var
     itag: int
     mime, ext, size, quality, resolution, bitrate: string
+
   for item in playerResponse["streamingData"]["adaptiveFormats"]:
     if item.hasKey("audioQuality"):
       (itag, mime, ext, size, quality, bitrate) = getAudioStreamInfo(item, duration)
@@ -784,12 +789,14 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
     if thisBaseJsVersion != globalBaseJsVersion:
       globalBaseJsVersion = thisBaseJsVersion
       parseBaseJs()
+
     (code, response) = doPost(playerUrl, playerContext % [videoId, sigTimeStamp, date])
     if code.is2xx:
       playerResponse = parseJson(response)
       if playerResponse["playabilityStatus"]["status"].getStr() == "ERROR":
         echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
         return
+
       let
         title = playerResponse["videoDetails"]["title"].getStr()
         safeTitle = makeSafe(title)
@@ -803,11 +810,13 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
           echo "[attempting age-gate bypass tier 1]"
           (code, response) = doPost(playerUrl, playerBypassContextTier1 % [videoId, sigTimeStamp, date])
           playerResponse = parseJson(response)
+
           if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
             echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
             echo "[attempting age-gate bypass tier 2]"
             (code, response) = doPost(playerUrl, playerBypassContextTier2 % [videoId, sigTimeStamp, date])
             playerResponse = parseJson(response)
+
             if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
               echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
               return
@@ -824,10 +833,10 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         if showStreams:
           reportStreams(playerResponse, duration)
           return
+
         # QUESTION: hlsManifestUrl seems to be for live streamed videos but is it ever needed?
         if playerResponse["streamingData"].hasKey("dashManifestUrl"):
           dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
-
         let video = newVideo(standardYoutubeUrl, dashManifestUrl, title, videoId, duration,
                              playerResponse["streamingData"]["adaptiveFormats"], aItag, vItag)
         echo "title: ", video.title
@@ -844,6 +853,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
           if not attempt.is2xx:
             echo "<failed to download video stream>"
             includeVideo = false
+
         if includeAudio:
           if video.audioStream.exists:
             reportStreamInfo(video.audioStream)
@@ -858,6 +868,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
               includeAudio = false
           else:
             includeAudio = false
+
         if includeAudio and includeVideo:
           joinStreams(video.videoStream.filename, video.audioStream.filename, safeTitle)
         else:
@@ -922,6 +933,7 @@ proc getChannel(youtubeUrl: string) =
           if item.hasKey("continuationItemRenderer"):
             token = item["continuationItemRenderer"]["continuationEndpoint"]["continuationCommand"]["token"].getStr()
             lastToken = token
+
             while true:
               (code, response) = doPost(browseUrl, browseContinueContext % [channel, token, date])
               if code.is2xx:

@@ -45,6 +45,7 @@ proc convertAudio*(audioStream, filename, format: string) =
   ## convert audio stream to desired format
   var returnCode: int
   let fullFilename = addFileExt(filename, format)
+
   if not audioStream.endsWith(format):
     echo "[converting stream] ", audioStream
     if format == "ogg" and audioStream.endsWith(".weba"):
@@ -53,6 +54,7 @@ proc convertAudio*(audioStream, filename, format: string) =
       returnCode = execShellCmd(fmt"ffmpeg -y -i {audioStream} -codec:a {audioCodecs[format]} {codecOptions[format]} {quoteShell(fullFilename)} > /dev/null 2>&1")
   else:
     moveFile(audioStream, fullFilename)
+
   if returnCode == 0:
     removeFile(audioStream)
     echo "[complete] ", fullFilename
@@ -74,6 +76,7 @@ proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
   let
     bar = '#'.repeat(floor(progress.int / total.int * barWidth).int)
     eta = initDuration(seconds=((total - progress).int / speed.int).int)
+
   stdout.eraseLine()
   stdout.writeLine("size: ", formatSize(total.int, includeSpace=true),
                    " speed: ", formatSize(speed.int, includeSpace=true), "/s",
@@ -112,6 +115,7 @@ proc download(url, filepath: string): Future[HttpCode] {.async.} =
   let client = newAsyncHttpClient(headers=newHttpHeaders(headers))
   var file = openasync(filepath, fmWrite)
   client.onProgressChanged = onProgressChanged
+
   try:
     let resp = await client.request(url)
     await file.writeFromStream(resp.bodyStream)
@@ -131,6 +135,7 @@ proc downloadParts(parts: seq[string], filepath: string): Future[HttpCode] {.asy
   let client = newAsyncHttpClient(headers=newHttpHeaders(headers))
   var file = openasync(filepath, fmWrite)
   client.onProgressChanged = onProgressChanged
+
   try:
     for url in parts:
       let resp = await client.request(url)
