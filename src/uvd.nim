@@ -5,18 +5,21 @@ import vimeo, youtube
 
 
 proc main() =
-  const help = """
-    usage: uvd [options] url
+  const
+    version = "1.0.0"
+    help = """
+      usage: uvd [options] url
 
-    options:
-      -a, --audio-only                audio only
-      -v, --video-only                video only
-      -f, --format                    audio output format
-      -s, --show                      show available streams
-      --audio-id, --audio-itag        audio stream id/itag
-      --video-id, --video-itag        video stream id/itag
-      -h, --help                      print this help
-    """
+      options:
+        -a, --audio-only                audio only
+        -v, --video-only                video only
+        -f, --format                    audio output format
+        -s, --show                      show available streams
+        --audio-id, --audio-itag        audio stream id/itag
+        --video-id, --video-itag        video stream id/itag
+        -h, --help                      print this help
+        -v, --version                   print version
+      """
 
   var
     args = commandLineParams()
@@ -63,6 +66,9 @@ proc main() =
           aItag = val
         of "video-id", "video-itag":
           vItag = val
+        of "-v", "--version":
+          echo version
+          return
         else:
           echo "<invalid arguments>"
           return
