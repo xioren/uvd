@@ -661,7 +661,7 @@ proc newVideoStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
     (result.itag, result.mime, result.ext, result.size, result.quality, result.resolution, result.bitrate) = getVideoStreamInfo(stream, duration)
     result.filename = addFileExt(videoId, result.ext)
     # QUESTION: are all dash segment stream denoted with "FORMAT_STREAM_TYPE_OTF"?
-    if stream.hasKey("FORMAT_STREAM_TYPE_OTF"):
+    if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
       # QUESTION: are dash urls or manifest urls ever ciphered?
       var segmentList: string
       result.dash = true
@@ -677,7 +677,7 @@ proc newAudioStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
     (result.itag, result.mime, result.ext, result.size, result.quality, result.bitrate) = getAudioStreamInfo(stream, duration)
     result.filename = addFileExt(videoId, result.ext)
     # QUESTION: are all dash segment stream denoted with "FORMAT_STREAM_TYPE_OTF"?
-    if stream.hasKey("FORMAT_STREAM_TYPE_OTF"):
+    if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
       # QUESTION: are dash urls or manifest urls ever ciphered?
       var segmentList: string
       result.dash = true
