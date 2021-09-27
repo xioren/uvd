@@ -854,31 +854,29 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
             echo "<failed to download video stream>"
             includeVideo = false
 
-        if includeAudio:
-          if video.audioStream.exists:
-            reportStreamInfo(video.audioStream)
-            if video.audioStream.dash:
-              attempt = grabMulti(video.audioStream.urlSegments, forceFilename=video.audioStream.filename,
-                                  forceDl=true)
-            else:
-              attempt = grab(video.audioStream.url, forceFilename=video.audioStream.filename,
-                             forceDl=true)
-            if not attempt.is2xx:
-              echo "<failed to download audio stream>"
-              includeAudio = false
+        if includeAudio and video.audioStream.exists:
+          reportStreamInfo(video.audioStream)
+          if video.audioStream.dash:
+            attempt = grabMulti(video.audioStream.urlSegments, forceFilename=video.audioStream.filename,
+                                forceDl=true)
           else:
+            attempt = grab(video.audioStream.url, forceFilename=video.audioStream.filename,
+                           forceDl=true)
+          if not attempt.is2xx:
+            echo "<failed to download audio stream>"
             includeAudio = false
+        else:
+          includeAudio = false
 
         if includeAudio and includeVideo:
           joinStreams(video.videoStream.filename, video.audioStream.filename, safeTitle)
+        elif includeAudio and not includeVideo:
+          convertAudio(video.audioStream.filename, safeTitle, audioFormat)
+        elif includeVideo:
+          moveFile(video.videoStream.filename, finalFilename.changeFileExt(video.videoStream.ext))
+          echo "[complete] ", addFileExt(safeTitle, video.videoStream.ext)
         else:
-          if includeAudio and not includeVideo:
-            convertAudio(video.audioStream.filename, safeTitle, audioFormat)
-          elif includeVideo:
-            moveFile(video.videoStream.filename, finalFilename.changeFileExt(video.videoStream.ext))
-            echo "[complete] ", addFileExt(safeTitle, video.videoStream.ext)
-          else:
-            echo "<no streams were downloaded>"
+          echo "<no streams were downloaded>"
     else:
       echo '<', code, '>', '\n', "<failed to obtain video metadata>"
   else:
