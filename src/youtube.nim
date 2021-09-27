@@ -620,19 +620,19 @@ proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime,
   result.qlt = stream["qualityLabel"].getStr()
   result.resolution = $stream["width"].getInt() & 'x' & $stream["height"].getInt()
 
+  var rawBitrate: int
+  if stream.hasKey("averageBitrate"):
+    rawBitrate = stream["averageBitrate"].getInt()
+  else:
+    rawBitrate = stream["bitrate"].getInt()
+  result.bitrate = formatSize(rawBitrate, includeSpace=true) & "/s"
+
   if stream.hasKey("contentLength"):
     result.size = formatSize(parseInt(stream["contentLength"].getStr()), includeSpace=true)
   else:
     # NOTE: estimate from bitrate
-    if stream.hasKey("averageBitrate"):
-      result.size = formatSize(int(stream["averageBitrate"].getInt() * duration / 8), includeSpace=true)
-    else:
-      result.size = formatSize(int(stream["bitrate"].getInt() * duration / 8), includeSpace=true)
+    result.size = formatSize(int(rawBitrate * duration / 8), includeSpace=true)
 
-  if stream.hasKey("averageBitrate"):
-    result.bitrate = formatSize(stream["averageBitrate"].getInt(), includeSpace=true) & "/s"
-  else:
-    result.bitrate = formatSize(stream["bitrate"].getInt(), includeSpace=true) & "/s"
 
 
 proc getAudioStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime, ext, size, qlt, bitrate: string] =
@@ -641,19 +641,18 @@ proc getAudioStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime,
   result.ext = extensions[result.mime]
   result.qlt = stream["audioQuality"].getStr().replace("AUDIO_QUALITY_").toLowerAscii()
 
+  var rawBitrate: int
+  if stream.hasKey("averageBitrate"):
+    rawBitrate = stream["averageBitrate"].getInt()
+  else:
+    rawBitrate = stream["bitrate"].getInt()
+  result.bitrate = formatSize(rawBitrate, includeSpace=true) & "/s"
+
   if stream.hasKey("contentLength"):
     result.size = formatSize(parseInt(stream["contentLength"].getStr()), includeSpace=true)
   else:
     # NOTE: estimate from bitrate
-    if stream.hasKey("averageBitrate"):
-      result.size = formatSize(int(stream["averageBitrate"].getInt() * duration / 8), includeSpace=true)
-    else:
-      result.size = formatSize(int(stream["bitrate"].getInt() * duration / 8), includeSpace=true)
-
-  if stream.hasKey("averageBitrate"):
-    result.bitrate = formatSize(stream["averageBitrate"].getInt(), includeSpace=true) & "/s"
-  else:
-    result.bitrate = formatSize(stream["bitrate"].getInt(), includeSpace=true) & "/s"
+    result.size = formatSize(int(rawBitrate * duration / 8), includeSpace=true)
 
 
 proc newVideoStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int, stream: JsonNode): Stream =
@@ -806,6 +805,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
       if fileExists(finalFilename) and not showStreams:
         echo "<file exists> ", safeTitle
       else:
+        # NOTE: age gate and misc youtube error handling
         if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
           echo "[attempting age-gate bypass tier 1]"
           (code, response) = doPost(playerUrl, playerBypassContextTier1 % [videoId, sigTimeStamp, date])
