@@ -566,7 +566,7 @@ proc urlOrCipher(stream: JsonNode): string =
 
 proc produceUrlSegments(baseUrl, segmentList: string): seq[string] =
   let base = parseUri(baseUrl)
-  for segment in segmentList.findAll(re("""(?<=\")([a-z\d/\.]+)(?=\")""")):
+  for segment in segmentList.findAll(re("""(?<=\")([a-z\d/\.-]+)(?=\")""")):
     result.add($(base / segment))
 
 
@@ -660,16 +660,15 @@ proc newVideoStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
     # NOTE: should NEVER be JNull but go through the motions anyway for parity with newAudioStream
     (result.itag, result.mime, result.ext, result.size, result.quality, result.resolution, result.bitrate) = getVideoStreamInfo(stream, duration)
     result.filename = addFileExt(videoId, result.ext)
-    # WARNING: "initRange" is a best guess id for non-segmented streams, may not be universal
-    # and may lead to erroneos stream selection.
-    if dashManifestUrl.isEmptyOrWhitespace() or stream.hasKey("initRange"):
-      result.url = urlOrCipher(stream)
-    else:
+    # QUESTION: are all dash segment stream denoted with "FORMAT_STREAM_TYPE_OTF"?
+    if stream.hasKey("FORMAT_STREAM_TYPE_OTF"):
       # QUESTION: are dash urls or manifest urls ever ciphered?
       var segmentList: string
       result.dash = true
       (result.baseUrl, segmentList) = extractDashInfo(dashManifestUrl, $result.itag)
       result.urlSegments = produceUrlSegments(result.baseUrl, segmentList)
+    else:
+      result.url = urlOrCipher(stream)
     result.exists = true
 
 
@@ -677,16 +676,15 @@ proc newAudioStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
   if stream.kind != JNull:
     (result.itag, result.mime, result.ext, result.size, result.quality, result.bitrate) = getAudioStreamInfo(stream, duration)
     result.filename = addFileExt(videoId, result.ext)
-    # NOTE: "initRange" is a best guess id for non-segmented streams, may not be universal
-    # and may lead to erroneos stream selection.
-    if dashManifestUrl.isEmptyOrWhitespace() or stream.hasKey("initRange"):
-      result.url = urlOrCipher(stream)
-    else:
+    # QUESTION: are all dash segment stream denoted with "FORMAT_STREAM_TYPE_OTF"?
+    if stream.hasKey("FORMAT_STREAM_TYPE_OTF"):
       # QUESTION: are dash urls or manifest urls ever ciphered?
       var segmentList: string
       result.dash = true
       (result.baseUrl, segmentList) = extractDashInfo(dashManifestUrl, $result.itag)
       result.urlSegments = produceUrlSegments(result.baseUrl, segmentList)
+    else:
+      result.url = urlOrCipher(stream)
     result.exists = true
 
 
@@ -853,6 +851,8 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
           if not attempt.is2xx:
             echo "<failed to download video stream>"
             includeVideo = false
+            # NOTE: remove empty file
+            discard tryRemoveFile(video.videoStream.filename)
 
         if includeAudio and video.audioStream.exists:
           reportStreamInfo(video.audioStream)
@@ -865,6 +865,8 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
           if not attempt.is2xx:
             echo "<failed to download audio stream>"
             includeAudio = false
+            # NOTE: remove empty file
+            discard tryRemoveFile(video.audioStream.filename)
         else:
           includeAudio = false
 
