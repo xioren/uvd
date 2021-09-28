@@ -169,7 +169,7 @@ proc grab*(url: string, forceFilename="", saveLocation=getCurrentDir(), forceDl=
       echo '<', result, '>'
 
 
-proc grabMulti*(urls: seq[string], forceFilename="", saveLocation=getCurrentDir(), forceDl=false): HttpCode =
+proc grab*(urls: seq[string], forceFilename="", saveLocation=getCurrentDir(), forceDl=false): HttpCode =
   ## downloadParts front end
   var filename: string
 

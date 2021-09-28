@@ -603,8 +603,8 @@ proc selectAudioStream(streams: JsonNode, itag: int): JsonNode =
     var largest = 0
     for stream in streams:
       if stream.hasKey("audioQuality"):
-        if stream["averageBitrate"].getInt() > largest:
-          largest = stream["averageBitrate"].getInt()
+        if stream["bitrate"].getInt() > largest:
+          largest = stream["bitrate"].getInt()
           result = stream
   else:
     for stream in streams:
@@ -843,8 +843,8 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         if includeVideo:
           reportStreamInfo(video.videoStream)
           if video.videoStream.dash:
-            attempt = grabMulti(video.videoStream.urlSegments, forceFilename=video.videoStream.filename,
-                                forceDl=true)
+            attempt = grab(video.videoStream.urlSegments, forceFilename=video.videoStream.filename,
+                           forceDl=true)
           else:
             attempt = grab(video.videoStream.url, forceFilename=video.videoStream.filename,
                            forceDl=true)
@@ -857,8 +857,8 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         if includeAudio and video.audioStream.exists:
           reportStreamInfo(video.audioStream)
           if video.audioStream.dash:
-            attempt = grabMulti(video.audioStream.urlSegments, forceFilename=video.audioStream.filename,
-                                forceDl=true)
+            attempt = grab(video.audioStream.urlSegments, forceFilename=video.audioStream.filename,
+                           forceDl=true)
           else:
             attempt = grab(video.audioStream.url, forceFilename=video.audioStream.filename,
                            forceDl=true)

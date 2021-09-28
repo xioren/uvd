@@ -309,14 +309,14 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
 
       if includeVideo:
         reportStreamInfo(video.videoStream)
-        if not grabMulti(video.videoStream.urlSegments, forceFilename=video.videoStream.filename,
+        if not grab(video.videoStream.urlSegments, forceFilename=video.videoStream.filename,
                          forceDl=true).is2xx:
           echo "<failed to download video stream>"
           includeVideo = false
 
       if includeAudio and video.audioStream.exists:
         reportStreamInfo(video.audioStream)
-        if not grabMulti(video.audioStream.urlSegments, forceFilename=video.audioStream.filename,
+        if not grab(video.audioStream.urlSegments, forceFilename=video.audioStream.filename,
                          forceDl=true).is2xx:
           echo "<failed to download audio stream>"
           includeAudio = false
