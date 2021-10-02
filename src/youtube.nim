@@ -145,7 +145,6 @@ type
     audioStream: Stream
     videoStream: Stream
 
-
 const
   apiKey = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
   baseUrl = "https://www.youtube.com"
@@ -342,21 +341,20 @@ iterator splitThrottleArray(js: string): string =
   var
     match: array[1, string]
     item = newString(1)
-    context: int
+    scope: int
 
   discard js.find(re("(?<=,c=\\[)(.+)(?=\\];\n?c)", flags={reDotAll}), match)
   for idx, c in match[0]:
-    if (c == ',' and context == 0 and match[0][min(idx + 3, match[0].high)] != '{') or
-       idx == match[0].high:
+    if (c == ',' and scope == 0 and match[0][min(idx + 3, match[0].high)] != '{') or idx == match[0].high:
       if idx == match[0].high:
         item.add(c)
       yield item.multiReplace(("\x00", ""), ("\n", ""))
       item = newString(1)
       continue
     elif c == '{':
-      inc context
+      inc scope
     elif c == '}':
-      dec context
+      dec scope
     item.add(c)
 
 
@@ -797,10 +795,10 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
       let
         title = playerResponse["videoDetails"]["title"].getStr()
         safeTitle = makeSafe(title)
-        finalFilename = addFileExt(safeTitle, ".mkv")
+        fullFilename = addFileExt(safeTitle, ".mkv")
         duration = parseInt(playerResponse["videoDetails"]["lengthSeconds"].getStr())
 
-      if fileExists(finalFilename) and not showStreams:
+      if fileExists(fullFilename) and not showStreams:
         echo "<file exists> ", safeTitle
       else:
         # NOTE: age gate and misc youtube error handling
@@ -870,12 +868,13 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         else:
           includeAudio = false
 
+        # QUESTION: should we return if either audio or video streams fail to download?
         if includeAudio and includeVideo:
-          joinStreams(video.videoStream.filename, video.audioStream.filename, safeTitle)
+          joinStreams(video.videoStream.filename, video.audioStream.filename, fullFilename)
         elif includeAudio and not includeVideo:
           convertAudio(video.audioStream.filename, safeTitle, audioFormat)
         elif includeVideo:
-          moveFile(video.videoStream.filename, finalFilename.changeFileExt(video.videoStream.ext))
+          moveFile(video.videoStream.filename, fullFilename.changeFileExt(video.videoStream.ext))
           echo "[complete] ", addFileExt(safeTitle, video.videoStream.ext)
         else:
           echo "<no streams were downloaded>"
@@ -886,16 +885,14 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
 
 
 proc getPlaylist(youtubeUrl: string) =
-  var
-    playlistResponse: JsonNode
-    ids: seq[string]
-    title: string
+  var ids: seq[string]
   let playlist = isolatePlaylist(youtubeUrl)
 
   let (code, response) = doPost(nextUrl, playlistContext % [date, playlist])
   if code.is2xx:
-    playlistResponse = parseJson(response)
-    title = playlistResponse["contents"]["twoColumnWatchNextResults"]["playlist"]["playlist"]["title"].getStr()
+    let
+      playlistResponse = parseJson(response)
+      title = playlistResponse["contents"]["twoColumnWatchNextResults"]["playlist"]["playlist"]["title"].getStr()
     echo "[collecting videos] ", title
 
     if playlistResponse["contents"]["twoColumnWatchNextResults"]["playlist"]["playlist"]["isInfinite"].getBool():
@@ -918,13 +915,12 @@ proc getChannel(youtubeUrl: string) =
     response: string
     code: HttpCode
     token, lastToken: string
-    title: string
     videoIds: seq[string]
     playlistIds: seq[string]
     tabIdx = 1
 
   iterator gridRendererExtractor(renderer: string): string =
-    let upperRenderer = capitalizeAscii(renderer)
+    let capRenderer = capitalizeAscii(renderer)
     for section in channelResponse["contents"]["twoColumnBrowseResultsRenderer"]["tabs"][tabIdx]["tabRenderer"]["content"]["sectionListRenderer"]["contents"]:
       if section["itemSectionRenderer"]["contents"][0].hasKey("messageRenderer"):
         echo '<', section["itemSectionRenderer"]["contents"][0]["messageRenderer"]["text"]["simpleText"].getStr(), '>'
@@ -942,7 +938,7 @@ proc getChannel(youtubeUrl: string) =
                   if continuationItem.hasKey("continuationItemRenderer"):
                     token = continuationItem["continuationItemRenderer"]["continuationEndpoint"]["continuationCommand"]["token"].getStr()
                   else:
-                    yield continuationItem["grid" & upperRenderer & "Renderer"][renderer & "Id"].getStr()
+                    yield continuationItem["grid" & capRenderer & "Renderer"][renderer & "Id"].getStr()
                 if token == lastToken:
                   break
                 else:
@@ -950,13 +946,13 @@ proc getChannel(youtubeUrl: string) =
               else:
                 echo "<failed to obtain channel metadata>"
           else:
-              yield item["grid" & upperRenderer & "Renderer"][renderer & "Id"].getStr()
+              yield item["grid" & capRenderer & "Renderer"][renderer & "Id"].getStr()
 
   (code, response) = doPost(browseUrl, browseContext % [channel, date, videosTab])
   if code.is2xx:
     echo "[collecting videos]"
     channelResponse = parseJson(response)
-    title = channelResponse["metadata"]["channelMetadataRenderer"]["title"].getStr()
+    let title = channelResponse["metadata"]["channelMetadataRenderer"]["title"].getStr()
     if channelResponse["contents"]["twoColumnBrowseResultsRenderer"]["tabs"][tabIdx]["tabRenderer"]["title"].getStr() == "Videos":
       for id in gridRendererExtractor("video"):
         videoIds.add(id)

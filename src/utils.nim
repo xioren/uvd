@@ -23,20 +23,18 @@ func dequery*(url: string): string =
   url.rsplit('?', 1)[0]
 
 
-proc makeSafe*(title: string): string =
+func makeSafe*(title: string): string =
   ## make video titles suitable for filenames
   title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"), ("#", ""), ("\\", ""))
 
 
 proc joinStreams*(videoStream, audioStream, filename: string) =
   ## join audio and video streams using ffmpeg
-  let fullFilename = addFileExt(filename, "mkv")
-
   echo "[joining streams] ", videoStream, " + ", audioStream
-  if execShellCmd(fmt"ffmpeg -y -i {videoStream} -i {audioStream} -c copy {quoteShell(fullFilename)} > /dev/null 2>&1") == 0:
+  if execShellCmd(fmt"ffmpeg -y -i {videoStream} -i {audioStream} -c copy {quoteShell(filename)} > /dev/null 2>&1") == 0:
     removeFile(videoStream)
     removeFile(audioStream)
-    echo "[complete] ", fullFilename
+    echo "[complete] ", filename
   else:
     echo "<error joining streams>"
 
