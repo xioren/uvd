@@ -406,15 +406,19 @@ proc calculateN(n: string): string =
     k, e: string
 
   for step in throttlePlan:
+    echo step
     currFunc = tempArray[parseInt(step[0])]
     firstArg = tempArray[parseInt(step[1])]
 
     if step.len == 3:
       secondArg = tempArray[parseInt(step[2])]
-      # NOTE: arg in exponential notation
+      # NOTE: arg (may be) in exponential notation
       if secondArg.contains('E') and not secondArg.contains("Each"):
         (k, e) = secondArg.split('E')
-        secondArg = k & '0'.repeat(parseInt(e))
+        try:
+          secondArg = k & '0'.repeat(parseInt(e))
+        except ValueError:
+          discard
 
     # TODO: im sure there is a clever way to compact this
     if firstArg == "null":
