@@ -220,12 +220,12 @@ proc index[T](d: openarray[T], item: T): int =
 
 proc throttleModFunction(d: string, e: int): int =
   ## function(d,e){e=(e%d.length+d.length)%d.length
-  result = e mod (d.len + d.len) mod d.len
+  result = (e mod d.len + d.len) mod d.len
 
 
 proc throttleModFunction(d: seq[string], e: int): int =
   ## function(d,e){e=(e%d.length+d.length)%d.length
-  result = e mod (d.len + d.len) mod d.len
+  result = (e mod d.len + d.len) mod d.len
 
 
 proc throttleUnshift(d: var string, e: int) =
@@ -406,7 +406,6 @@ proc calculateN(n: string): string =
     k, e: string
 
   for step in throttlePlan:
-    echo step
     currFunc = tempArray[parseInt(step[0])]
     firstArg = tempArray[parseInt(step[1])]
 
