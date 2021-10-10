@@ -6,7 +6,7 @@ import vimeo, youtube
 
 proc main() =
   const
-    version = "1.1.3"
+    version = "1.1.4"
     help = """
       usage: uvd [options] url
 
