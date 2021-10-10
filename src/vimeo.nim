@@ -289,9 +289,9 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
     let
       title = configResponse["video"]["title"].getStr()
       safeTitle = makeSafe(title)
-      finalFilename = addFileExt(safeTitle, ".mkv")
+      fullFilename = addFileExt(safeTitle, ".mkv")
 
-    if fileExists(finalFilename) and not showStreams:
+    if fileExists(fullFilename) and not showStreams:
       echo "<file exists> ", safeTitle
     else:
       let
@@ -324,11 +324,11 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
         includeAudio = false
 
       if includeAudio and includeVideo:
-        joinStreams(video.videoStream.filename, video.audioStream.filename, safeTitle)
+        joinStreams(video.videoStream.filename, video.audioStream.filename, fullFilename)
       elif includeAudio and not includeVideo:
         convertAudio(video.audioStream.filename, safeTitle, audioFormat)
       elif includeVideo:
-        moveFile(video.videoStream.filename, finalFilename.changeFileExt(video.videoStream.ext))
+        moveFile(video.videoStream.filename, fullFilename.changeFileExt(video.videoStream.ext))
         echo "[complete] ", addFileExt(safeTitle, video.videoStream.ext)
       else:
         echo "<no streams were downloaded>"
