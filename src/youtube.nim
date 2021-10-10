@@ -581,14 +581,19 @@ proc extractDashInfo(dashManifestUrl, itag: string): tuple[baseUrl, segmentList:
 
 
 proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
-  # NOTE: zeroth stream usually seems to be the overall best quality
   if itag == 0:
-    var largest = 0
-    for stream in streams:
-      if stream.hasKey("width"):
-        if stream["bitrate"].getInt() > largest:
-          largest = stream["bitrate"].getInt()
-          result = stream
+    #[ NOTE: zeroth stream usually seems to be the overall best quality. go with that instead of
+       comparing bitrates as vp9 and h.264 are not directly comparable. h.264 requires higher
+       bitrate / larger filesize to obtain comparable quality to vp9. scenarios occur where 480p h.264
+       streams are selected over 720p vp9 streams because they have higher bitrate but are clearly not the most
+       desireable stream]#
+    # var largest = 0
+    # for stream in streams:
+    #   if stream.hasKey("width"):
+    #     if stream["bitrate"].getInt() > largest:
+    #       largest = stream["bitrate"].getInt()
+    #       result = stream
+    result = streams[0]
   else:
     for stream in streams:
       if stream["itag"].getInt() == itag:
