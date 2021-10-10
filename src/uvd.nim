@@ -66,7 +66,7 @@ proc main() =
           aItag = val
         of "video-id", "video-itag":
           vItag = val
-        of "-v", "--version":
+        of "v", "version":
           echo version
           return
         else:
