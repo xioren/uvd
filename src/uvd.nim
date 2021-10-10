@@ -18,7 +18,7 @@ proc main() =
         --audio-id, --audio-itag        audio stream id/itag
         --video-id, --video-itag        video stream id/itag
         -h, --help                      print this help
-        -v, --version                   print version
+        --version                       print version
       """
 
   var
