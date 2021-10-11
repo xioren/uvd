@@ -582,18 +582,15 @@ proc extractDashInfo(dashManifestUrl, itag: string): tuple[baseUrl, segmentList:
 
 proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
   if itag == 0:
-    #[ NOTE: zeroth stream usually seems to be the overall best quality. go with that instead of
-       comparing bitrates as vp9 and h.264 are not directly comparable. h.264 requires higher
+    #[ NOTE: vp9 and h.264 are not directly comparable. h.264 requires higher
        bitrate / larger filesize to obtain comparable quality to vp9. scenarios occur where 480p h.264
        streams are selected over 720p vp9 streams because they have higher bitrate but are clearly not the most
-       desireable stream]#
-    # var largest = 0
-    # for stream in streams:
-    #   if stream.hasKey("width"):
-    #     if stream["bitrate"].getInt() > largest:
-    #       largest = stream["bitrate"].getInt()
-    #       result = stream
-    result = streams[0]
+       desireable stream. prefer vp9]#
+    for stream in streams:
+      if stream["mimeType"].getStr() == "video/webm; codecs=\"vp9\"":
+        # NOTE: first encountered vp9 stream will be the highest quality
+        result = stream
+        break
   else:
     for stream in streams:
       if stream["itag"].getInt() == itag:
@@ -602,13 +599,15 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
 
 
 proc selectAudioStream(streams: JsonNode, itag: int): JsonNode =
-  # NOTE: in tests, it seems youtube videos "without audio" still contain an empty
-  # audio stream
-  # "audio-less" video: https://www.youtube.com/watch?v=fW2e0CZjnFM
+  # NOTE: in tests, it seems youtube videos "without audio" still contain empty
+  # audio streams; furthermore aac streams seem to have a minimum bitrate as "empty"
+  # streams still have non trivial bitrate and filesizes.
+  # NOTE: "audio-less" video: https://www.youtube.com/watch?v=fW2e0CZjnFM
+  # NOTE: prefer opus
   if itag == 0:
-    var largest = 0
+    var largest: int
     for stream in streams:
-      if stream.hasKey("audioQuality"):
+      if stream["mimeType"].getStr() == "audio/webm; codecs=\"opus\"":
         if stream["bitrate"].getInt() > largest:
           largest = stream["bitrate"].getInt()
           result = stream
