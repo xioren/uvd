@@ -581,6 +581,7 @@ proc extractDashInfo(dashManifestUrl, itag: string): tuple[baseUrl, segmentList:
 
 
 proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
+  result = newJNull()
   if itag == 0:
     #[ NOTE: vp9 and h.264 are not directly comparable. h.264 requires higher
        bitrate / larger filesize to obtain comparable quality to vp9. scenarios occur where 480p h.264
@@ -596,6 +597,9 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
       if stream["itag"].getInt() == itag:
         result = stream
         break
+  if result.kind == JNull:
+    # NOTE: there were no vp9 streams or the itag does not exist
+    result = streams[0]
 
 
 proc selectAudioStream(streams: JsonNode, itag: int): JsonNode =
@@ -604,6 +608,7 @@ proc selectAudioStream(streams: JsonNode, itag: int): JsonNode =
   # streams still have non trivial bitrate and filesizes.
   # NOTE: "audio-less" video: https://www.youtube.com/watch?v=fW2e0CZjnFM
   # NOTE: prefer opus
+  result = newJNull()
   if itag == 0:
     var largest: int
     for stream in streams:
@@ -616,6 +621,14 @@ proc selectAudioStream(streams: JsonNode, itag: int): JsonNode =
       if stream["itag"].getInt() == itag:
         result = stream
         break
+  if result.kind == JNull:
+    # NOTE: there were no opus streams or the itag does not exist
+    var largest: int
+    for stream in streams:
+      if stream.hasKey("audioQuality"):
+        if stream["bitrate"].getInt() > largest:
+          largest = stream["bitrate"].getInt()
+          result = stream
 
 
 proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime, ext, size, qlt, resolution, bitrate: string] =
