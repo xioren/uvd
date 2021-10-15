@@ -135,7 +135,7 @@ type
     baseUrl: string
     urlSegments: seq[string]
     filename: string
-    dash: bool
+    isDash: bool
     exists: bool
 
   Video = object
@@ -366,16 +366,13 @@ proc parseThrottleFunctionArray(js: string): seq[string] =
     elif item.startsWith("function"):
       if item.contains("pop"):
         result.add("throttleUnshift")
+      elif item.contains("case 65"):
+        result.add("throttleCipherReverse")
       elif item.contains("case"):
-        if item.contains("case 65"):
-          result.add("throttleCipherReverse")
-        else:
-          result.add("throttleCipherForward")
+        result.add("throttleCipherForward")
       elif item.contains("reverse") and item.contains("unshift"):
         result.add("throttlePrepend")
-      elif item.contains("reverse"):
-        result.add("throttleReverse")
-      elif item.contains("push") and item.contains("splice"):
+      elif item.contains("reverse") or (item.contains("push") and item.contains("splice")):
         result.add("throttleReverse")
       elif item.contains("push"):
         result.add("throttlePush")
@@ -590,7 +587,11 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
     for stream in streams:
       if stream["mimeType"].getStr() == "video/webm; codecs=\"vp9\"":
         # NOTE: first encountered vp9 stream will be the highest quality
-        result = stream
+        if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
+          # NOTE: vp9 are never in dash manifest
+          result = streams[0]
+        else:
+          result = stream
         break
   else:
     for stream in streams:
@@ -682,7 +683,7 @@ proc newVideoStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
     if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
       # QUESTION: are dash urls or manifest urls ever ciphered?
       var segmentList: string
-      result.dash = true
+      result.isDash = true
       (result.baseUrl, segmentList) = extractDashInfo(dashManifestUrl, $result.itag)
       result.urlSegments = produceUrlSegments(result.baseUrl, segmentList)
     else:
@@ -698,7 +699,7 @@ proc newAudioStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
     if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
       # QUESTION: are dash urls or manifest urls ever ciphered?
       var segmentList: string
-      result.dash = true
+      result.isDash = true
       (result.baseUrl, segmentList) = extractDashInfo(dashManifestUrl, $result.itag)
       result.urlSegments = produceUrlSegments(result.baseUrl, segmentList)
     else:
@@ -723,7 +724,7 @@ proc reportStreamInfo(stream: Stream) =
        "size: ", stream.size, '\n',
        "quality: ", stream.quality, '\n',
        "mime: ", stream.mime
-  if stream.dash:
+  if stream.isDash:
     echo "segments: ", stream.urlSegments.len
 
 
@@ -860,7 +861,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         var attempt: HttpCode
         if includeVideo:
           reportStreamInfo(video.videoStream)
-          if video.videoStream.dash:
+          if video.videoStream.isDash:
             attempt = grab(video.videoStream.urlSegments, forceFilename=video.videoStream.filename,
                            forceDl=true)
           else:
@@ -874,7 +875,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
 
         if includeAudio and video.audioStream.exists:
           reportStreamInfo(video.audioStream)
-          if video.audioStream.dash:
+          if video.audioStream.isDash:
             attempt = grab(video.audioStream.urlSegments, forceFilename=video.audioStream.filename,
                            forceDl=true)
           else:
