@@ -13,7 +13,7 @@ const
   codecOptions = {"aac": "-f adts", "flac": "", "m4a": "-bsf:a aac_adtstoasc",
                   "mp3": "-qscale:a 0", "ogg": "", "wav": ""}.toTable
 var
-  # HACK: a not ideal solution to erroneosly clearing progress from terminal when no progress was made (e.g. 403 forbidden)
+  # HACK: a not ideal solution to erroneosly clearing terminal when no progress was made (e.g. 403 forbidden)
   madeProgress: bool
   headers* = @[("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.115 Safari/537.36"),
                ("accept", "*/*")]

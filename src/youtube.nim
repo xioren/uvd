@@ -587,11 +587,7 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
     for stream in streams:
       if stream["mimeType"].getStr() == "video/webm; codecs=\"vp9\"":
         # NOTE: first encountered vp9 stream will be the highest quality
-        if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
-          # NOTE: vp9 are never in dash manifest
-          result = streams[0]
-        else:
-          result = stream
+        result = stream
         break
   else:
     for stream in streams:
