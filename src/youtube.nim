@@ -43,9 +43,27 @@ const
     "racyCheckOk": true,
     "videoId": "$1"
   }"""
+  playerBypassContextTier2 = """{
+    "context": {
+      "client": {
+        "hl": "en",
+        "clientName": "WEB",
+        "clientVersion": "2.$3.00.00",
+        "clientScreen": "EMBED"
+      }
+    },
+    "playbackContext": {
+      "contentPlaybackContext": {
+        "signatureTimestamp": $2
+      }
+    },
+    "contentCheckOk": true,
+    "racyCheckOk": true,
+    "videoId": "$1"
+  }"""
   # FIXME: does not work
   # NOTE: anecdotally, should work for https://www.youtube.com/watch?v=HsUATh_Nc2U
-  # playerBypassContextTier2 = """{
+  # playerBypassContextTier3 = """{
   #   "context": {
   #     "client": {
   #       "hl": "en",
@@ -66,24 +84,6 @@ const
   #   "racyCheckOk": true,
   #   "videoId": "$1"
   # }"""
-  playerBypassContextTier2 = """{
-    "context": {
-      "client": {
-        "hl": "en",
-        "clientName": "WEB",
-        "clientVersion": "2.$3.00.00",
-        "clientScreen": "EMBED"
-      }
-    },
-    "playbackContext": {
-      "contentPlaybackContext": {
-        "signatureTimestamp": $2
-      }
-    },
-    "contentCheckOk": true,
-    "racyCheckOk": true,
-    "videoId": "$1"
-  }"""
   browseContext = """{
     "browseId": "$1",
     "context": {
@@ -340,50 +340,50 @@ iterator splitThrottleArray(js: string): string =
   ## split the throttle array into individual components
   var
     match: array[1, string]
-    item = newString(1)
+    step = newString(1)
     scope: int
 
   discard js.find(re("(?<=,c=\\[)(.+)(?=\\];\n?c)", flags={reDotAll}), match)
   for idx, c in match[0]:
     if (c == ',' and scope == 0 and match[0][min(idx + 3, match[0].high)] != '{') or idx == match[0].high:
       if idx == match[0].high:
-        item.add(c)
-      yield item.multiReplace(("\x00", ""), ("\n", ""))
-      item = newString(1)
+        step.add(c)
+      yield step.multiReplace(("\x00", ""), ("\n", ""))
+      step = newString(1)
       continue
     elif c == '{':
       inc scope
     elif c == '}':
       dec scope
-    item.add(c)
+    step.add(c)
 
 
 proc parseThrottleFunctionArray(js: string): seq[string] =
   ## parse c array
-  for item in splitThrottleArray(js):
-    if item.startsWith("\"") and item.endsWith("\""):
-      result.add(item[1..^2])
-    elif item.startsWith("function"):
-      if item.contains("pop"):
+  for step in splitThrottleArray(js):
+    if step.startsWith("\"") and step.endsWith("\""):
+      result.add(step[1..^2])
+    elif step.startsWith("function"):
+      if step.contains("pop"):
         result.add("throttleUnshift")
-      elif item.contains("case 65"):
+      elif step.contains("case 65"):
         result.add("throttleCipherReverse")
-      elif item.contains("case"):
+      elif step.contains("case"):
         result.add("throttleCipherForward")
-      elif item.contains("reverse") and item.contains("unshift"):
+      elif step.contains("reverse") and step.contains("unshift"):
         result.add("throttlePrepend")
-      elif item.contains("reverse") or (item.contains("push") and item.contains("splice")):
+      elif step.contains("reverse") or (step.contains("push") and step.contains("splice")):
         result.add("throttleReverse")
-      elif item.contains("push"):
+      elif step.contains("push"):
         result.add("throttlePush")
-      elif item.contains("var"):
+      elif step.contains("var"):
         result.add("throttleSwap")
-      elif item.count("splice") == 2:
+      elif step.count("splice") == 2:
         result.add("throttleNestedSplice")
-      elif item.contains("splice"):
+      elif step.contains("splice"):
         result.add("splice")
     else:
-      result.add(item)
+      result.add(step)
 
 
 proc parseThrottlePlan(js: string): seq[seq[string]] =
@@ -753,8 +753,10 @@ proc reportStreams(playerResponse: JsonNode, duration: int) =
 proc parseBaseJs() =
   let (code, response) = doGet(baseJsUrl % [globalBaseJsVersion, apiLocale])
   if code.is2xx:
+    # NOTE: signature code
     cipherPlan = parseFunctionPlan(response)
     cipherFunctionMap = createFunctionMap(response, parseParentFunctionName(cipherPlan[0]))
+    # NOTE: throttle code
     let throttleCode = parseThrottleCode(parseThrottleFunctionName(response), response)
     throttlePlan = parseThrottlePlan(throttleCode)
     throttleArray = parseThrottleFunctionArray(throttleCode)
@@ -779,6 +781,14 @@ proc isolateChannel(youtubeUrl: string): string =
 proc isolatePlaylist(youtubeUrl: string): string =
   result = youtubeUrl.captureBetween('=', '&', youtubeUrl.find("list="))
 
+
+proc walkErrorMessage(playabilityStatus: JsonNode) =
+  echo '<', playabilityStatus["reason"].getStr(), '>'
+  # QUESTION: does "errorScreen" always imply "subreason"?
+  if playabilityStatus.hasKey("errorScreen") and
+     playabilityStatus["errorScreen"]["playerErrorMessageRenderer"].hasKey("subreason"):
+    for run in playabilityStatus["errorScreen"]["playerErrorMessageRenderer"]["subreason"]["runs"]:
+      stdout.write(run["text"].getStr())
 
 ########################################################
 # main
@@ -810,7 +820,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
     if code.is2xx:
       playerResponse = parseJson(response)
       if playerResponse["playabilityStatus"]["status"].getStr() == "ERROR":
-        echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
+        walkErrorMessage(playerResponse["playabilityStatus"])
         return
 
       let
@@ -820,7 +830,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         duration = parseInt(playerResponse["videoDetails"]["lengthSeconds"].getStr())
 
       if fileExists(fullFilename) and not showStreams:
-        echo "<file exists> ", safeTitle
+        echo "<file exists> ", fullFilename
       else:
         # NOTE: age gate and misc youtube error handling
         if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
@@ -829,22 +839,17 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
           playerResponse = parseJson(response)
 
           if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
-            echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
+            walkErrorMessage(playerResponse["playabilityStatus"])
             echo "[attempting age-gate bypass tier 2]"
             (code, response) = doPost(playerUrl, playerBypassContextTier2 % [videoId, sigTimeStamp, date])
             playerResponse = parseJson(response)
 
             if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
-              echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
+              walkErrorMessage(playerResponse["playabilityStatus"])
               return
         elif playerResponse["playabilityStatus"]["status"].getStr() != "OK" or
              playerResponse["playabilityStatus"].hasKey("liveStreamability"):
-          echo '<', playerResponse["playabilityStatus"]["reason"].getStr(), '>'
-          # QUESTION: does "errorScreen" always imply "subreason"?
-          if playerResponse["playabilityStatus"].hasKey("errorScreen") and
-             playerResponse["playabilityStatus"]["errorScreen"]["playerErrorMessageRenderer"].hasKey("subreason"):
-            for run in playerResponse["playabilityStatus"]["errorScreen"]["playerErrorMessageRenderer"]["subreason"]["runs"]:
-              stdout.write(run["text"].getStr())
+          walkErrorMessage(playerResponse["playabilityStatus"])
           return
 
         if showStreams:
@@ -862,10 +867,10 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         if includeVideo:
           reportStreamInfo(video.videoStream)
           if video.videoStream.isDash:
-            attempt = grab(video.videoStream.urlSegments, forceFilename=video.videoStream.filename,
+            attempt = grab(video.videoStream.urlSegments, filename=video.videoStream.filename,
                            forceDl=true)
           else:
-            attempt = grab(video.videoStream.url, forceFilename=video.videoStream.filename,
+            attempt = grab(video.videoStream.url, filename=video.videoStream.filename,
                            forceDl=true)
           if not attempt.is2xx:
             echo "<failed to download video stream>"
@@ -876,10 +881,10 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         if includeAudio and video.audioStream.exists:
           reportStreamInfo(video.audioStream)
           if video.audioStream.isDash:
-            attempt = grab(video.audioStream.urlSegments, forceFilename=video.audioStream.filename,
+            attempt = grab(video.audioStream.urlSegments, filename=video.audioStream.filename,
                            forceDl=true)
           else:
-            attempt = grab(video.audioStream.url, forceFilename=video.audioStream.filename,
+            attempt = grab(video.audioStream.url, filename=video.audioStream.filename,
                            forceDl=true)
           if not attempt.is2xx:
             echo "<failed to download audio stream>"

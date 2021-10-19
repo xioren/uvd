@@ -126,7 +126,7 @@ proc download(url, filepath: string): Future[HttpCode] {.async.} =
     client.close()
 
 
-proc downloadParts(parts: seq[string], filepath: string): Future[HttpCode] {.async.} =
+proc download(parts: seq[string], filepath: string): Future[HttpCode] {.async.} =
   ## download multi-part streams
   # BUG: sometimes "Error: unhandled exception: No handles or timers registered in dispatcher. [ValueError]"
   # will be thrown. this is a Nim bug and is supposedly fixed in the newest version of Nim.
@@ -147,40 +147,13 @@ proc downloadParts(parts: seq[string], filepath: string): Future[HttpCode] {.asy
     client.close()
 
 
-proc grab*(url: string, forceFilename="", saveLocation=getCurrentDir(), forceDl=false): HttpCode =
+proc grab*(url: string | seq[string], filename="", saveLocation=getCurrentDir(), forceDl=false): HttpCode =
   ## download front end
-  var filename: string
-
-  if forceFilename.isEmptyOrWhitespace():
-    filename = extractFilename(url)
-  else:
-    filename = forceFilename
-
   let filepath = joinPath(saveLocation, filename)
   if not forceDl and fileExists(filepath):
     echo "<file exists> ", filename
   else:
     result = waitFor download(url, filepath)
-    if result.is2xx:
-      echo "[success] ", filename
-    else:
-      echo '<', result, '>'
-
-
-proc grab*(urls: seq[string], forceFilename="", saveLocation=getCurrentDir(), forceDl=false): HttpCode =
-  ## downloadParts front end
-  var filename: string
-
-  if forceFilename.isEmptyOrWhitespace():
-    filename = extractFilename(urls[0])
-  else:
-    filename = forceFilename
-
-  let filepath = joinPath(saveLocation, filename)
-  if not forceDl and fileExists(filepath):
-    echo "<file exists> ", filename
-  else:
-    result = waitFor downloadParts(urls, filepath)
     if result.is2xx:
       echo "[success] ", filename
     else:
