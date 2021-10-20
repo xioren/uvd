@@ -142,7 +142,7 @@ proc getAudioStreamInfo(stream: JsonNode): tuple[id, mime, ext, size, qlt, bitra
   result.size = formatSize(size, includeSpace=true)
 
 
-proc produceUrlSegments(cdnUrl, baseUrl, initUrl: string, stream: JsonNode, audio: bool): seq[string] =
+proc produceUrlSegments(cdnUrl, baseUrl, initUrl, streamId: string, stream: JsonNode, audio: bool): seq[string] =
   let cdn = parseUri(cdnUrl)
   if audio:
     if baseUrl.contains("parcel"):
@@ -155,9 +155,10 @@ proc produceUrlSegments(cdnUrl, baseUrl, initUrl: string, stream: JsonNode, audi
     if baseUrl.contains("parcel"):
       result.add($(cdn / baseUrl) & initUrl)
     else:
-      result.add($(cdn / "sep/video" / baseUrl) & initUrl)
+      echo streamId
+      result.add($(cdn / "sep/video" / streamId / baseUrl) & initUrl)
       for segment in stream["segments"]:
-        result.add($(cdn / "sep/video" / baseUrl) & segment["url"].getStr())
+        result.add($(cdn / "sep/video" / streamId / baseUrl) & segment["url"].getStr())
 
 
 proc newVideoStream(cdnUrl, videoId: string, stream: JsonNode): Stream =
@@ -168,7 +169,7 @@ proc newVideoStream(cdnUrl, videoId: string, stream: JsonNode): Stream =
     result.baseUrl = stream["base_url"].getStr().replace("../")
     result.initUrl = stream["init_segment"].getStr()
     result.urlSegments = produceUrlSegments(cdnUrl.split("sep/")[0], result.baseUrl,
-                                            result.initUrl, stream, false)
+                                            result.initUrl, stream["id"].getStr(), stream, false)
     result.exists = true
 
 
@@ -179,7 +180,7 @@ proc newAudioStream(cdnUrl, videoId: string, stream: JsonNode): Stream =
     result.baseUrl = stream["base_url"].getStr().replace("../")
     result.initUrl = stream["init_segment"].getStr()
     result.urlSegments = produceUrlSegments(cdnUrl.split("sep/")[0], result.baseUrl,
-                                            result.initUrl, stream, true)
+                                            result.initUrl, stream["id"].getStr(), stream, true)
     result.exists = true
 
 

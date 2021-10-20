@@ -158,22 +158,20 @@ const
   # contextUrl = "https://www.youtube.com/sw.js_data"
   videosTab = "EgZ2aWRlb3M%3D"
   playlistsTab = "EglwbGF5bGlzdHM%3D"
-  forward = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
-             'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R',
-             'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a',
-             'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j',
-             'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's',
-             't', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1',
-             '2', '3', '4', '5', '6', '7', '8', '9', '-',
-             '_']
-  reverse = ['0', '1', '2', '3', '4', '5', '6', '7', '8',
-             '9', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h',
-             'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q',
-             'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
-             'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
-             'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R',
-             'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '-',
-             '_']
+  forward = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
+             'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
+             'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd',
+             'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n',
+             'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x',
+             'y', 'z', '0', '1', '2', '3', '4', '5', '6', '7',
+             '8', '9', '-', '_']
+  reverse = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+             'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j',
+             'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
+             'u', 'v', 'w', 'x', 'y', 'z', 'A', 'B', 'C', 'D',
+             'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N',
+             'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
+             'Y', 'Z', '-', '_']
 
 let date = now().format("yyyyMMdd")
 
@@ -682,6 +680,8 @@ proc newVideoStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
       result.isDash = true
       (result.baseUrl, segmentList) = extractDashInfo(dashManifestUrl, $result.itag)
       result.urlSegments = produceUrlSegments(result.baseUrl, segmentList)
+      # TODO: add len check here and fallback to stream[0] or similar if needed.
+      # IDEA: consider taking all streams as argument which will allow redoing of selectVideoStream as needed.
     else:
       result.url = urlOrCipher(stream)
     result.exists = true
@@ -785,6 +785,7 @@ proc walkErrorMessage(playabilityStatus: JsonNode) =
      playabilityStatus["errorScreen"]["playerErrorMessageRenderer"].hasKey("subreason"):
     for run in playabilityStatus["errorScreen"]["playerErrorMessageRenderer"]["subreason"]["runs"]:
       stdout.write(run["text"].getStr())
+
 
 ########################################################
 # main
