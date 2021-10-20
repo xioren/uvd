@@ -144,6 +144,8 @@ proc getAudioStreamInfo(stream: JsonNode): tuple[id, mime, ext, size, qlt, bitra
 
 proc produceUrlSegments(cdnUrl, baseUrl, initUrl, streamId: string, stream: JsonNode, audio: bool): seq[string] =
   let cdn = parseUri(cdnUrl)
+  var sep: string
+
   if audio:
     if baseUrl.contains("parcel"):
       result.add($(cdn / baseUrl) & initUrl)
@@ -155,10 +157,14 @@ proc produceUrlSegments(cdnUrl, baseUrl, initUrl, streamId: string, stream: Json
     if baseUrl.contains("parcel"):
       result.add($(cdn / baseUrl) & initUrl)
     else:
-      echo streamId
-      result.add($(cdn / "sep/video" / streamId / baseUrl) & initUrl)
+      if baseUrl.contains(streamId):
+        sep = "sep/video"
+      else:
+        # NOTE: some (older?) streams do not already contain the streamId and it needs to be added
+        sep = "sep/video" & '/' & streamId
+      result.add($(cdn / sep / baseUrl) & initUrl)
       for segment in stream["segments"]:
-        result.add($(cdn / "sep/video" / streamId / baseUrl) & segment["url"].getStr())
+        result.add($(cdn / sep / baseUrl) & segment["url"].getStr())
 
 
 proc newVideoStream(cdnUrl, videoId: string, stream: JsonNode): Stream =
