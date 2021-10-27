@@ -216,12 +216,7 @@ proc index[T](d: openarray[T], item: T): int =
   raise newException(IndexDefect, "$1 not in $2" % [$item, $d.type])
 
 
-proc throttleModFunction(d: string, e: int): int =
-  ## function(d,e){e=(e%d.length+d.length)%d.length
-  result = (e mod d.len + d.len) mod d.len
-
-
-proc throttleModFunction(d: seq[string], e: int): int =
+proc throttleModFunction(d: string | seq[string], e: int): int =
   ## function(d,e){e=(e%d.length+d.length)%d.length
   result = (e mod d.len + d.len) mod d.len
 
@@ -407,12 +402,10 @@ proc calculateN(n: string): string =
     if step.len == 3:
       secondArg = tempArray[parseInt(step[2])]
       # NOTE: arg (may be) in exponential notation
-      if secondArg.contains('E') and not secondArg.contains("Each"):
+      if secondArg.contains('E'):
         (k, e) = secondArg.split('E')
-        try:
+        if e.all(isDigit):
           secondArg = k & '0'.repeat(parseInt(e))
-        except ValueError:
-          discard
 
     # TODO: im sure there is a clever way to compact this
     if firstArg == "null":
@@ -512,24 +505,24 @@ proc createFunctionMap(js, mainFunc: string): Table[string, string] =
 
 proc decipher(signature: string): string =
   ## decipher signature
-  var splitSig = @signature
+  var a = @signature
 
-  for item in cipherPlan:
+  for step in cipherPlan:
     let
-      (funcName, argument) = parseChildFunction(item)
+      (funcName, b) = parseChildFunction(step)
       jsFunction = cipherFunctionMap[funcName]
       index = parseIndex(jsFunction)
     if jsFunction.contains("reverse"):
       ## function(a, b){a.reverse()}
-      splitSig.reverse()
+      a.reverse()
     elif jsFunction.contains("splice"):
       ## function(a, b){a.splice(0, b)}
-      splitSig.delete(index, index + pred(argument))
+      a.delete(index, index + b.pred)
     else:
       ## function(a,b){var c=a[0];a[0]=a[b%a.length];a[b%a.length]=c}
-      swap(splitSig[index], splitSig[argument mod splitSig.len])
+      swap(a[index], a[b mod a.len])
 
-  result = splitSig.join()
+  result = a.join()
 
 
 proc getSigCipherUrl(signatureCipher: string): string =
@@ -581,7 +574,7 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
     #[ NOTE: vp9 and h.264 are not directly comparable. h.264 requires higher
        bitrate / larger filesize to obtain comparable quality to vp9. scenarios occur where 480p h.264
        streams are selected over 720p vp9 streams because they have higher bitrate but are clearly not the most
-       desireable stream. prefer vp9]#
+       desireable stream --> prefer vp9]#
     for stream in streams:
       if stream["mimeType"].getStr() == "video/webm; codecs=\"vp9\"":
         # NOTE: first encountered vp9 stream will be the highest quality
@@ -592,6 +585,7 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
       if stream["itag"].getInt() == itag:
         result = stream
         break
+
   if result.kind == JNull:
     # NOTE: there were no vp9 streams or the itag does not exist
     result = streams[0]
@@ -616,6 +610,7 @@ proc selectAudioStream(streams: JsonNode, itag: int): JsonNode =
       if stream["itag"].getInt() == itag:
         result = stream
         break
+
   if result.kind == JNull:
     # NOTE: there were no opus streams or the itag does not exist
     var largest: int
@@ -673,7 +668,7 @@ proc newVideoStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
     # NOTE: should NEVER be JNull but go through the motions anyway for parity with newAudioStream
     (result.itag, result.mime, result.ext, result.size, result.quality, result.resolution, result.bitrate) = getVideoStreamInfo(stream, duration)
     result.filename = addFileExt(videoId, result.ext)
-    # QUESTION: are all dash segment stream denoted with "FORMAT_STREAM_TYPE_OTF"?
+    # QUESTION: are all dash segment streams denoted with "FORMAT_STREAM_TYPE_OTF"?
     if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
       # QUESTION: are dash urls or manifest urls ever ciphered?
       var segmentList: string

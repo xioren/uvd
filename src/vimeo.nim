@@ -161,7 +161,7 @@ proc produceUrlSegments(cdnUrl, baseUrl, initUrl, streamId: string, stream: Json
         sep = "sep/video"
       else:
         # NOTE: some (older?) streams do not already contain the streamId and it needs to be added
-        sep = "sep/video" & '/' & streamId
+        sep = "sep/video/" & streamId
       result.add($(cdn / sep / baseUrl) & initUrl)
       for segment in stream["segments"]:
         result.add($(cdn / sep / baseUrl) & segment["url"].getStr())
@@ -318,14 +318,14 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
       if includeVideo:
         reportStreamInfo(video.videoStream)
         if not grab(video.videoStream.urlSegments, filename=video.videoStream.filename,
-                         forceDl=true).is2xx:
+                    forceDl=true).is2xx:
           echo "<failed to download video stream>"
           includeVideo = false
 
       if includeAudio and video.audioStream.exists:
         reportStreamInfo(video.audioStream)
         if not grab(video.audioStream.urlSegments, filename=video.audioStream.filename,
-                         forceDl=true).is2xx:
+                    forceDl=true).is2xx:
           echo "<failed to download audio stream>"
           includeAudio = false
       else:

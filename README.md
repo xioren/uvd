@@ -1,7 +1,7 @@
 ### uvd: yo[u]tube [v]imeo [d]ownloader
 
 
-+ minimal downloader for youtube and vimeo
++ (fast) minimal downloader for youtube and vimeo
 + downloads the best audio and video streams by default
 + requires ffmpeg
 + *nix only
