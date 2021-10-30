@@ -774,12 +774,17 @@ proc isolatePlaylist(youtubeUrl: string): string =
 
 
 proc walkErrorMessage(playabilityStatus: JsonNode) =
-  echo '<', playabilityStatus["reason"].getStr(), '>'
-  # QUESTION: does "errorScreen" always imply "subreason"?
-  if playabilityStatus.hasKey("errorScreen") and
-     playabilityStatus["errorScreen"]["playerErrorMessageRenderer"].hasKey("subreason"):
-    for run in playabilityStatus["errorScreen"]["playerErrorMessageRenderer"]["subreason"]["runs"]:
-      stdout.write(run["text"].getStr())
+  if playabilityStatus.hasKey("reason"):
+    echo '<', playabilityStatus["reason"].getStr(), '>'
+  elif playabilityStatus.hasKey("messages"):
+    for message in playabilityStatus["messages"]:
+      echo '<', message, '>'
+  if playabilityStatus.hasKey("errorScreen"):
+    if playabilityStatus["errorScreen"]["playerErrorMessageRenderer"]["subreason"].hasKey("runs"):
+      for run in playabilityStatus["errorScreen"]["playerErrorMessageRenderer"]["subreason"]["runs"]:
+        stdout.write(run["text"].getStr())
+    elif playabilityStatus["errorScreen"]["playerErrorMessageRenderer"]["subreason"].hasKey("simpleText"):
+      echo '<', playabilityStatus["errorScreen"]["playerErrorMessageRenderer"]["subreason"]["simpleText"], '>'
 
 
 ########################################################
@@ -811,7 +816,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
     (code, response) = doPost(playerUrl, playerContext % [videoId, sigTimeStamp, date])
     if code.is2xx:
       playerResponse = parseJson(response)
-      if playerResponse["playabilityStatus"]["status"].getStr() == "ERROR":
+      if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
         walkErrorMessage(playerResponse["playabilityStatus"])
         return
 
