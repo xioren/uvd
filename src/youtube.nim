@@ -773,18 +773,28 @@ proc isolatePlaylist(youtubeUrl: string): string =
   result = youtubeUrl.captureBetween('=', '&', youtubeUrl.find("list="))
 
 
+proc giveReasons(Reason: JsonNode) =
+  if Reason.hasKey("runs"):
+    stdout.write('<')
+    for run in Reason["runs"]:
+      stdout.write(run["text"])
+    echo '>'
+  if Reason.hasKey("simpleText"):
+    echo '<', Reason["simpleText"], '>'
+
+
 proc walkErrorMessage(playabilityStatus: JsonNode) =
   if playabilityStatus.hasKey("reason"):
-    echo '<', playabilityStatus["reason"].getStr(), '>'
+    echo '<', playabilityStatus["reason"], '>'
   elif playabilityStatus.hasKey("messages"):
     for message in playabilityStatus["messages"]:
       echo '<', message, '>'
+
   if playabilityStatus.hasKey("errorScreen"):
-    if playabilityStatus["errorScreen"]["playerErrorMessageRenderer"]["subreason"].hasKey("runs"):
-      for run in playabilityStatus["errorScreen"]["playerErrorMessageRenderer"]["subreason"]["runs"]:
-        stdout.write(run["text"].getStr())
-    elif playabilityStatus["errorScreen"]["playerErrorMessageRenderer"]["subreason"].hasKey("simpleText"):
-      echo '<', playabilityStatus["errorScreen"]["playerErrorMessageRenderer"]["subreason"]["simpleText"], '>'
+    if playabilityStatus["errorScreen"]["playerErrorMessageRenderer"].hasKey("reason"):
+      giveReasons(playabilityStatus["errorScreen"]["playerErrorMessageRenderer"]["reason"])
+    if playabilityStatus["errorScreen"]["playerErrorMessageRenderer"].hasKey("subreason"):
+      giveReasons(playabilityStatus["errorScreen"]["playerErrorMessageRenderer"]["subreason"])
 
 
 ########################################################
@@ -816,7 +826,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
     (code, response) = doPost(playerUrl, playerContext % [videoId, sigTimeStamp, date])
     if code.is2xx:
       playerResponse = parseJson(response)
-      if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
+      if playerResponse["playabilityStatus"]["status"].getStr() != "OK" and not playerResponse.hasKey("videoDetails"):
         walkErrorMessage(playerResponse["playabilityStatus"])
         return
 
