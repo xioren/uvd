@@ -35,6 +35,7 @@ type
 const
   apiUrl = "https://api.vimeo.com"
   configUrl = "https://player.vimeo.com/video/$1/config"
+  unlistedConfigUrl = "https://player.vimeo.com/video/$1/config?h=$2"
   # detailsUrl = "http://vimeo.com/api/v2/video/$1.json"
   authorizationUrl = "https://vimeo.com/_rv/viewer"
   profileUrl = "https://api.vimeo.com/users/$1/profile_sections?fields=uri%2Ctitle%2CuserUri%2Curi%2C"
@@ -245,7 +246,18 @@ proc extractId(vimeoUrl: string): string =
   elif vimeoUrl.contains("/video/"):
     result = vimeoUrl.captureBetween('/', '?', vimeoUrl.find("video/"))
   else:
-    result = vimeoUrl.captureBetween('/', '?', vimeoUrl.find(".com/"))
+    result = vimeoUrl.captureBetween('/', start=vimeoUrl.find(".com/"))
+
+
+proc extractHash(vimeoUrl: string): string =
+  result = vimeoUrl.dequery().split('/')[^1]
+
+
+proc isUnlisted(vimeoUrl: string): bool =
+  ## check for unlisted hash in vimeo url
+  let slug = vimeoUrl.captureBetween('/', '?', vimeoUrl.find(".com/"))
+  if slug.count('/') > 0:
+    result = true
 
 
 ########################################################
@@ -266,7 +278,11 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
     # NOTE: config url already obtained from getProfile
     (code, response) = doGet(vimeoUrl)
   else:
-    (code, response) = doGet(configUrl % videoId)
+    if isUnlisted(vimeoUrl):
+      let unlistedHash = extractHash(vimeoUrl)
+      (code, response) = doGet(unlistedConfigUrl % [videoId, unlistedHash])
+    else:
+      (code, response) = doGet(configUrl % videoId)
     if code == Http403:
       echo "[trying signed config url]"
       (code, response) = doGet(standardVimeoUrl)

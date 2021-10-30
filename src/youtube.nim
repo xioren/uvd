@@ -763,8 +763,8 @@ proc isolateVideoId(youtubeUrl: string): string =
 proc isolateChannel(youtubeUrl: string): string =
   # NOTE: vanity
   if "/c/" in youtubeUrl:
-    let response = doGet(youtubeUrl)
-    result = response[1].captureBetween('"', '"', response[1].find("""browseId":""") + 9)
+    let (_, response) = doGet(youtubeUrl)
+    result = response.captureBetween('"', '"', response.find("""browseId":""") + 9)
   else:
     result = youtubeUrl.captureBetween('/', '/', youtubeUrl.find("channel"))
 
@@ -779,7 +779,7 @@ proc giveReasons(Reason: JsonNode) =
     for run in Reason["runs"]:
       stdout.write(run["text"])
     echo '>'
-  if Reason.hasKey("simpleText"):
+  elif Reason.hasKey("simpleText"):
     echo '<', Reason["simpleText"], '>'
 
 
