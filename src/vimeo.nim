@@ -271,8 +271,8 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
     configResponse: JsonNode
     response: string
     code: HttpCode
-    standardVimeoUrl = baseUrl & '/' & videoId
   let videoId = extractId(vimeoUrl)
+  var standardVimeoUrl = baseUrl & '/' & videoId
 
   if vimeoUrl.contains("/config?"):
     # NOTE: config url already obtained from getProfile
