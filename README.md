@@ -9,6 +9,7 @@
 
 *youtube:*
   + videos
+  + shorts
   + channels
   + playlists
 

@@ -33,6 +33,7 @@ type
     videoStream: Stream
 
 const
+  baseUrl = "https://vimeo.com"
   apiUrl = "https://api.vimeo.com"
   configUrl = "https://player.vimeo.com/video/$1/config"
   unlistedConfigUrl = "https://player.vimeo.com/video/$1/config?h=$2"
@@ -270,9 +271,8 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
     configResponse: JsonNode
     response: string
     code: HttpCode
-  let
-    videoId = extractId(vimeoUrl)
-    standardVimeoUrl = "https://vimeo.com/video/" & videoId
+    standardVimeoUrl = baseUrl & '/' & videoId
+  let videoId = extractId(vimeoUrl)
 
   if vimeoUrl.contains("/config?"):
     # NOTE: config url already obtained from getProfile
@@ -280,6 +280,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
   else:
     if isUnlisted(vimeoUrl):
       let unlistedHash = extractHash(vimeoUrl)
+      standardVimeoUrl = standardVimeoUrl & '/' & unlistedHash
       (code, response) = doGet(unlistedConfigUrl % [videoId, unlistedHash])
     else:
       (code, response) = doGet(configUrl % videoId)
