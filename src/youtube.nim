@@ -756,6 +756,8 @@ proc parseBaseJs() =
 proc isolateVideoId(youtubeUrl: string): string =
   if youtubeUrl.contains("youtu.be"):
     result = youtubeUrl.captureBetween('/', '?', 8)
+  elif youtubeUrl.contains("/shorts/"):
+    result = youtubeUrl.captureBetween('/', '?', 24)
   else:
     result = youtubeUrl.captureBetween('=', '&')
 
