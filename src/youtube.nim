@@ -786,6 +786,8 @@ proc giveReasons(Reason: JsonNode) =
 
 
 proc walkErrorMessage(playabilityStatus: JsonNode) =
+  # FIXME: some (currently playing) live streams have error messages that do not fall in any of these catagories
+  # the the program exits with no output
   if playabilityStatus.hasKey("reason"):
     echo '<', playabilityStatus["reason"], '>'
   elif playabilityStatus.hasKey("messages"):
@@ -856,9 +858,11 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
             if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
               walkErrorMessage(playerResponse["playabilityStatus"])
               return
-        elif playerResponse["playabilityStatus"]["status"].getStr() != "OK" or
-             playerResponse["playabilityStatus"].hasKey("liveStreamability"):
+        elif playerResponse["playabilityStatus"]["status"].getStr() != "OK":
           walkErrorMessage(playerResponse["playabilityStatus"])
+          return
+        elif playerResponse["videoDetails"].hasKey("isLive") and playerResponse["videoDetails"]["isLive"].getBool():
+          echo "<this video is currently live>"
           return
 
         if showStreams:
@@ -921,9 +925,9 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
 
 proc getPlaylist(youtubeUrl: string) =
   var ids: seq[string]
-  let playlist = isolatePlaylist(youtubeUrl)
+  let playlistId = isolatePlaylist(youtubeUrl)
 
-  let (code, response) = doPost(nextUrl, playlistContext % [date, playlist])
+  let (code, response) = doPost(nextUrl, playlistContext % [date, playlistId])
   if code.is2xx:
     let
       playlistResponse = parseJson(response)

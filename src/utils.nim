@@ -70,6 +70,7 @@ proc clearProgress() =
 
 
 proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
+  # TODO: implement version for dash streams that tracks segments rather than progress bar
   const barWidth = 50
   let
     bar = '#'.repeat(floor(progress.int / total.int * barWidth).int)
@@ -128,8 +129,6 @@ proc download(url, filepath: string): Future[HttpCode] {.async.} =
 
 proc download(parts: seq[string], filepath: string): Future[HttpCode] {.async.} =
   ## download multi-part streams
-  # BUG: sometimes "Error: unhandled exception: No handles or timers registered in dispatcher. [ValueError]"
-  # will be thrown. this is a Nim bug and is supposedly fixed in the newest version of Nim.
   let client = newAsyncHttpClient(headers=newHttpHeaders(headers))
   var file = openasync(filepath, fmWrite)
   client.onProgressChanged = onProgressChanged

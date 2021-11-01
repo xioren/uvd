@@ -55,14 +55,9 @@ var
 
 
 proc authorize() =
-  var
-    authResponse: JsonNode
-    response: string
-    code: HttpCode
-
-  (code, response) = doGet(authorizationUrl)
+  let (code, response) = doGet(authorizationUrl)
   if code.is2xx:
-    authResponse = parseJson(response)
+    let authResponse = parseJson(response)
     headers.add(("authorization", "jwt " & authResponse["jwt"].getStr()))
   else:
     echo "<authorization failed>"
@@ -83,10 +78,12 @@ proc selectVideoStream(streams: JsonNode, id: string): JsonNode =
     var
       largest = 0
       dimension: string
+
     if isVerticle(streams[0]):
       dimension = "width"
     else:
       dimension = "height"
+
     for stream in streams:
       if stream[dimension].getInt() > largest:
         largest = stream[dimension].getInt()
@@ -154,7 +151,7 @@ proc produceUrlSegments(cdnUrl, baseUrl, initUrl, streamId: string, stream: Json
     else:
       result.add($(cdn / "sep" / baseUrl) & initUrl)
       for segment in stream["segments"]:
-          result.add($(cdn / "sep" / baseUrl) & segment["url"].getStr())
+        result.add($(cdn / "sep" / baseUrl) & segment["url"].getStr())
   else:
     if baseUrl.contains("parcel"):
       result.add($(cdn / baseUrl) & initUrl)
@@ -164,6 +161,7 @@ proc produceUrlSegments(cdnUrl, baseUrl, initUrl, streamId: string, stream: Json
       else:
         # NOTE: some (older?) streams do not already contain the streamId and it needs to be added
         sep = "sep/video/" & streamId
+
       result.add($(cdn / sep / baseUrl) & initUrl)
       for segment in stream["segments"]:
         result.add($(cdn / sep / baseUrl) & segment["url"].getStr())
@@ -219,6 +217,7 @@ proc reportStreams(cdnResponse: JsonNode) =
     (id, mime, ext, size, quality, bitrate) = getVideoStreamInfo(item)
     echo "[video]", " id: ", id, " quality: ", quality,
          " resolution: ", dimensions, " bitrate: ", bitrate, " mime: ", mime, " size: ", size
+
   if cdnResponse["audio"].kind != JNull:
     for item in cdnResponse["audio"]:
       (id, mime, ext, size, quality, bitrate) = getAudioStreamInfo(item)
@@ -285,6 +284,8 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
     else:
       (code, response) = doGet(configUrl % videoId)
     if code == Http403:
+      # NOTE: videos where this step was previously necessary now seem to work without it.
+      # QUESTION: can it be removed?
       echo "[trying signed config url]"
       (code, response) = doGet(standardVimeoUrl)
       let signedConfigUrl = response.captureBetween('"', '"', response.find(""""config_url":""") + 13)
@@ -292,6 +293,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
       if not signedConfigUrl.contains("vimeo"):
         echo "[trying embed url]"
         # HACK: use patreon embed url to get meta data
+        # QUESTION: is there a seperate bypass url for unlisted videos?
         headers.add(("referer", "https://cdn.embedly.com/"))
         (code, response) = doGet(bypassUrl % videoId)
         let embedResponse = response.captureBetween(' ', ';', response.find("""config =""") + 8)
@@ -364,14 +366,12 @@ proc getProfile(vimeoUrl: string) =
     profileResponse: JsonNode
     response: string
     code: HttpCode
-    userId: string
-    sectionId: string
     nextUrl: string
     urls: seq[string]
 
   let userSlug = dequery(vimeoUrl).split('/')[^1]
   authorize()
-  (userId, sectionId) = getProfileIds(profileUrl % userSlug)
+  let (userId, sectionId) = getProfileIds(profileUrl % userSlug)
   nextUrl = videosUrl % [userId, sectionId]
 
   echo "[collecting videos]"
