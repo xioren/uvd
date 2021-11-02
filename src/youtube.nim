@@ -588,7 +588,12 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
 
   if result.kind == JNull:
     # NOTE: there were no vp9 streams or the itag does not exist
-    result = streams[0]
+    if streams[0].hasKey("projectionType") and streams[0].hasKey("audioChannels"):
+      # NOTE: combined streams listed worst to best
+      result = streams[^1]
+    else:
+      # adaptive listed best to worst
+      result = streams[0]
 
 
 proc selectAudioStream(streams: JsonNode, itag: int): JsonNode =
