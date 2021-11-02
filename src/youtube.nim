@@ -703,12 +703,20 @@ proc newAudioStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
     result.exists = true
 
 
+proc inStreams(itag: int, Streams:JsonNode): bool =
+  ## check if set of streams contains given itag
+  for stream in Streams:
+    if stream["itag"].getInt() == itag:
+      result = true
+      break
+
+
 proc newVideo(youtubeUrl, dashManifestUrl, title, videoId: string, duration: int,
               streamingData: JsonNode, aItag, vItag: int): Video =
   result.title = title
   result.url = youtubeUrl
   result.videoId = videoId
-  if streamingData.hasKey("adaptiveFormats"):
+  if streamingData.hasKey("adaptiveFormats") and vItag.inStreams(streamingData["adaptiveFormats"]):
     result.videoStream = newVideoStream(youtubeUrl, dashManifestUrl, videoId, duration,
                                         selectVideoStream(streamingData["adaptiveFormats"], vItag))
     result.audioStream = newAudioStream(youtubeUrl, dashManifestUrl, videoId, duration,
@@ -745,8 +753,8 @@ proc reportStreams(playerResponse: JsonNode, duration: int) =
              " resolution: ", resolution, " bitrate: ", bitrate, " mime: ", mime,
              " size: ", size
   if playerResponse["streamingData"].hasKey("formats"):
-    for item in playerResponse["streamingData"]["formats"]:
-      (itag, mime, ext, size, quality, resolution, bitrate) = getVideoStreamInfo(item, duration)
+    for n in countdown(playerResponse["streamingData"]["formats"].len.pred, 0):
+      (itag, mime, ext, size, quality, resolution, bitrate) = getVideoStreamInfo(playerResponse["streamingData"]["formats"][n], duration)
       echo "[combined]", " itag: ", itag, " quality: ", quality,
            " resolution: ", resolution, " bitrate: ", bitrate, " mime: ", mime,
            " size: ", size
