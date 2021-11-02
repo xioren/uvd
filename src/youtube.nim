@@ -631,7 +631,7 @@ proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime,
   var rawBitrate: int
   if stream.hasKey("averageBitrate"):
     rawBitrate = stream["averageBitrate"].getInt()
-  else:
+  elif stream.hasKey("bitrate"):
     rawBitrate = stream["bitrate"].getInt()
   result.bitrate = formatSize(rawBitrate, includeSpace=true) & "/s"
 
@@ -699,14 +699,18 @@ proc newAudioStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
 
 
 proc newVideo(youtubeUrl, dashManifestUrl, title, videoId: string, duration: int,
-              adaptiveFormats: JsonNode, aItag, vItag: int): Video =
+              streamingData: JsonNode, aItag, vItag: int): Video =
   result.title = title
   result.url = youtubeUrl
   result.videoId = videoId
-  result.videoStream = newVideoStream(youtubeUrl, dashManifestUrl, videoId, duration,
-                                      selectVideoStream(adaptiveFormats, vItag))
-  result.audioStream = newAudioStream(youtubeUrl, dashManifestUrl, videoId, duration,
-                                      selectAudioStream(adaptiveFormats, aItag))
+  if streamingData.hasKey("adaptiveFormats"):
+    result.videoStream = newVideoStream(youtubeUrl, dashManifestUrl, videoId, duration,
+                                        selectVideoStream(streamingData["adaptiveFormats"], vItag))
+    result.audioStream = newAudioStream(youtubeUrl, dashManifestUrl, videoId, duration,
+                                        selectAudioStream(streamingData["adaptiveFormats"], aItag))
+  else:
+    result.videoStream = newVideoStream(youtubeUrl, dashManifestUrl, videoId, duration,
+                                        selectVideoStream(streamingData["formats"], vItag))
 
 
 proc reportStreamInfo(stream: Stream) =
@@ -724,17 +728,23 @@ proc reportStreams(playerResponse: JsonNode, duration: int) =
     itag: int
     mime, ext, size, quality, resolution, bitrate: string
 
-  for item in playerResponse["streamingData"]["adaptiveFormats"]:
-    if item.hasKey("audioQuality"):
-      (itag, mime, ext, size, quality, bitrate) = getAudioStreamInfo(item, duration)
-      echo "[audio]", " itag: ", itag, " quality: ", quality,
-           " bitrate: ", bitrate, " mime: ", mime, " size: ", size
-    else:
+  if playerResponse["streamingData"].hasKey("adaptiveFormats"):
+    for item in playerResponse["streamingData"]["adaptiveFormats"]:
+      if item.hasKey("audioQuality"):
+        (itag, mime, ext, size, quality, bitrate) = getAudioStreamInfo(item, duration)
+        echo "[audio]", " itag: ", itag, " quality: ", quality,
+             " bitrate: ", bitrate, " mime: ", mime, " size: ", size
+      else:
+        (itag, mime, ext, size, quality, resolution, bitrate) = getVideoStreamInfo(item, duration)
+        echo "[video]", " itag: ", itag, " quality: ", quality,
+             " resolution: ", resolution, " bitrate: ", bitrate, " mime: ", mime,
+             " size: ", size
+  if playerResponse["streamingData"].hasKey("formats"):
+    for item in playerResponse["streamingData"]["formats"]:
       (itag, mime, ext, size, quality, resolution, bitrate) = getVideoStreamInfo(item, duration)
-      echo "[video]", " itag: ", itag, " quality: ", quality,
+      echo "[combined]", " itag: ", itag, " quality: ", quality,
            " resolution: ", resolution, " bitrate: ", bitrate, " mime: ", mime,
            " size: ", size
-
 
 ########################################################
 # misc
@@ -858,11 +868,11 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
             if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
               walkErrorMessage(playerResponse["playabilityStatus"])
               return
-        elif playerResponse["playabilityStatus"]["status"].getStr() != "OK":
-          walkErrorMessage(playerResponse["playabilityStatus"])
-          return
         elif playerResponse["videoDetails"].hasKey("isLive") and playerResponse["videoDetails"]["isLive"].getBool():
           echo "<this video is currently live>"
+          return
+        elif playerResponse["playabilityStatus"]["status"].getStr() != "OK":
+          walkErrorMessage(playerResponse["playabilityStatus"])
           return
 
         if showStreams:
@@ -873,7 +883,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         if playerResponse["streamingData"].hasKey("dashManifestUrl"):
           dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
         let video = newVideo(standardYoutubeUrl, dashManifestUrl, title, videoId, duration,
-                             playerResponse["streamingData"]["adaptiveFormats"], aItag, vItag)
+                             playerResponse["streamingData"], aItag, vItag)
         echo "title: ", video.title
 
         var attempt: HttpCode
