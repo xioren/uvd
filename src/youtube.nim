@@ -180,7 +180,6 @@ var
   includeAudio, includeVideo: bool
   audioFormat: string
   showStreams: bool
-  h: array[64, char]
   globalBaseJsVersion: string
   cipherPlan: seq[string]
   cipherFunctionMap: Table[string, string]
@@ -232,7 +231,7 @@ proc throttleUnshift(d: var seq[string], e: int) =
   d.rotateLeft(d.len - throttleModFunction(d, e))
 
 
-proc throttleCipher(d: var string, e: string) =
+proc throttleCipher(h: array[64, char], d: var string, e: string) =
   #[
   forward: function(d,e){for(var f=64,h=[];++f-h.length-32;){switch(f)
   {case 58:f-=14;case 91:case 92:case 93:continue;case 123:f=47;case 94:case 95:
@@ -254,7 +253,7 @@ proc throttleCipher(d: var string, e: string) =
     d[idx] = h[bVal]
 
 
-proc throttleCipher(d: var seq[string], e: string) =
+proc throttleCipher(h: array[64, char], d: var seq[string], e: string) =
   # NOTE: needed to compile
   doAssert false
 
@@ -282,7 +281,7 @@ proc splice(d: var string, fromIdx: int) =
   ## javascript splice
   # function(d,e){e=(e%d.length+d.length)%d.length;d.splice(e,1)};
   let e = throttleModFunction(d, fromIdx)
-  d.delete(e, e)
+  d.delete(e..e)
 
 
 proc splice(d: var seq[string], fromIdx: int) =
@@ -413,10 +412,9 @@ proc calculateN(n: string): string =
         throttleUnshift(tempArray, parseInt(secondArg))
       elif currFunc.contains("throttleCipher"):
         if currFunc.contains("Forward"):
-          h = forward
+          throttleCipher(forward, tempArray, secondArg)
         else:
-          h = reverse
-        throttleCipher(tempArray, secondArg)
+          throttleCipher(reverse, tempArray, secondArg)
       elif currFunc == "throttleReverse":
         throttleReverse(tempArray)
       elif currFunc == "throttlePush":
@@ -430,10 +428,9 @@ proc calculateN(n: string): string =
         throttleUnshift(initialN, parseInt(secondArg))
       elif currFunc.contains("throttleCipher"):
         if currFunc.contains("Forward"):
-          h = forward
+          throttleCipher(forward, initialN, secondArg)
         else:
-          h = reverse
-        throttleCipher(initialN, secondArg)
+          throttleCipher(reverse, initialN, secondArg)
       elif currFunc == "throttleReverse":
         throttleReverse(initialN)
       elif currFunc == "throttlePush":
@@ -517,7 +514,7 @@ proc decipher(signature: string): string =
       a.reverse()
     elif jsFunction.contains("splice"):
       ## function(a, b){a.splice(0, b)}
-      a.delete(index, index + b.pred)
+      a.delete(index..index + b.pred)
     else:
       ## function(a,b){var c=a[0];a[0]=a[b%a.length];a[b%a.length]=c}
       swap(a[index], a[b mod a.len])
@@ -706,11 +703,12 @@ proc newAudioStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
 proc inStreams(itag: int, Streams:JsonNode): bool =
   ## check if set of streams contains given itag
   if itag == 0:
-    return true
-  for stream in Streams:
-    if stream["itag"].getInt() == itag:
-      result = true
-      break
+    result = true
+  else:
+    for stream in Streams:
+      if stream["itag"].getInt() == itag:
+        result = true
+        break
 
 
 proc newVideo(youtubeUrl, dashManifestUrl, title, videoId: string, duration: int,
