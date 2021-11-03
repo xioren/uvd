@@ -8,6 +8,7 @@ import utils
 # NOTE: age gate tier 3: https://www.youtube.com/watch?v=7iAQCPmpSUI
 
 # NOTE: clientVersion can be found in contextUrl response (along with api key)
+# QUESTION: can language be set programatically?
 const
   playerContext = """{
     "context": {
@@ -61,29 +62,27 @@ const
     "racyCheckOk": true,
     "videoId": "$1"
   }"""
-  # FIXME: does not work
-  # NOTE: anecdotally, should work for https://www.youtube.com/watch?v=HsUATh_Nc2U
-  # playerBypassContextTier3 = """{
-  #   "context": {
-  #     "client": {
-  #       "hl": "en",
-  #       "clientName": "WEB",
-  #       "clientVersion": "2.$3.00.00",
-  #       "clientScreen": "EMBED"
-  #     }
-  #   },
-  #   "playbackContext": {
-  #     "contentPlaybackContext": {
-  #       "signatureTimestamp": $2
-  #     }
-  #   },
-  #   "thirdParty": {
-  #     "embedUrl": "https://google.com"
-  #   },
-  #   "contentCheckOk": true,
-  #   "racyCheckOk": true,
-  #   "videoId": "$1"
-  # }"""
+  playerBypassContextTier3 = """{
+    "context": {
+      "client": {
+        "hl": "en",
+        "clientName": "WEB",
+        "clientVersion": "2.$3.00.00",
+        "clientScreen": "EMBED"
+        },
+      "thirdParty": {
+      "embedUrl": "https://google.com"
+      }
+    },
+    "playbackContext": {
+      "contentPlaybackContext": {
+        "signatureTimestamp": $2
+      }
+    },
+    "contentCheckOk": true,
+    "racyCheckOk": true,
+    "videoId": "$1"
+  }"""
   browseContext = """{
     "browseId": "$1",
     "context": {
@@ -233,24 +232,25 @@ proc throttleUnshift(d: var seq[string], e: int) =
 
 proc throttleCipher(h: array[64, char], d: var string, e: string) =
   #[
-  forward: function(d,e){for(var f=64,h=[];++f-h.length-32;){switch(f)
+  forward h: function(d,e){for(var f=64,h=[];++f-h.length-32;){switch(f)
   {case 58:f-=14;case 91:case 92:case 93:continue;case 123:f=47;case 94:case 95:
   case 96:continue;case 46:f=95}h.push(String.fromCharCode(f))}
   d.forEach(function(l,m,n){this.push(n[m]=h[(h.indexOf(l)-h.indexOf(this[m])+m-32+f--)%h.length])}
 
-  reverse: function(d,e){for(var f=64,h=[];++f-h.length-32;){switch(f){case 91:f=44;continue;
+  reverse h: function(d,e){for(var f=64,h=[];++f-h.length-32;){switch(f){case 91:f=44;continue;
   case 123:f=65;break;case 65:f-=18;continue;case 58:f=96;continue;case 46:f=95}
   h.push(String.fromCharCode(f))}d.forEach(function(l,m,n){this.push(n[m]
   =h[(h.indexOf(l)-h.indexOf(this[m])+m-32+f--)%h.length])},e.split(""))}
   ]#
+  # NOTE: +m-32+f-- == +64
   let temp = d
   var
     this = e
     bVal: int
-  for idx, c in temp:
-    bVal = (h.index(c) - h.index(this[idx]) + 64) mod h.len
+  for m, l in temp:
+    bVal = (h.index(l) - h.index(this[m]) + 64) mod h.len
     this.add(h[bVal])
-    d[idx] = h[bVal]
+    d[m] = h[bVal]
 
 
 proc throttleCipher(h: array[64, char], d: var seq[string], e: string) =
@@ -817,11 +817,11 @@ proc walkErrorMessage(playabilityStatus: JsonNode) =
     for message in playabilityStatus["messages"]:
       echo '<', message, '>'
 
-  if playabilityStatus.hasKey("errorScreen"):
-    if playabilityStatus["errorScreen"]["playerErrorMessageRenderer"].hasKey("reason"):
-      giveReasons(playabilityStatus["errorScreen"]["playerErrorMessageRenderer"]["reason"])
-    if playabilityStatus["errorScreen"]["playerErrorMessageRenderer"].hasKey("subreason"):
-      giveReasons(playabilityStatus["errorScreen"]["playerErrorMessageRenderer"]["subreason"])
+  # if playabilityStatus.hasKey("errorScreen"):
+  #   if playabilityStatus["errorScreen"]["playerErrorMessageRenderer"].hasKey("reason"):
+  #     giveReasons(playabilityStatus["errorScreen"]["playerErrorMessageRenderer"]["reason"])
+    # if playabilityStatus["errorScreen"]["playerErrorMessageRenderer"].hasKey("subreason"):
+    #   giveReasons(playabilityStatus["errorScreen"]["playerErrorMessageRenderer"]["subreason"])
 
 
 ########################################################
@@ -880,7 +880,14 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
 
             if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
               walkErrorMessage(playerResponse["playabilityStatus"])
-              return
+              echo "[attempting age-gate bypass tier 3]"
+              (code, response) = doPost(playerUrl, playerBypassContextTier3 % [videoId, sigTimeStamp, date])
+              playerResponse = parseJson(response)
+
+              if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
+                walkErrorMessage(playerResponse["playabilityStatus"])
+                return
+
         elif playerResponse["videoDetails"].hasKey("isLive") and playerResponse["videoDetails"]["isLive"].getBool():
           echo "<this video is currently live>"
           return

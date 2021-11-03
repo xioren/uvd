@@ -7,7 +7,8 @@ export asyncdispatch, os, strutils, re, tables, httpclient, times
 
 const
   extensions* = {"video/mp4": ".mp4", "video/webm": ".webm",
-                 "audio/mp4": ".m4a", "audio/webm": ".weba"}.toTable
+                 "audio/mp4": ".m4a", "audio/webm": ".weba",
+                 "video/3gpp": ".3gpp"}.toTable
   audioCodecs = {"aac": "aac", "flac": "flac", "m4a": "aac",
                  "mp3": "libmp3lame", "ogg": "libopus", "wav": "pcm_s32le"}.toTable
   codecOptions = {"aac": "-f adts", "flac": "", "m4a": "-bsf:a aac_adtstoasc",
