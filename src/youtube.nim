@@ -705,6 +705,8 @@ proc newAudioStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
 
 proc inStreams(itag: int, Streams:JsonNode): bool =
   ## check if set of streams contains given itag
+  if itag == 0:
+    return true
   for stream in Streams:
     if stream["itag"].getInt() == itag:
       result = true
