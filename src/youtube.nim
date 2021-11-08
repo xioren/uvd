@@ -6,6 +6,8 @@ import utils
 # NOTE: age gate tier 1: https://www.youtube.com/watch?v=HtVdAasjOgU
 # NOTE: age gate tier 2: https://www.youtube.com/watch?v=Tq92D6wQ1mg
 # NOTE: age gate tier 3: https://www.youtube.com/watch?v=7iAQCPmpSUI
+# NOTE: age gate tier 4: https://www.youtube.com/watch?v=Cr381pDsSsA
+
 
 # NOTE: clientVersion can be found in contextUrl response (along with api key)
 # QUESTION: can language be set programatically?
@@ -71,7 +73,7 @@ const
         "clientScreen": "EMBED"
         },
       "thirdParty": {
-      "embedUrl": "https://google.com"
+        "embedUrl": "https://google.com"
       }
     },
     "playbackContext": {
@@ -157,14 +159,14 @@ const
   # contextUrl = "https://www.youtube.com/sw.js_data"
   videosTab = "EgZ2aWRlb3M%3D"
   playlistsTab = "EglwbGF5bGlzdHM%3D"
-  forward = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
+  forwardH = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
              'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
              'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd',
              'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n',
              'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x',
              'y', 'z', '0', '1', '2', '3', '4', '5', '6', '7',
              '8', '9', '-', '_']
-  reverse = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+  reverseH = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
              'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j',
              'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
              'u', 'v', 'w', 'x', 'y', 'z', 'A', 'B', 'C', 'D',
@@ -412,9 +414,9 @@ proc calculateN(n: string): string =
         throttleUnshift(tempArray, parseInt(secondArg))
       elif currFunc.contains("throttleCipher"):
         if currFunc.contains("Forward"):
-          throttleCipher(forward, tempArray, secondArg)
+          throttleCipher(forwardH, tempArray, secondArg)
         else:
-          throttleCipher(reverse, tempArray, secondArg)
+          throttleCipher(reverseH, tempArray, secondArg)
       elif currFunc == "throttleReverse":
         throttleReverse(tempArray)
       elif currFunc == "throttlePush":
@@ -428,9 +430,9 @@ proc calculateN(n: string): string =
         throttleUnshift(initialN, parseInt(secondArg))
       elif currFunc.contains("throttleCipher"):
         if currFunc.contains("Forward"):
-          throttleCipher(forward, initialN, secondArg)
+          throttleCipher(forwardH, initialN, secondArg)
         else:
-          throttleCipher(reverse, initialN, secondArg)
+          throttleCipher(reverseH, initialN, secondArg)
       elif currFunc == "throttleReverse":
         throttleReverse(initialN)
       elif currFunc == "throttlePush":
@@ -473,14 +475,14 @@ proc parseParentFunctionName(jsFunction: string): string =
   jsFunction.parseIdent()
 
 
-proc parseChildFunction(function: string): tuple[name: string, argument: int] {.inline.} =
+proc parseChildFunction(function: string): tuple[name: string, argument: int] =
   ## returns function name and int argument
   ## ix.ai(a,5) --> (ai, 5)
   result.name = function.captureBetween('.', '(')
   result.argument = parseInt(function.captureBetween(',', ')'))
 
 
-proc parseIndex(jsFunction: string): int {.inline.} =
+proc parseIndex(jsFunction: string): int =
   if jsFunction.contains("splice"):
     # NOTE: function(a,b){a.splice(0,b)} --> 0
     result = parseInt(jsFunction.captureBetween('(', ',', jsFunction.find("splice")))
@@ -566,7 +568,12 @@ proc extractDashInfo(dashManifestUrl, itag: string): tuple[baseUrl, segmentList:
 
 
 proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
+  const threshhold = 0.92
   result = newJNull()
+  var
+    bestVP9 = newJNull()
+    bestH264 = newJNull()
+    vp9Pixels, h264Pixels: int
   if itag == 0:
     #[ NOTE: vp9 and h.264 are not directly comparable. h.264 requires higher
        bitrate / larger filesize to obtain comparable quality to vp9. scenarios occur where 480p h.264
@@ -574,9 +581,23 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
        desireable stream --> prefer vp9]#
     for stream in streams:
       if stream["mimeType"].getStr() == "video/webm; codecs=\"vp9\"":
-        # NOTE: first encountered vp9 stream will be the highest quality
-        result = stream
+        bestVP9 = stream
         break
+    for stream in streams:
+      if stream["mimeType"].getStr() == "video/webm; codecs=\"vp9\"":
+        bestH264 = stream
+        break
+    vp9Pixels = bestVP9["width"].getInt() * bestVP9["height"].getInt()
+    h264Pixels = bestH264["width"].getInt() * bestH264["height"].getInt()
+    if bestVP9.kind == JNull or h264Pixels > vp9Pixels:
+      result = bestH264
+    elif bestH264.kind == JNull:
+      result = bestVP9
+    else:
+      if vp9Pixels == h264Pixels and bestVP9["bitrate"].getInt() / bestH264["bitrate"].getInt() >= threshhold:
+        result = bestVP9
+      else:
+        result = bestH264
   else:
     for stream in streams:
       if stream["itag"].getInt() == itag:
@@ -589,7 +610,7 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
       # NOTE: combined streams listed worst to best
       result = streams[^1]
     else:
-      # adaptive listed best to worst
+      # NOTE: adaptive streams listed best to worst
       result = streams[0]
 
 
@@ -642,7 +663,6 @@ proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime,
   else:
     # NOTE: estimate from bitrate
     result.size = formatSize(int(rawBitrate * duration / 8), includeSpace=true)
-
 
 
 proc getAudioStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime, ext, size, qlt, bitrate: string] =
@@ -805,14 +825,14 @@ proc giveReasons(Reason: JsonNode) =
       stdout.write(run["text"])
     echo '>'
   elif Reason.hasKey("simpleText"):
-    echo '<', Reason["simpleText"], '>'
+    echo '<', Reason["simpleText"].getStr().strip(chars={'"'}), '>'
 
 
 proc walkErrorMessage(playabilityStatus: JsonNode) =
   # FIXME: some (currently playing) live streams have error messages that do not fall in any of these catagories
   # the the program exits with no output
   if playabilityStatus.hasKey("reason"):
-    echo '<', playabilityStatus["reason"], '>'
+    echo '<', playabilityStatus["reason"].getStr().strip(chars={'"'}), '>'
   elif playabilityStatus.hasKey("messages"):
     for message in playabilityStatus["messages"]:
       echo '<', message, '>'
