@@ -573,12 +573,12 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
   var
     bestVP9 = newJNull()
     bestH264 = newJNull()
-    vp9Pixels, h264Pixels: int
+    vp9Semiperimeter, h264Semiperimeter: int
   if itag == 0:
     #[ NOTE: vp9 and h.264 are not directly comparable. h.264 requires higher
        bitrate / larger filesize to obtain comparable quality to vp9. scenarios occur where 480p h.264
        streams are selected over 720p vp9 streams because they have higher bitrate but are clearly not the most
-       desireable stream --> prefer vp9]#
+       desireable stream --> select highest resolution or vp9 if weight >= threshhold else h.264 (if resolutions are ==)]#
     for stream in streams:
       if stream["mimeType"].getStr() == "video/webm; codecs=\"vp9\"":
         bestVP9 = stream
@@ -587,17 +587,25 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
       if stream["mimeType"].getStr().contains("video/mp4"):
         bestH264 = stream
         break
-    vp9Pixels = bestVP9["width"].getInt() * bestVP9["height"].getInt()
-    h264Pixels = bestH264["width"].getInt() * bestH264["height"].getInt()
-    if bestVP9.kind == JNull or h264Pixels > vp9Pixels:
+
+    vp9Semiperimeter = bestVP9["width"].getInt() + bestVP9["height"].getInt()
+    h264Semiperimeter = bestH264["width"].getInt() + bestH264["height"].getInt()
+
+    if h264Semiperimeter > vp9Semiperimeter or bestVP9.kind == JNull:
       result = bestH264
-    elif bestH264.kind == JNull:
+    elif vp9Semiperimeter > h264Semiperimeter or bestH264.kind == JNull:
       result = bestVP9
     else:
-      if vp9Pixels == h264Pixels and bestVP9["bitrate"].getInt() / bestH264["bitrate"].getInt() >= threshhold:
-        result = bestVP9
+      if bestVP9.hasKey("averageBitrate") and bestH264.hasKey("averageBitrate"):
+        if (bestVP9["averageBitrate"].getInt() / bestH264["averageBitrate"].getInt()) >= threshhold:
+          result = bestVP9
+        else:
+          result = bestH264
       else:
-        result = bestH264
+        if (bestVP9["bitrate"].getInt() / bestH264["bitrate"].getInt()) >= threshhold:
+          result = bestVP9
+        else:
+          result = bestH264
   else:
     for stream in streams:
       if stream["itag"].getInt() == itag:
