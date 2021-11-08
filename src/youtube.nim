@@ -584,7 +584,7 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
         bestVP9 = stream
         break
     for stream in streams:
-      if stream["mimeType"].getStr() == "video/webm; codecs=\"vp9\"":
+      if stream["mimeType"].getStr().contains("video/mp4"):
         bestH264 = stream
         break
     vp9Pixels = bestVP9["width"].getInt() * bestVP9["height"].getInt()
