@@ -648,13 +648,8 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
         break
 
   if result.kind == JNull:
-    # NOTE: there were no vp9 streams or the itag does not exist
-    if streams[0].hasKey("projectionType") and streams[0].hasKey("audioChannels"):
-      # NOTE: combined streams listed worst to best
-      result = streams[^1]
-    else:
-      # NOTE: adaptive streams listed best to worst
-      result = streams[0]
+    # NOTE: there were no viable streams or the itag does not exist
+    result = selectVideoStream(streams, 0)
 
 
 proc selectAudioStream(streams: JsonNode, itag: int): JsonNode =
@@ -831,8 +826,8 @@ proc isolateVideoId(youtubeUrl: string): string =
 
 
 proc isolateChannel(youtubeUrl: string): string =
-  # NOTE: vanity
   if "/c/" in youtubeUrl:
+    # NOTE: vanity
     let (_, response) = doGet(youtubeUrl)
     result = response.captureBetween('"', '"', response.find("""browseId":""") + 9)
   else:
@@ -854,8 +849,8 @@ proc giveReasons(Reason: JsonNode) =
 
 
 proc walkErrorMessage(playabilityStatus: JsonNode) =
-  # FIXME: some (currently playing) live streams have error messages that do not fall in any of these catagories
-  # the the program exits with no output
+  #[ FIXME: some (currently playing) live streams have error messages that do not fall in any of these catagories
+    the the program exits with no output ]#
   if playabilityStatus.hasKey("reason"):
     echo '<', playabilityStatus["reason"].getStr().strip(chars={'"'}), '>'
   elif playabilityStatus.hasKey("messages"):
@@ -911,7 +906,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
       if fileExists(fullFilename) and not showStreams:
         echo "<file exists> ", fullFilename
       else:
-        # NOTE: age gate and misc youtube error handling
+        # NOTE: age gate and unplayable video handling
         if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
           echo "[attempting age-gate bypass tier 1]"
           (code, response) = doPost(playerUrl, playerBypassContextTier1 % [videoId, sigTimeStamp, date])
