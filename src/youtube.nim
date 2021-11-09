@@ -568,7 +568,9 @@ proc extractDashInfo(dashManifestUrl, itag: string): tuple[baseUrl, segmentList:
 
 
 proc selectByBitrate(streams: JsonNode, key, mime: string): JsonNode =
-  var largest, select, idx: int
+  var largest, idx: int
+  var select = -1
+  result = newJNull()
   for stream in streams:
     if stream[key].getStr().contains(mime):
       if stream.hasKey("averageBitrate"):
@@ -580,7 +582,8 @@ proc selectByBitrate(streams: JsonNode, key, mime: string): JsonNode =
           largest = stream["bitrate"].getInt()
           select = idx
     inc idx
-  result = streams[select]
+  if select > -1:
+    result = streams[select]
 
 
 proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
@@ -590,16 +593,15 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
     ]#
   const threshold = 0.85
   result = newJNull()
-  var
-    bestVP9 = newJNull()
-    bestH264 = newJNull()
+
   if itag == 0:
     #[ NOTE: vp9 and h.264 are not directly comparable. h.264 requires higher
        bitrate / larger filesize to obtain comparable quality to vp9. scenarios occur where 480p h.264
        streams are selected over 720p vp9 streams because they have higher bitrate but are clearly not the most
        desireable stream --> select highest resolution or vp9 if weight >= threshold else h.264 (if resolutions are ==)]#
-    bestVP9 = selectByBitrate(streams, "mimeType", "video/webm")
-    bestH264 = selectByBitrate(streams, "mimeType", "video/mp4")
+    let
+      bestVP9 = selectByBitrate(streams, "mimeType", "video/webm")
+      bestH264 = selectByBitrate(streams, "mimeType", "video/mp4")
 
     let
       vp9Semiperimeter = bestVP9["width"].getInt() + bestVP9["height"].getInt()
