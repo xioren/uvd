@@ -3,10 +3,10 @@ import std/[json, uri, algorithm, sequtils, parseutils]
 
 import utils
 
-# NOTE: age gate tier 1: https://www.youtube.com/watch?v=HtVdAasjOgU
-# NOTE: age gate tier 2: https://www.youtube.com/watch?v=Tq92D6wQ1mg
-# NOTE: age gate tier 3: https://www.youtube.com/watch?v=7iAQCPmpSUI
-# NOTE: age gate tier 4: https://www.youtube.com/watch?v=Cr381pDsSsA
+#[ NOTE: age gate tier 1: https://www.youtube.com/watch?v=HtVdAasjOgU
+  NOTE: age gate tier 2: https://www.youtube.com/watch?v=Tq92D6wQ1mg
+  NOTE: age gate tier 3: https://www.youtube.com/watch?v=7iAQCPmpSUI
+  NOTE: age gate tier 4: https://www.youtube.com/watch?v=Cr381pDsSsA ]#
 
 
 # NOTE: clientVersion can be found in contextUrl response (along with api key)
@@ -205,8 +205,8 @@ var
 ########################################################
 # throttle logic
 ########################################################
-# NOTE: thanks to https://github.com/pytube/pytube/blob/master/pytube/cipher.py
-# as a reference
+#[ NOTE: thanks to https://github.com/pytube/pytube/blob/master/pytube/cipher.py
+  as a reference ]#
 
 proc index[T](d: openarray[T], item: T): int =
   ## provide index of item in d
@@ -223,7 +223,7 @@ proc throttleModFunction(d: string | seq[string], e: int): int =
 
 proc throttleUnshift(d: var string, e: int) =
   ## handles prepend also
-  # function(d,e){e=(e%d.length+d.length)%d.length;d.splice(-e).reverse().forEach(function(f){d.unshift(f)})}
+  # NOTE: function(d,e){e=(e%d.length+d.length)%d.length;d.splice(-e).reverse().forEach(function(f){d.unshift(f)})}
   d.rotateLeft(d.len - throttleModFunction(d, e))
 
 
@@ -261,7 +261,7 @@ proc throttleCipher(h: array[64, char], d: var seq[string], e: string) =
 
 
 proc throttleReverse(d: var string) =
-  # function(d){d.reverse()}
+  # NOTE: function(d){d.reverse()}
   d.reverse()
 
 
@@ -275,13 +275,13 @@ proc throttlePush(d: var string, e: string) =
 
 
 proc throttlePush(d: var seq[string], e: string) =
-  # function(d,e){d.push(e)}
+  # NOTE: function(d,e){d.push(e)}
   d.add(e)
 
 
 proc splice(d: var string, fromIdx: int) =
   ## javascript splice
-  # function(d,e){e=(e%d.length+d.length)%d.length;d.splice(e,1)};
+  # NOTE: function(d,e){e=(e%d.length+d.length)%d.length;d.splice(e,1)};
   let e = throttleModFunction(d, fromIdx)
   d.delete(e..e)
 
@@ -293,8 +293,8 @@ proc splice(d: var seq[string], fromIdx: int) =
 
 proc throttleSwap(d: var string, e: int) =
   ## handles nested splice also
-  # swap: function(d,e){e=(e%d.length+d.length)%d.length;var f=d[0];d[0]=d[e];d[e]=f}
-  # nested splice: function(d,e){e=(e%d.length+d.length)%d.length;d.splice(0,1,d.splice(e,1,d[0])[0])}
+  #[ swap: function(d,e){e=(e%d.length+d.length)%d.length;var f=d[0];d[0]=d[e];d[e]=f}
+    nested splice: function(d,e){e=(e%d.length+d.length)%d.length;d.splice(0,1,d.splice(e,1,d[0])[0])} ]#
   let z = throttleModFunction(d, e)
   if z < 0:
     swap(d[0], d[d.len + z])
@@ -313,8 +313,7 @@ proc throttleSwap(d: var seq[string], e: int) =
 
 proc parseThrottleFunctionName(js: string): string =
   ## parse main throttle function
-  # a.C&&(b=a.get("n"))&&(b=kha(b),a.set("n",b))
-  # --> kha
+  # NOTE: a.C&&(b=a.get("n"))&&(b=kha(b),a.set("n",b)) --> kha
   var match: array[1, string]
   let pattern = re"(a\.[A-Z]&&\(b=a.[sg]et[^}]+)"
   discard js.find(pattern, match)
@@ -323,7 +322,7 @@ proc parseThrottleFunctionName(js: string): string =
 
 proc parseThrottleCode(mainFunc, js: string): string =
   ## parse throttle code block
-  # mainThrottleFunction=function(a){.....}
+  # NOTE: mainThrottleFunction=function(a){.....}
   var match: array[1, string]
   let pattern = re("($1=function\\(\\w\\){.+?})(?=;)" % mainFunc, flags={reDotAll})
   discard js.find(pattern, match)
@@ -461,8 +460,8 @@ proc parseFunctionPlan(js: string): seq[string] =
   ## get the scramble functions
   ## returns: @["ix.Nh(a,2)", "ix.ai(a,5)"...]
 
-  # NOTE: matches vy=function(a){a=a.split("");uy.bH(a,3);uy.Fg(a,7);uy.Fg(a,50);
-  # uy.S6(a,71);uy.bH(a,2);uy.S6(a,80);uy.Fg(a,38);return a.join("")};
+  #[ NOTE: matches vy=function(a){a=a.split("");uy.bH(a,3);uy.Fg(a,7);uy.Fg(a,50);
+    uy.S6(a,71);uy.bH(a,2);uy.S6(a,80);uy.Fg(a,38);return a.join("")}; ]#
   let functionPattern = re"([a-zA-Z]{2}\=function\(a\)\{a\=a\.split\([^\(]+\);[a-zA-Z]{2}\.[^\n]+)"
   var match: array[1, string]
   discard js.find(functionPattern, match)
@@ -512,13 +511,13 @@ proc decipher(signature: string): string =
       jsFunction = cipherFunctionMap[funcName]
       index = parseIndex(jsFunction)
     if jsFunction.contains("reverse"):
-      ## function(a, b){a.reverse()}
+      # NOTE: function(a, b){a.reverse()}
       a.reverse()
     elif jsFunction.contains("splice"):
-      ## function(a, b){a.splice(0, b)}
+      # NOTE: function(a, b){a.splice(0, b)}
       a.delete(index..index + b.pred)
     else:
-      ## function(a,b){var c=a[0];a[0]=a[b%a.length];a[b%a.length]=c}
+      # NOTE: function(a,b){var c=a[0];a[0]=a[b%a.length];a[b%a.length]=c}
       swap(a[index], a[b mod a.len])
 
   result = a.join()
@@ -577,22 +576,21 @@ proc selectVideoByBitrate(streams: JsonNode, mime: string): JsonNode =
       if semiperimeter >= maxSemiperimeter:
         if semiperimeter > maxSemiperimeter:
           maxSemiperimeter = semiperimeter
-        if stream.hasKey("averageBitrate"):
-          if stream["averageBitrate"].getInt() > largest:
-            largest = stream["averageBitrate"].getInt()
-            select = idx
-        else:
-          if stream["bitrate"].getInt() > largest:
-            largest = stream["bitrate"].getInt()
-            select = idx
+        if stream.hasKey("averageBitrate") and stream["averageBitrate"].getInt() > largest:
+          largest = stream["averageBitrate"].getInt()
+          select = idx
+        elif stream["bitrate"].getInt() > largest:
+          largest = stream["bitrate"].getInt()
+          select = idx
     inc idx
   if select > -1:
     result = streams[select]
 
 
 proc selectAudioByBitrate(streams: JsonNode, mime: string): JsonNode =
-  var largest, idx: int
-  var select = -1
+  var
+    largest, idx: int
+    select = -1
   result = newJNull()
   for stream in streams:
     if stream["mimeType"].getStr().contains(mime):
@@ -612,22 +610,24 @@ proc selectAudioByBitrate(streams: JsonNode, mime: string): JsonNode =
 proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
   #[ NOTE: in adding up all samples where (subjectively) vp9 looked better, the average
     weight was 0.92; this is fine in most cases. however a slight vp9 bias is preferential so
-    a value of 0.85 is used.
-    ]#
+    a value of 0.85 is used. ]#
   const threshold = 0.85
+  var
+    vp9Semiperimeter, h264Semiperimeter: int
   result = newJNull()
 
   if itag == 0:
     #[ NOTE: vp9 and h.264 are not directly comparable. h.264 requires higher
-       bitrate / larger filesize to obtain comparable quality to vp9. scenarios occur where 480p h.264
-       streams are selected over 720p vp9 streams because they have higher bitrate but are clearly not the most
-       desireable stream --> select highest resolution or vp9 if weight >= threshold else h.264 (if resolutions are ==)]#
+       bitrate / larger filesize to obtain comparable quality to vp9. scenarios occur where lower resolution h.264
+       streams are selected over vp9 streams because they have higher bitrate but are clearly not the most
+       desireable stream --> select highest resolution or vp9 if weight >= threshold else h.264 (when resolutions are ==) ]#
     let
       bestVP9 = selectVideoByBitrate(streams, "video/webm")
       bestH264 = selectVideoByBitrate(streams, "video/mp4")
 
-    let
+    if bestVP9.kind != JNull:
       vp9Semiperimeter = bestVP9["width"].getInt() + bestVP9["height"].getInt()
+    if bestH264.kind != JNull:
       h264Semiperimeter = bestH264["width"].getInt() + bestH264["height"].getInt()
 
     if h264Semiperimeter > vp9Semiperimeter or bestVP9.kind == JNull:
@@ -662,9 +662,9 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
 
 
 proc selectAudioStream(streams: JsonNode, itag: int): JsonNode =
-  # NOTE: in tests, it seems youtube videos "without audio" still contain empty
-  # audio streams; furthermore aac streams seem to have a minimum bitrate as "empty"
-  # streams still have non trivial bitrate and filesizes.
+  #[ NOTE: in tests, it seems youtube videos "without audio" still contain empty
+    audio streams; furthermore aac streams seem to have a minimum bitrate as "empty"
+    streams still have non trivial bitrate and filesizes. ]#
   # NOTE: "audio-less" video: https://www.youtube.com/watch?v=fW2e0CZjnFM
   # NOTE: prefer opus
   result = newJNull()

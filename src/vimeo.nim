@@ -3,11 +3,11 @@ import std/[json, uri, parseutils, sequtils]
 import utils
 
 
-# NOTE: s=788550b1a916f3211f77d5261169782a1c4b5a46_1620593836
-# sha1hash_timestamp
-# timestamp == unix time
-# can use toUnix(getTime()) or epochTime().int
-# timestamp most likely used in hash as salt
+#[ NOTE: s=788550b1a916f3211f77d5261169782a1c4b5a46_1620593836
+  sha1hash_timestamp
+  timestamp == unix time
+  can use toUnix(getTime()) or epochTime().int
+  timestamp most likely used in hash as salt ]#
 # QUESTIONS: SAPISIDHASH?
 
 
