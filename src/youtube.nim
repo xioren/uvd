@@ -568,19 +568,23 @@ proc extractDashInfo(dashManifestUrl, itag: string): tuple[baseUrl, segmentList:
 
 
 proc selectVideoByBitrate(streams: JsonNode, mime: string): JsonNode =
-  var largest, idx, semiperimeter: int
+  var largest, idx, maxSemiperimeter: int
   var select = -1
   result = newJNull()
   for stream in streams:
-    if stream["mimeType"].getStr().contains(mime) and stream["width"].getInt() + stream["height"].getInt() >= semiperimeter:
-      if stream.hasKey("averageBitrate"):
-        if stream["averageBitrate"].getInt() > largest:
-          largest = stream["averageBitrate"].getInt()
-          select = idx
-      else:
-        if stream["bitrate"].getInt() > largest:
-          largest = stream["bitrate"].getInt()
-          select = idx
+    if stream["mimeType"].getStr().contains(mime):
+      let semiperimeter = stream["width"].getInt() + stream["height"].getInt()
+      if semiperimeter >= maxSemiperimeter:
+        if semiperimeter > maxSemiperimeter:
+          maxSemiperimeter = semiperimeter
+        if stream.hasKey("averageBitrate"):
+          if stream["averageBitrate"].getInt() > largest:
+            largest = stream["averageBitrate"].getInt()
+            select = idx
+        else:
+          if stream["bitrate"].getInt() > largest:
+            largest = stream["bitrate"].getInt()
+            select = idx
     inc idx
   if select > -1:
     result = streams[select]
