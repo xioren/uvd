@@ -567,8 +567,28 @@ proc extractDashInfo(dashManifestUrl, itag: string): tuple[baseUrl, segmentList:
   result.segmentList = match[0]
 
 
+proc selectByBitrate(streams: JsonNode, key, mime: string): JsonNode =
+  var largest, select, idx: int
+  for stream in streams:
+    if stream[key].getStr().contains(mime):
+      if stream.hasKey("averageBitrate"):
+        if stream["averageBitrate"].getInt() > largest:
+          largest = stream["averageBitrate"].getInt()
+          select = idx
+      else:
+        if stream["bitrate"].getInt() > largest:
+          largest = stream["bitrate"].getInt()
+          select = idx
+    inc idx
+  result = streams[select]
+
+
 proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
-  const threshold = 0.92
+  #[ NOTE: in adding up all samples where (subjectively) vp9 looked better, the average
+    weight was 0.92; this is fine in most cases. however a slight vp9 bias is preferential so
+    a value of 0.85 is used.
+    ]#
+  const threshold = 0.85
   result = newJNull()
   var
     bestVP9 = newJNull()
@@ -578,14 +598,8 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
        bitrate / larger filesize to obtain comparable quality to vp9. scenarios occur where 480p h.264
        streams are selected over 720p vp9 streams because they have higher bitrate but are clearly not the most
        desireable stream --> select highest resolution or vp9 if weight >= threshold else h.264 (if resolutions are ==)]#
-    for stream in streams:
-      if stream["mimeType"].getStr() == "video/webm; codecs=\"vp9\"":
-        bestVP9 = stream
-        break
-    for stream in streams:
-      if stream["mimeType"].getStr().contains("video/mp4"):
-        bestH264 = stream
-        break
+    bestVP9 = selectByBitrate(streams, "mimeType", "video/webm")
+    bestH264 = selectByBitrate(streams, "mimeType", "video/mp4")
 
     let
       vp9Semiperimeter = bestVP9["width"].getInt() + bestVP9["height"].getInt()
@@ -630,12 +644,7 @@ proc selectAudioStream(streams: JsonNode, itag: int): JsonNode =
   # NOTE: prefer opus
   result = newJNull()
   if itag == 0:
-    var largest: int
-    for stream in streams:
-      if stream["mimeType"].getStr() == "audio/webm; codecs=\"opus\"":
-        if stream["bitrate"].getInt() > largest:
-          largest = stream["bitrate"].getInt()
-          result = stream
+    result = selectByBitrate(streams, "mimeType", "audio/webm")
   else:
     for stream in streams:
       if stream["itag"].getInt() == itag:
@@ -644,12 +653,7 @@ proc selectAudioStream(streams: JsonNode, itag: int): JsonNode =
 
   if result.kind == JNull:
     # NOTE: there were no opus streams or the itag does not exist
-    var largest: int
-    for stream in streams:
-      if stream.hasKey("audioQuality"):
-        if stream["bitrate"].getInt() > largest:
-          largest = stream["bitrate"].getInt()
-          result = stream
+    result = selectByBitrate(streams, "mimeType", "audio/mp4")
 
 
 proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime, ext, size, qlt, resolution, bitrate: string] =
