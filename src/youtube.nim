@@ -566,6 +566,14 @@ proc extractDashInfo(dashManifestUrl, itag: string): tuple[baseUrl, segmentList:
   result.segmentList = match[0]
 
 
+proc getBitrate(stream: JsonNode): int =
+  # NOTE: this is done enough that it warrents its own proc
+  if stream.hasKey("averageBitrate"):
+    result = stream["averageBitrate"].getInt()
+  else:
+    result = stream["bitrate"].getInt()
+
+
 proc selectVideoByBitrate(streams: JsonNode, mime: string): JsonNode =
   var largest, idx, maxSemiperimeter: int
   var select = -1
@@ -576,11 +584,9 @@ proc selectVideoByBitrate(streams: JsonNode, mime: string): JsonNode =
       if semiperimeter >= maxSemiperimeter:
         if semiperimeter > maxSemiperimeter:
           maxSemiperimeter = semiperimeter
-        if stream.hasKey("averageBitrate") and stream["averageBitrate"].getInt() > largest:
-          largest = stream["averageBitrate"].getInt()
-          select = idx
-        elif stream["bitrate"].getInt() > largest:
-          largest = stream["bitrate"].getInt()
+        let bitrate = getBitrate(stream)
+        if bitrate > largest:
+          largest = bitrate
           select = idx
     inc idx
   if select > -1:
@@ -594,14 +600,10 @@ proc selectAudioByBitrate(streams: JsonNode, mime: string): JsonNode =
   result = newJNull()
   for stream in streams:
     if stream["mimeType"].getStr().contains(mime):
-      if stream.hasKey("averageBitrate"):
-        if stream["averageBitrate"].getInt() > largest:
-          largest = stream["averageBitrate"].getInt()
-          select = idx
-      else:
-        if stream["bitrate"].getInt() > largest:
-          largest = stream["bitrate"].getInt()
-          select = idx
+      let bitrate = getBitrate(stream)
+      if bitrate > largest:
+        largest = bitrate
+        select = idx
     inc idx
   if select > -1:
     result = streams[select]
@@ -635,16 +637,10 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
     elif vp9Semiperimeter > h264Semiperimeter or bestH264.kind == JNull:
       result = bestVP9
     else:
-      if bestVP9.hasKey("averageBitrate") and bestH264.hasKey("averageBitrate"):
-        if bestVP9["averageBitrate"].getInt() / bestH264["averageBitrate"].getInt() >= threshold:
-          result = bestVP9
-        else:
-          result = bestH264
+      if getBitrate(bestVP9) / getBitrate(bestH264) >= threshold:
+        result = bestVP9
       else:
-        if bestVP9["bitrate"].getInt() / bestH264["bitrate"].getInt() >= threshold:
-          result = bestVP9
-        else:
-          result = bestH264
+        result = bestH264
   else:
     for stream in streams:
       if stream["itag"].getInt() == itag:
@@ -688,11 +684,7 @@ proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime,
   result.qlt = stream["qualityLabel"].getStr()
   result.resolution = $stream["width"].getInt() & 'x' & $stream["height"].getInt()
 
-  var rawBitrate: int
-  if stream.hasKey("averageBitrate"):
-    rawBitrate = stream["averageBitrate"].getInt()
-  elif stream.hasKey("bitrate"):
-    rawBitrate = stream["bitrate"].getInt()
+  let rawBitrate = getBitrate(stream)
   result.bitrate = formatSize(rawBitrate, includeSpace=true) & "/s"
 
   if stream.hasKey("contentLength"):
@@ -708,11 +700,7 @@ proc getAudioStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime,
   result.ext = extensions[result.mime]
   result.qlt = stream["audioQuality"].getStr().replace("AUDIO_QUALITY_").toLowerAscii()
 
-  var rawBitrate: int
-  if stream.hasKey("averageBitrate"):
-    rawBitrate = stream["averageBitrate"].getInt()
-  else:
-    rawBitrate = stream["bitrate"].getInt()
+  let rawBitrate = getBitrate(stream)
   result.bitrate = formatSize(rawBitrate, includeSpace=true) & "/s"
 
   if stream.hasKey("contentLength"):
