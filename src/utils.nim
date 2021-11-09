@@ -14,6 +14,7 @@ const
   codecOptions = {"aac": "-f adts", "flac": "", "m4a": "-bsf:a aac_adtstoasc",
                   "mp3": "-qscale:a 0", "ogg": "", "wav": ""}.toTable
 var
+  currentSegment, totalSegments: int
   # HACK: a not ideal solution to erroneosly clearing terminal when no progress was made (e.g. 403 forbidden)
   madeProgress: bool
   headers* = @[("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.115 Safari/537.36"),
@@ -71,7 +72,6 @@ proc clearProgress() =
 
 
 proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
-  # TODO: implement version for dash streams that tracks segments rather than progress bar
   const barWidth = 50
   let
     bar = '#'.repeat(floor(progress.int / total.int * barWidth).int)
@@ -85,6 +85,16 @@ proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
   stdout.write("[", alignLeft(bar, barWidth), "]")
   stdout.setCursorXPos(0)
   stdout.cursorUp()
+  stdout.flushFile()
+  if not madeProgress:
+    madeProgress = true
+
+
+proc onProgressChangedMulti(total, progress, speed: BiggestInt) {.async.} =
+  stdout.eraseLine()
+  stdout.write("size: ", formatSize(total.int, includeSpace=true),
+               " segment: ", currentSegment, " of ", totalSegments)
+  stdout.setCursorXPos(0)
   stdout.flushFile()
   if not madeProgress:
     madeProgress = true
@@ -130,19 +140,23 @@ proc download(url, filepath: string): Future[HttpCode] {.async.} =
 
 proc download(parts: seq[string], filepath: string): Future[HttpCode] {.async.} =
   ## download multi-part streams
+  currentSegment = 0
+  totalSegments = parts.len
   let client = newAsyncHttpClient(headers=newHttpHeaders(headers))
   var file = openasync(filepath, fmWrite)
-  client.onProgressChanged = onProgressChanged
+  client.onProgressChanged = onProgressChangedMulti
 
   try:
     for url in parts:
       let resp = await client.request(url)
       await file.writeFromStream(resp.bodyStream)
       result = resp.code
+      inc currentSegment
   except Exception as e:
     echo '<', e.msg, '>'
   finally:
-    clearProgress()
+    stdout.eraseLine()
+    madeProgress = false
     file.close()
     client.close()
 
