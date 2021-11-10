@@ -575,36 +575,40 @@ proc getBitrate(stream: JsonNode): int =
 
 
 proc selectVideoByBitrate(streams: JsonNode, mime: string): JsonNode =
-  var largest, idx, maxSemiperimeter: int
+  var maxBitrate, idx, maxSemiperimeter: int
   var select = -1
   result = newJNull()
+
   for stream in streams:
     if stream["mimeType"].getStr().contains(mime):
-      let semiperimeter = stream["width"].getInt() + stream["height"].getInt()
-      if semiperimeter >= maxSemiperimeter:
-        if semiperimeter > maxSemiperimeter:
-          maxSemiperimeter = semiperimeter
-        let bitrate = getBitrate(stream)
-        if bitrate > largest:
-          largest = bitrate
+      let thisSemiperimeter = stream["width"].getInt() + stream["height"].getInt()
+      if thisSemiperimeter >= maxSemiperimeter:
+        if thisSemiperimeter > maxSemiperimeter:
+          maxSemiperimeter = thisSemiperimeter
+        let thisBitrate = getBitrate(stream)
+        if thisBitrate > maxBitrate:
+          maxBitrate = thisBitrate
           select = idx
     inc idx
+
   if select > -1:
     result = streams[select]
 
 
 proc selectAudioByBitrate(streams: JsonNode, mime: string): JsonNode =
   var
-    largest, idx: int
+    maxBitrate, idx: int
     select = -1
   result = newJNull()
+
   for stream in streams:
     if stream["mimeType"].getStr().contains(mime):
-      let bitrate = getBitrate(stream)
-      if bitrate > largest:
-        largest = bitrate
+      let thisBitrate = getBitrate(stream)
+      if thisBitrate > maxBitrate:
+        maxBitrate = thisBitrate
         select = idx
     inc idx
+
   if select > -1:
     result = streams[select]
 
@@ -661,7 +665,7 @@ proc selectAudioStream(streams: JsonNode, itag: int): JsonNode =
   #[ NOTE: the majority of the time there are 4 audio streams:
     - itag 140 --> m4a
     - itag 251 --> opus
-    - two low quality options (1 m4a and 1 opus) ]#
+    + two low quality options (1 m4a and 1 opus) ]#
   result = newJNull()
   if itag == 0:
     result = selectAudioByBitrate(streams, "audio/webm")
