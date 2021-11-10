@@ -611,9 +611,9 @@ proc selectAudioByBitrate(streams: JsonNode, mime: string): JsonNode =
 
 proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
   #[ NOTE: in adding up all samples where (subjectively) vp9 looked better, the average
-    weight was 0.92; this is fine in most cases. however a slight vp9 bias is preferential so
-    a value of 0.85 is used. ]#
-  const threshold = 0.85
+    weight was 0.92; this is fine in most cases. however a strong vp9 bias is preferential so
+    a value of 0.8 is used. ]#
+  const threshold = 0.8
   var
     vp9Semiperimeter, h264Semiperimeter: int
   result = newJNull()
@@ -658,6 +658,10 @@ proc selectAudioStream(streams: JsonNode, itag: int): JsonNode =
     streams still have non trivial bitrate and filesizes. ]#
   # NOTE: "audio-less" video: https://www.youtube.com/watch?v=fW2e0CZjnFM
   # NOTE: prefer opus
+  #[ NOTE: the majority of the time there are 4 audio streams:
+    - itag 140 --> m4a
+    - itag 251 --> opus
+    - two low quality options (1 m4a and 1 opus) ]#
   result = newJNull()
   if itag == 0:
     result = selectAudioByBitrate(streams, "audio/webm")
