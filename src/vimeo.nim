@@ -274,6 +274,9 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
   let videoId = extractId(vimeoUrl)
   var standardVimeoUrl = baseUrl & '/' & videoId
 
+  if debug:
+    echo "[debug] video id: ", videoId
+
   if vimeoUrl.contains("/config?"):
     # NOTE: config url already obtained from getProfile
     (code, response) = doGet(vimeoUrl)
@@ -323,8 +326,12 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
       echo "<file exists> ", safeTitle
     else:
       let
-        defaultCdn = configResponse["request"]["files"]["dash"]["default_cdn"].getStr()
-        cdnUrl = configResponse["request"]["files"]["dash"]["cdns"][defaultCdn]["url"].getStr()
+        defaultCDN = configResponse["request"]["files"]["dash"]["default_cdn"].getStr()
+        cdnUrl = configResponse["request"]["files"]["dash"]["cdns"][defaultCDN]["url"].getStr()
+
+        if debug:
+          echo "[debug] default CDN: ", defaultCDN
+          echo "[debug] CDN url: ", cdnUrl
       (code, response) = doGet(cdnUrl.dequery())
       let cdnResponse = parseJson(response)
 
@@ -374,6 +381,9 @@ proc getProfile(vimeoUrl: string) =
   authorize()
   let (userId, sectionId) = getProfileIds(profileUrl % userSlug)
   nextUrl = videosUrl % [userId, sectionId]
+
+    if debug:
+      echo "[debug] slug: ", slug, " user id: ", userId, " sectionId: ", sectionId
 
   echo "[collecting videos]"
   while nextUrl != apiUrl:
