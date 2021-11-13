@@ -420,9 +420,9 @@ proc calculateN(n: string): string =
       if currFunc == "throttleUnshift" or currFunc == "throttlePrepend":
         throttleUnshift(initialN, parseInt(secondArg))
       elif currFunc == "throttleCipherForward":
-        throttleCipher(initialN, secondArg, forwardh)
+        throttleCipher(initialN, secondArg, forwardH)
       elif currFunc == "throttleCipherReverse":
-        throttleCipher(initialN, secondArg, reverseh)
+        throttleCipher(initialN, secondArg, reverseH)
       elif currFunc == "throttleCipherGeneric":
         let thirdArg = tempArray[parseInt(step[3])]
         if thirdArg == "throttleCipherForward":
