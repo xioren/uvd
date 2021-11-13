@@ -224,45 +224,41 @@ proc throttleModFunction(d: string | seq[string], e: int): int =
 
 proc throttleUnshift(d: var string, e: int) =
   ## handles prepend also
-  # NOTE: function(d,e){e=(e%d.length+d.length)%d.length;d.splice(-e).reverse().forEach(function(f){d.unshift(f)})}
+  # NOTE: function(d,e){e=(e%d.length+d.length)%d.length;d.splice(-e).reverse().forEach(function(f){d.unshift(f)})};
+  # NOTE: function(d,e){for(e=(e%d.length+d.length)%d.length;e--;)d.unshift(d.pop())};
   d.rotateLeft(d.len - throttleModFunction(d, e))
 
 
 proc throttleUnshift(d: var seq[string], e: int) =
-  ## handles prepend also
   d.rotateLeft(d.len - throttleModFunction(d, e))
 
 
-proc throttleCipher(h: array[64, char], d: var string, e: string) =
+proc throttleCipher(d: var string, e: var string, h: array[64, char]) =
   #[
-  forward h: function(d,e){for(var f=64,h=[];++f-h.length-32;){switch(f)
+  generative forward h: function(d,e){for(var f=64,h=[];++f-h.length-32;){switch(f)
   {case 58:f-=14;case 91:case 92:case 93:continue;case 123:f=47;case 94:case 95:
   case 96:continue;case 46:f=95}h.push(String.fromCharCode(f))}
   d.forEach(function(l,m,n){this.push(n[m]=h[(h.indexOf(l)-h.indexOf(this[m])+m-32+f--)%h.length])}
 
-  reverse h: function(d,e){for(var f=64,h=[];++f-h.length-32;){switch(f){case 91:f=44;continue;
+  generative reverse h: function(d,e){for(var f=64,h=[];++f-h.length-32;){switch(f){case 91:f=44;continue;
   case 123:f=65;break;case 65:f-=18;continue;case 58:f=96;continue;case 46:f=95}
   h.push(String.fromCharCode(f))}d.forEach(function(l,m,n){this.push(n[m]
   =h[(h.indexOf(l)-h.indexOf(this[m])+m-32+f--)%h.length])},e.split(""))}
+
+  non-generative: function(d,e,f){var h=f.length;d.forEach(function(l,m,n){this.push(n[m]=f[(f.indexOf(l)-f.indexOf(this[m])+m+h--)%f.length])},e.split(""))};
   ]#
-  # NOTE: +m-32+f-- == +64
-  let temp = d
-  var
-    this = e
-    bVal: int
-  for m, l in temp:
-    bVal = (h.index(l) - h.index(this[m]) + 64) mod h.len
-    this.add(h[bVal])
-    d[m] = h[bVal]
-
-
-proc throttleCipher(h: array[64, char], d: var seq[string], e: string) =
-  # NOTE: needed to compile
-  doAssert false
+  # NOTE: +m-32+f-- == +64 && +m+h-- == +64
+  var this: string
+  for idx, c in d:
+    let n = h[(h.index(c)-h.index(e[idx]) + 64) mod 64]
+    e.add(n)
+    this.add(n)
+  d = this
 
 
 proc throttleReverse(d: var string) =
-  # NOTE: function(d){d.reverse()}
+  # NOTE: function(d){d.reverse()};
+  # NOTE: function(d){for(var e=d.length;e;)d.push(d.splice(--e,1)[0])};
   d.reverse()
 
 
@@ -271,12 +267,10 @@ proc throttleReverse(d: var seq[string]) =
 
 
 proc throttlePush(d: var string, e: string) =
-  # NOTE: needed to compile
-  doAssert false
+  d.add(e)
 
 
 proc throttlePush(d: var seq[string], e: string) =
-  # NOTE: function(d,e){d.push(e)}
   d.add(e)
 
 
@@ -288,8 +282,8 @@ proc splice(d: var string, fromIdx: int) =
 
 
 proc splice(d: var seq[string], fromIdx: int) =
-  # NOTE: needed to compile
-  doAssert false
+  let e = throttleModFunction(d, fromIdx)
+  d.delete(e..e)
 
 
 proc throttleSwap(d: var string, e: int) =
@@ -304,7 +298,6 @@ proc throttleSwap(d: var string, e: int) =
 
 
 proc throttleSwap(d: var seq[string], e: int) =
-  ## handles nested splice also
   let z = throttleModFunction(d, e)
   if z < 0:
     swap(d[0], d[d.len + z])
@@ -364,6 +357,8 @@ proc parseThrottleFunctionArray(js: string): seq[string] =
         result.add("throttleCipherReverse")
       elif step.contains("case"):
         result.add("throttleCipherForward")
+      elif step.contains("f.indexOf(l)-f.indexOf"):
+        result.add("throttleCipherGeneric")
       elif step.contains("reverse") and step.contains("unshift"):
         result.add("throttlePrepend")
       elif step.contains("reverse") or (step.contains("push") and step.contains("splice")):
@@ -412,11 +407,6 @@ proc calculateN(n: string): string =
     if firstArg == "null":
       if currFunc == "throttleUnshift" or currFunc == "throttlePrepend":
         throttleUnshift(tempArray, parseInt(secondArg))
-      elif currFunc.contains("throttleCipher"):
-        if currFunc.contains("Forward"):
-          throttleCipher(forwardH, tempArray, secondArg)
-        else:
-          throttleCipher(reverseH, tempArray, secondArg)
       elif currFunc == "throttleReverse":
         throttleReverse(tempArray)
       elif currFunc == "throttlePush":
@@ -428,11 +418,16 @@ proc calculateN(n: string): string =
     else:
       if currFunc == "throttleUnshift" or currFunc == "throttlePrepend":
         throttleUnshift(initialN, parseInt(secondArg))
-      elif currFunc.contains("throttleCipher"):
-        if currFunc.contains("Forward"):
-          throttleCipher(forwardH, initialN, secondArg)
+      elif currFunc == "throttleCipherForward":
+        throttleCipher(initialN, secondArg, forward)
+      elif currFunc == "throttleCipherReverse":
+        throttleCipher(initialN, secondArg, reverse)
+      elif currFunc == "throttleCipherGeneric":
+        let thirdArg = tempArray[parseInt(step[3])]
+        if thirdArg == "throttleCipherForward":
+          throttleCipher(initialN, secondArg, forward)
         else:
-          throttleCipher(reverseH, initialN, secondArg)
+          throttleCipher(initialN, secondArg, reverse)
       elif currFunc == "throttleReverse":
         throttleReverse(initialN)
       elif currFunc == "throttlePush":
