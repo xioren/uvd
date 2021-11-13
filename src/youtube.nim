@@ -177,6 +177,7 @@ const
 let date = now().format("yyyyMMdd")
 
 var
+  debug: bool
   apiLocale: string
   includeAudio, includeVideo: bool
   audioFormat: string
@@ -217,7 +218,7 @@ proc index[T](d: openarray[T], item: T): int =
 
 
 proc throttleModFunction(d: string | seq[string], e: int): int =
-  ## function(d,e){e=(e%d.length+d.length)%d.length
+  # NOTE: function(d,e){e=(e%d.length+d.length)%d.length
   result = (e mod d.len + d.len) mod d.len
 
 
@@ -547,8 +548,14 @@ proc urlOrCipher(stream: JsonNode): string =
   else:
     let calculatedN = calculateN(n)
     nTransforms[n] = calculatedN
+    if debug:
+      echo "[debug] initial n: ", n
+      echo "[debug] transformed n: ", calculatedN
     if n != calculatedN:
       result = result.replace(n, calculatedN)
+
+  if debug:
+    echo "[debug] download url: ", result
 
 
 proc produceUrlSegments(baseUrl, segmentList: string): seq[string] =
@@ -813,6 +820,8 @@ proc reportStreams(playerResponse: JsonNode, duration: int) =
 
 
 proc parseBaseJs() =
+  if debug:
+    echo "[debug] baseJS version: ", globalBaseJsVersion, " api locale: ", apiLocale
   let (code, response) = doGet(baseJsUrl % [globalBaseJsVersion, apiLocale])
   if code.is2xx:
     # NOTE: signature code
@@ -886,6 +895,9 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
     response: string
     playerResponse: JsonNode
     dashManifestUrl: string
+
+  if debug:
+    echo "[debug] video id: ", videoId
 
   # NOTE: make initial request to get base.js version and timestamp
   (code, response) = doGet(standardYoutubeUrl)
@@ -1005,6 +1017,9 @@ proc getPlaylist(youtubeUrl: string) =
   var ids: seq[string]
   let playlistId = isolatePlaylist(youtubeUrl)
 
+  if debug:
+    echo "[debug] playlist id: ", playlistId
+
   let (code, response) = doPost(nextUrl, playlistContext % [date, playlistId])
   if code.is2xx:
     let
@@ -1035,6 +1050,9 @@ proc getChannel(youtubeUrl: string) =
     videoIds: seq[string]
     playlistIds: seq[string]
     tabIdx = 1
+
+  if debug:
+    echo "[debug] channel: ", channel
 
   iterator gridRendererExtractor(renderer: string): string =
     let capRenderer = capitalizeAscii(renderer)
@@ -1115,11 +1133,12 @@ proc getChannel(youtubeUrl: string) =
     getPlaylist(playlistUrl & id)
 
 
-proc youtubeDownload*(youtubeUrl: string, audio, video, streams: bool, format, aItag, vItag: string) =
+proc youtubeDownload*(youtubeUrl: string, audio, video, streams: bool, format, aItag, vItag: string, debugMode: bool) =
   includeAudio = audio
   includeVideo = video
   audioFormat = format
   showStreams = streams
+  debug = debugMode
 
   if "/channel/" in youtubeUrl or "/c/" in youtubeUrl:
     getChannel(youtubeUrl)

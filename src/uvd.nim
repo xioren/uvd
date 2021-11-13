@@ -6,7 +6,7 @@ import vimeo, youtube
 
 proc main() =
   const
-    version = "1.7.5"
+    version = "1.7.6"
     help = """
       usage: uvd [options] url
 
@@ -25,6 +25,7 @@ proc main() =
     args = commandLineParams()
     audio = true
     video = true
+    debug: bool
     streams: bool
     aItag = "0"
     vItag = "0"
@@ -33,7 +34,7 @@ proc main() =
 
   const
     sNoVal = {'a', 'v', 's', 'h'}
-    lNoVal = @["audio-only", "video-only", "show", "help"]
+    lNoVal = @["audio-only", "video-only", "show", "help", "debug"]
     acceptedFormats = ["aac", "flac", "m4a", "mp3", "ogg", "wav"]
 
   if args.len < 1:
@@ -50,6 +51,8 @@ proc main() =
         of "h", "help":
           echo help
           return
+        of "debug":
+          debug = true
         of "a", "audio-only":
           video = false
         of "v", "video-only":
@@ -74,9 +77,9 @@ proc main() =
           return
 
     if unknownUrl.contains("vimeo"):
-      vimeoDownload(unknownUrl, audio, video, streams, format, aItag, vItag)
+      vimeoDownload(unknownUrl, audio, video, streams, format, aItag, vItag, debug)
     elif unknownUrl.contains("youtu"):
-      youtubeDownload(unknownUrl, audio, video, streams, format, aItag, vItag)
+      youtubeDownload(unknownUrl, audio, video, streams, format, aItag, vItag, debug)
     else:
       echo "<invalid url>"
 

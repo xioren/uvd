@@ -44,6 +44,7 @@ const
   bypassUrl = "https://player.vimeo.com/video/$1?app_id=122963&referrer=https%3A%2F%2Fwww.patreon.com%2F"
 
 var
+  debug: bool
   includeAudio, includeVideo: bool
   audioFormat: string
   showStreams: bool
@@ -391,11 +392,12 @@ proc getProfile(vimeoUrl: string) =
     getVideo(url)
 
 
-proc vimeoDownload*(vimeoUrl: string, audio, video, streams: bool, format, aId, vId: string) =
+proc vimeoDownload*(vimeoUrl: string, audio, video, streams: bool, format, aId, vId: string, debugMode: bool) =
   includeAudio = audio
   includeVideo = video
   audioFormat = format
   showStreams = streams
+  debug = debugMode
 
   if extractId(vimeoUrl).all(isDigit):
     getVideo(vimeoUrl, aId, vId)
