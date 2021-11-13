@@ -332,7 +332,8 @@ iterator splitThrottleArray(js: string): string =
 
   discard js.find(re("(?<=,c=\\[)(.+)(?=\\];\n?c)", flags={reDotAll}), match)
   for idx, c in match[0]:
-    if (c == ',' and scope == 0 and match[0][min(idx + 3, match[0].high)] != '{') or idx == match[0].high:
+    # TODO: this is unwieldy, try to make it smaller.
+    if (c == ',' and scope == 0 and '{' notin match[0][min(idx + 3, match[0].high)..min(idx + 5, match[0].high)]) or idx == match[0].high:
       if idx == match[0].high:
         step.add(c)
       yield step.multiReplace(("\x00", ""), ("\n", ""))
@@ -395,7 +396,7 @@ proc calculateN(n: string): string =
     currFunc = tempArray[parseInt(step[0])]
     firstArg = tempArray[parseInt(step[1])]
 
-    if step.len == 3:
+    if step.len > 2:
       secondArg = tempArray[parseInt(step[2])]
       # NOTE: arg (may be) in exponential notation
       if secondArg.contains('E'):
@@ -419,15 +420,15 @@ proc calculateN(n: string): string =
       if currFunc == "throttleUnshift" or currFunc == "throttlePrepend":
         throttleUnshift(initialN, parseInt(secondArg))
       elif currFunc == "throttleCipherForward":
-        throttleCipher(initialN, secondArg, forward)
+        throttleCipher(initialN, secondArg, forwardh)
       elif currFunc == "throttleCipherReverse":
-        throttleCipher(initialN, secondArg, reverse)
+        throttleCipher(initialN, secondArg, reverseh)
       elif currFunc == "throttleCipherGeneric":
         let thirdArg = tempArray[parseInt(step[3])]
         if thirdArg == "throttleCipherForward":
-          throttleCipher(initialN, secondArg, forward)
+          throttleCipher(initialN, secondArg, forwardH)
         else:
-          throttleCipher(initialN, secondArg, reverse)
+          throttleCipher(initialN, secondArg, reverseH)
       elif currFunc == "throttleReverse":
         throttleReverse(initialN)
       elif currFunc == "throttlePush":

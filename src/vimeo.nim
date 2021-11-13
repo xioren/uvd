@@ -329,9 +329,9 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
         defaultCDN = configResponse["request"]["files"]["dash"]["default_cdn"].getStr()
         cdnUrl = configResponse["request"]["files"]["dash"]["cdns"][defaultCDN]["url"].getStr()
 
-        if debug:
-          echo "[debug] default CDN: ", defaultCDN
-          echo "[debug] CDN url: ", cdnUrl
+      if debug:
+        echo "[debug] default CDN: ", defaultCDN
+        echo "[debug] CDN url: ", cdnUrl
       (code, response) = doGet(cdnUrl.dequery())
       let cdnResponse = parseJson(response)
 
@@ -382,8 +382,8 @@ proc getProfile(vimeoUrl: string) =
   let (userId, sectionId) = getProfileIds(profileUrl % userSlug)
   nextUrl = videosUrl % [userId, sectionId]
 
-    if debug:
-      echo "[debug] slug: ", slug, " user id: ", userId, " sectionId: ", sectionId
+  if debug:
+    echo "[debug] slug: ", userSlug, " user id: ", userId, " sectionId: ", sectionId
 
   echo "[collecting videos]"
   while nextUrl != apiUrl:
