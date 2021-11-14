@@ -264,10 +264,10 @@ proc throttlePush(d: var (string | seq[string]), e: string) =
   d.add(e)
 
 
-proc throttleSplice(d: var (string | seq[string]), fromIdx: int) =
+proc throttleSplice(d: var (string | seq[string]), e: int) =
   ## javascript splice
   # NOTE: function(d,e){e=(e%d.length+d.length)%d.length;d.splice(e,1)};
-  let z = throttleModFunction(d, fromIdx)
+  let z = throttleModFunction(d, e)
   d.delete(z..z)
 
 
