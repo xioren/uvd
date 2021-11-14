@@ -77,7 +77,7 @@ proc isVerticle(stream: JsonNode): bool =
 proc selectVideoStream(streams: JsonNode, id: string): JsonNode =
   if id == "0":
     var
-      largest = 0
+      thisDimension, maxDimension: int
       dimension: string
 
     if isVerticle(streams[0]):
@@ -86,8 +86,9 @@ proc selectVideoStream(streams: JsonNode, id: string): JsonNode =
       dimension = "height"
 
     for stream in streams:
-      if stream[dimension].getInt() > largest:
-        largest = stream[dimension].getInt()
+      thisDimension = stream[dimension].getInt()
+      if thisDimension > maxDimension:
+        maxDimension = thisDimension
         result = stream
   else:
     for stream in streams:
@@ -100,10 +101,11 @@ proc selectAudioStream(streams: JsonNode, id: string): JsonNode =
   if streams.kind == JNull:
     result = streams
   elif id == "0":
-    var largest = 0
+    var thisBitrate, maxBitrate: int
     for stream in streams:
-      if stream["bitrate"].getInt() > largest:
-        largest = stream["bitrate"].getInt()
+      thisBitrate = stream["bitrate"].getInt()
+      if thisBitrate > maxBitrate:
+        maxBitrate = thisBitrate
         result = stream
   else:
     for stream in streams:
@@ -283,6 +285,8 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
   else:
     if isUnlisted(vimeoUrl):
       let unlistedHash = extractHash(vimeoUrl)
+      if debug:
+        echo "[debug] unlisted hash: ", unlistedHash
       standardVimeoUrl = standardVimeoUrl & '/' & unlistedHash
       (code, response) = doGet(unlistedConfigUrl % [videoId, unlistedHash])
     else:

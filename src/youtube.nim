@@ -583,17 +583,19 @@ proc getBitrate(stream: JsonNode): int =
 
 
 proc selectVideoByBitrate(streams: JsonNode, mime: string): JsonNode =
-  var maxBitrate, idx, maxSemiperimeter: int
-  var select = -1
+  var
+    thisBitrate, maxBitrate, idx, thisSemiperimeter, maxSemiperimeter: int
+    select = -1
   result = newJNull()
 
   for stream in streams:
     if stream["mimeType"].getStr().contains(mime):
-      let thisSemiperimeter = stream["width"].getInt() + stream["height"].getInt()
+      thisSemiperimeter = stream["width"].getInt() + stream["height"].getInt()
       if thisSemiperimeter >= maxSemiperimeter:
         if thisSemiperimeter > maxSemiperimeter:
           maxSemiperimeter = thisSemiperimeter
-        let thisBitrate = getBitrate(stream)
+
+        thisBitrate = getBitrate(stream)
         if thisBitrate > maxBitrate:
           maxBitrate = thisBitrate
           select = idx
@@ -605,13 +607,13 @@ proc selectVideoByBitrate(streams: JsonNode, mime: string): JsonNode =
 
 proc selectAudioByBitrate(streams: JsonNode, mime: string): JsonNode =
   var
-    maxBitrate, idx: int
+    thisBitrate, maxBitrate, idx: int
     select = -1
   result = newJNull()
 
   for stream in streams:
     if stream["mimeType"].getStr().contains(mime):
-      let thisBitrate = getBitrate(stream)
+      thisBitrate = getBitrate(stream)
       if thisBitrate > maxBitrate:
         maxBitrate = thisBitrate
         select = idx
