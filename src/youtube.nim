@@ -324,7 +324,7 @@ proc extractThrottleCode(mainFunc, js: string): string =
 
 
 iterator splitThrottleArray(js: string): string =
-  ## split c array into individual components
+  ## split c array into individual elements
   var
     match: array[1, string]
     step = newString(1)
@@ -399,8 +399,8 @@ proc calculateN(n: string): string =
 
     if step.len > 2:
       secondArg = tempArray[parseInt(step[2])]
-      # NOTE: arg (may be) in exponential notation
       if secondArg.contains('E'):
+        # NOTE: arg (may be) in exponential notation
         (k, e) = secondArg.split('E')
         if k.all(isDigit) and e.all(isDigit):
           secondArg = k & '0'.repeat(parseInt(e))
@@ -417,6 +417,8 @@ proc calculateN(n: string): string =
         throttleSwap(tempArray, parseInt(secondArg))
       elif currFunc == "throttleSplice":
         throttleSplice(tempArray, parseInt(secondArg))
+      else:
+        doAssert false
     else:
       if currFunc == "throttleUnshift" or currFunc == "throttlePrepend":
         throttleUnshift(initialN, parseInt(secondArg))
@@ -438,6 +440,8 @@ proc calculateN(n: string): string =
         throttleSwap(initialN, parseInt(secondArg))
       elif currFunc == "throttleSplice":
         throttleSplice(initialN, parseInt(secondArg))
+      else:
+        doAssert false
 
   result = initialN
 
