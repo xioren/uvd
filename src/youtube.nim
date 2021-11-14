@@ -274,14 +274,14 @@ proc throttlePush(d: var seq[string], e: string) =
   d.add(e)
 
 
-proc splice(d: var string, fromIdx: int) =
+proc throttleSplice(d: var string, fromIdx: int) =
   ## javascript splice
   # NOTE: function(d,e){e=(e%d.length+d.length)%d.length;d.splice(e,1)};
   let e = throttleModFunction(d, fromIdx)
   d.delete(e..e)
 
 
-proc splice(d: var seq[string], fromIdx: int) =
+proc throttleSplice(d: var seq[string], fromIdx: int) =
   let e = throttleModFunction(d, fromIdx)
   d.delete(e..e)
 
@@ -305,8 +305,8 @@ proc throttleSwap(d: var seq[string], e: int) =
     swap(d[0], d[z])
 
 
-proc parseThrottleFunctionName(js: string): string =
-  ## parse main throttle function
+proc extractThrottleFunctionName(js: string): string =
+  ## extract main throttle function
   # NOTE: a.C&&(b=a.get("n"))&&(b=kha(b),a.set("n",b)) --> kha
   var match: array[1, string]
   let pattern = re"(a\.[A-Z]&&\(b=a.[sg]et[^}]+)"
@@ -314,8 +314,8 @@ proc parseThrottleFunctionName(js: string): string =
   result = match[0].captureBetween('=', '(', match[0].find("a.set") - 10)
 
 
-proc parseThrottleCode(mainFunc, js: string): string =
-  ## parse throttle code block
+proc extractThrottleCode(mainFunc, js: string): string =
+  ## extract throttle code block block from base.js
   # NOTE: mainThrottleFunction=function(a){.....}
   var match: array[1, string]
   let pattern = re("($1=function\\(\\w\\){.+?})(?=;)" % mainFunc, flags={reDotAll})
@@ -324,17 +324,18 @@ proc parseThrottleCode(mainFunc, js: string): string =
 
 
 iterator splitThrottleArray(js: string): string =
-  ## split the throttle array into individual components
+  ## split c array into individual components
   var
     match: array[1, string]
     step = newString(1)
     scope: int
 
   discard js.find(re("(?<=,c=\\[)(.+)(?=\\];\n?c)", flags={reDotAll}), match)
+  let maxIdx = match[0].high
+
   for idx, c in match[0]:
-    # TODO: this is unwieldy, try to make it smaller.
-    if (c == ',' and scope == 0 and '{' notin match[0][min(idx + 3, match[0].high)..min(idx + 5, match[0].high)]) or idx == match[0].high:
-      if idx == match[0].high:
+    if (c == ',' and scope == 0 and '{' notin match[0][idx..min(idx + 5, maxIdx)]) or idx == maxIdx:
+      if idx == maxIdx:
         step.add(c)
       yield step.multiReplace(("\x00", ""), ("\n", ""))
       step = newString(1)
@@ -346,8 +347,8 @@ iterator splitThrottleArray(js: string): string =
     step.add(c)
 
 
-proc parseThrottleFunctionArray(js: string): seq[string] =
-  ## parse c array
+proc parseThrottleArray(js: string): seq[string] =
+  ## parse c array and translate javascipt functions to nim equivalents
   for step in splitThrottleArray(js):
     if step.startsWith("\"") and step.endsWith("\""):
       result.add(step[1..^2])
@@ -371,13 +372,13 @@ proc parseThrottleFunctionArray(js: string): seq[string] =
       elif step.count("splice") == 2:
         result.add("throttleNestedSplice")
       elif step.contains("splice"):
-        result.add("splice")
+        result.add("throttleSplice")
     else:
       result.add(step)
 
 
 proc parseThrottlePlan(js: string): seq[seq[string]] =
-  ## parse elements of c array
+  ## parse steps and indexes of throttle plan
   # (c[4](c[52])...) --> @[@[4, 52],...]
   let parts = js.captureBetween('{', '}', js.find("try"))
   for part in parts.split("),"):
@@ -385,7 +386,7 @@ proc parseThrottlePlan(js: string): seq[seq[string]] =
 
 
 proc calculateN(n: string): string =
-  ## calculate new n value to prevent throttling
+  ## calculate new n throttle value
   var
     tempArray = throttleArray
     firstArg, secondArg, currFunc: string
@@ -401,7 +402,7 @@ proc calculateN(n: string): string =
       # NOTE: arg (may be) in exponential notation
       if secondArg.contains('E'):
         (k, e) = secondArg.split('E')
-        if e.all(isDigit):
+        if k.all(isDigit) and e.all(isDigit):
           secondArg = k & '0'.repeat(parseInt(e))
 
     # TODO: im sure there is a clever way to compact this
@@ -414,8 +415,8 @@ proc calculateN(n: string): string =
         throttlePush(tempArray, secondArg)
       elif currFunc == "throttleSwap" or currFunc == "throttleNestedSplice":
         throttleSwap(tempArray, parseInt(secondArg))
-      elif currFunc == "splice":
-        splice(tempArray, parseInt(secondArg))
+      elif currFunc == "throttleSplice":
+        throttleSplice(tempArray, parseInt(secondArg))
     else:
       if currFunc == "throttleUnshift" or currFunc == "throttlePrepend":
         throttleUnshift(initialN, parseInt(secondArg))
@@ -435,8 +436,8 @@ proc calculateN(n: string): string =
         throttlePush(initialN, secondArg)
       elif currFunc == "throttleSwap" or currFunc == "throttleNestedSplice":
         throttleSwap(initialN, parseInt(secondArg))
-      elif currFunc == "splice":
-        splice(initialN, parseInt(secondArg))
+      elif currFunc == "throttleSplice":
+        throttleSplice(initialN, parseInt(secondArg))
 
   result = initialN
 
@@ -815,7 +816,7 @@ proc reportStreams(playerResponse: JsonNode, duration: int) =
 ########################################################
 
 
-proc parseBaseJs() =
+proc parseBaseJS() =
   if debug:
     echo "[debug] baseJS version: ", globalBaseJsVersion, " api locale: ", apiLocale
   let (code, response) = doGet(baseJsUrl % [globalBaseJsVersion, apiLocale])
@@ -824,9 +825,9 @@ proc parseBaseJs() =
     cipherPlan = parseFunctionPlan(response)
     cipherFunctionMap = createFunctionMap(response, parseParentFunctionName(cipherPlan[0]))
     # NOTE: throttle code
-    let throttleCode = parseThrottleCode(parseThrottleFunctionName(response), response)
+    let throttleCode = extractThrottleCode(extractThrottleFunctionName(response), response)
     throttlePlan = parseThrottlePlan(throttleCode)
-    throttleArray = parseThrottleFunctionArray(throttleCode)
+    throttleArray = parseThrottleArray(throttleCode)
 
 
 proc isolateVideoId(youtubeUrl: string): string =
@@ -904,7 +905,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
       thisBaseJsVersion = response.captureBetween('/', '/', response.find("""jsUrl":"/s/player/""") + 11)
     if thisBaseJsVersion != globalBaseJsVersion:
       globalBaseJsVersion = thisBaseJsVersion
-      parseBaseJs()
+      parseBaseJS()
 
     (code, response) = doPost(playerUrl, playerContext % [videoId, sigTimeStamp, date])
     if code.is2xx:
