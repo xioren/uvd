@@ -229,7 +229,7 @@ proc throttleUnshift(d: var (string | seq[string]), e: int) =
   d.rotateLeft(d.len - throttleModFunction(d, e))
 
 
-proc throttleCipher(d: var string, e: var string, h: array[64, char]) =
+proc throttleCipher(d: var string, e: var string, f: array[64, char]) =
   #[
   generative forward h: function(d,e){for(var f=64,h=[];++f-h.length-32;){switch(f)
   {case 58:f-=14;case 91:case 92:case 93:continue;case 123:f=47;case 94:case 95:
