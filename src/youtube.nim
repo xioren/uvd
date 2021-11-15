@@ -432,7 +432,7 @@ proc getParts(cipherSignature: string): tuple[url, sc, s: string] =
   result = (decodeUrl(parts[2].split('=')[1]), parts[1].split('=')[1], decodeUrl(parts[0].split('=')[1]))
 
 
-proc parseFunctionPlan(js: string): seq[string] =
+proc extractFunctionPlan(js: string): seq[string] =
   ## get the scramble functions
   ## returns: @["ix.Nh(a,2)", "ix.ai(a,5)"...]
 
@@ -444,7 +444,7 @@ proc parseFunctionPlan(js: string): seq[string] =
   match[0].split(';')[1..^3]
 
 
-proc parseParentFunctionName(jsFunction: string): string =
+proc extractParentFunctionName(jsFunction: string): string =
   ## get the name of the function containing the scramble functions
   ## ix.Nh(a,2) --> ix
   jsFunction.parseIdent()
@@ -457,7 +457,7 @@ proc parseChildFunction(function: string): tuple[name: string, argument: int] =
   result.argument = parseInt(function.captureBetween(',', ')'))
 
 
-proc parseIndex(jsFunction: string): int =
+proc extractIndex(jsFunction: string): int =
   if jsFunction.contains("splice"):
     # NOTE: function(a,b){a.splice(0,b)} --> 0
     result = parseInt(jsFunction.captureBetween('(', ',', jsFunction.find("splice")))
@@ -485,7 +485,7 @@ proc decipher(signature: string): string =
     let
       (funcName, b) = parseChildFunction(step)
       jsFunction = cipherFunctionMap[funcName]
-      index = parseIndex(jsFunction)
+      index = extractIndex(jsFunction)
     if jsFunction.contains("reverse"):
       # NOTE: function(a, b){a.reverse()}
       a.reverse()
@@ -732,12 +732,12 @@ proc newAudioStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
     result.exists = true
 
 
-proc inStreams(itag: int, Streams:JsonNode): bool =
+proc inStreams(itag: int, streams:JsonNode): bool =
   ## check if set of streams contains given itag
   if itag == 0:
     result = true
   else:
-    for stream in Streams:
+    for stream in streams:
       if stream["itag"].getInt() == itag:
         result = true
         break
@@ -791,6 +791,7 @@ proc reportStreams(playerResponse: JsonNode, duration: int) =
            " resolution: ", resolution, " bitrate: ", bitrate, " mime: ", mime,
            " size: ", size
 
+
 ########################################################
 # misc
 ########################################################
@@ -802,8 +803,8 @@ proc parseBaseJS() =
   let (code, response) = doGet(baseJsUrl % [globalBaseJsVersion, apiLocale])
   if code.is2xx:
     # NOTE: signature code
-    cipherPlan = parseFunctionPlan(response)
-    cipherFunctionMap = createFunctionMap(response, parseParentFunctionName(cipherPlan[0]))
+    cipherPlan = extractFunctionPlan(response)
+    cipherFunctionMap = createFunctionMap(response, extractParentFunctionName(cipherPlan[0]))
     # NOTE: throttle code
     let throttleCode = extractThrottleCode(extractThrottleFunctionName(response), response)
     throttlePlan = parseThrottlePlan(throttleCode)
