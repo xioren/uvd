@@ -523,11 +523,11 @@ proc urlOrCipher(stream: JsonNode): string =
   else:
     let calculatedN = calculateN(n)
     nTransforms[n] = calculatedN
+    if n != calculatedN:
+      result = result.replace(n, calculatedN)
     if debug:
       echo "[debug] initial n: ", n
       echo "[debug] transformed n: ", calculatedN
-    if n != calculatedN:
-      result = result.replace(n, calculatedN)
 
   if debug:
     echo "[debug] download url: ", result
@@ -602,15 +602,14 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
     weight was 0.92; this is fine in most cases. however a strong vp9 bias is preferential so
     a value of 0.8 is used. ]#
   const threshold = 0.8
-  var
-    vp9Semiperimeter, h264Semiperimeter: int
+  var vp9Semiperimeter, h264Semiperimeter: int
   result = newJNull()
 
   if itag == 0:
     #[ NOTE: vp9 and h.264 are not directly comparable. h.264 requires higher
        bitrate / larger filesize to obtain comparable quality to vp9. scenarios occur where lower resolution h.264
        streams are selected over vp9 streams because they have higher bitrate but are clearly not the most
-       desireable stream --> select highest resolution or vp9 if weight >= threshold else h.264 (when resolutions are ==) ]#
+       desireable stream --> select highest resolution or if ratio >= 0.8 --> vp9 else h.264 ]#
     let
       bestVP9 = selectVideoByBitrate(streams, "video/webm")
       bestH264 = selectVideoByBitrate(streams, "video/mp4")
@@ -900,6 +899,9 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         safeTitle = makeSafe(title)
         fullFilename = addFileExt(safeTitle, ".mkv")
         duration = parseInt(playerResponse["videoDetails"]["lengthSeconds"].getStr())
+        language = playerResponse["captions"]["playerCaptionsTracklistRenderer"]["captionTracks"][0]["languageCode"].getStr()
+        captionTrackUrl = playerResponse["captions"]["playerCaptionsTracklistRenderer"]["captionTracks"][0]["baseUrl"].getStr()
+        # thumbnailUrl = playerResponse["videoDetails"]["thumbnail"]["thumbnails"][0]["url"].getStr().dequery()
 
       if fileExists(fullFilename) and not showStreams:
         echo "<file exists> ", fullFilename
@@ -977,7 +979,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
 
         # QUESTION: should we return if either audio or video streams fail to download?
         if includeAudio and includeVideo:
-          joinStreams(video.videoStream.filename, video.audioStream.filename, fullFilename)
+          joinStreams(video.videoStream.filename, video.audioStream.filename, fullFilename, language)
         elif includeAudio and not includeVideo:
           convertAudio(video.audioStream.filename, safeTitle, audioFormat)
         elif includeVideo:
@@ -1059,7 +1061,7 @@ proc getChannel(youtubeUrl: string) =
               else:
                 echo "<failed to obtain channel metadata>"
           else:
-              yield item["grid" & capRenderer & "Renderer"][renderer & "Id"].getStr()
+            yield item["grid" & capRenderer & "Renderer"][renderer & "Id"].getStr()
 
   (code, response) = doPost(browseUrl, browseContext % [channel, date, videosTab])
   if code.is2xx:

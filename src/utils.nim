@@ -30,10 +30,10 @@ func makeSafe*(title: string): string =
   title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"), ("#", ""), ("\\", ""))
 
 
-proc joinStreams*(videoStream, audioStream, filename: string) =
+proc joinStreams*(videoStream, audioStream, filename: string, language="en") =
   ## join audio and video streams using ffmpeg
   echo "[joining streams] ", videoStream, " + ", audioStream
-  if execShellCmd(fmt"ffmpeg -y -i {videoStream} -i {audioStream} -c copy {quoteShell(filename)} > /dev/null 2>&1") == 0:
+  if execShellCmd(fmt"ffmpeg -y -i {videoStream} -i {audioStream} -metadata:s:1 language={language} -c copy {quoteShell(filename)} > /dev/null 2>&1") == 0:
     removeFile(videoStream)
     removeFile(audioStream)
     echo "[complete] ", filename

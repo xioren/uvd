@@ -325,6 +325,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
       title = configResponse["video"]["title"].getStr()
       safeTitle = makeSafe(title)
       fullFilename = addFileExt(safeTitle, ".mkv")
+      # thumbnailUrl = configResponse["video"]["thumbs"]["base"].getStr()
 
     if fileExists(fullFilename) and not showStreams:
       echo "<file exists> ", safeTitle
