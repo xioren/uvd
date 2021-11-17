@@ -374,11 +374,12 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
         echo "[debug] default CDN: ", defaultCDN
         echo "[debug] CDN url: ", cdnUrl
 
-      if includeCaptions and configResponse["request"].hasKey("text_tracks"):
-        generateSubtitles(configResponse["request"]["text_tracks"])
-      else:
-        includeCaptions = false
-        echo "<video does not contain subtitles>"
+      if includeCaptions:
+        if configResponse["request"].hasKey("text_tracks"):
+          generateSubtitles(configResponse["request"]["text_tracks"])
+        else:
+          includeCaptions = false
+          echo "<video does not contain subtitles>"
 
       (code, response) = doGet(cdnUrl.dequery())
       let cdnResponse = parseJson(response)

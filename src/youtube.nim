@@ -994,11 +994,12 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         fullFilename = addFileExt(safeTitle, ".mkv")
         duration = parseInt(playerResponse["videoDetails"]["lengthSeconds"].getStr())
         thumbnailUrl = playerResponse["videoDetails"]["thumbnail"]["thumbnails"][0]["url"].getStr().dequery()
-      if includeCaptions and playerResponse.hasKey("captions"):
-        generateSubtitles(playerResponse["captions"])
-      else:
-        includeCaptions = false
-        echo "<video does not contain subtitles>"
+      if includeCaptions:
+        if playerResponse.hasKey("captions"):
+          generateSubtitles(playerResponse["captions"])
+        else:
+          includeCaptions = false
+          echo "<video does not contain subtitles>"
 
       if fileExists(fullFilename) and not showStreams:
         echo "<file exists> ", fullFilename
