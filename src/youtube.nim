@@ -206,7 +206,7 @@ var
 
 
 ########################################################
-# captions
+# subtitles
 ########################################################
 
 
@@ -247,8 +247,7 @@ proc asrToSrt(xml: string): string =
       result.add(messages[idx].replace("&amp;#39;", "'"))
 
 
-proc generateCaptions(captions: JsonNode) =
-  includeCaptions = false
+proc generateSubtitles(captions: JsonNode) =
   var
     doTranslate: bool
     captionTrack = newJNull()
@@ -292,7 +291,9 @@ proc generateCaptions(captions: JsonNode) =
       includeCaptions = save(asrToSrt(response), "subtitles.srt")
     else:
       echo "<error downloading subtitles>"
-
+  else:
+    includeCaptions = false
+    echo "<error obtaining subtitles>"
 
 ########################################################
 # throttle logic
@@ -994,7 +995,10 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         duration = parseInt(playerResponse["videoDetails"]["lengthSeconds"].getStr())
         thumbnailUrl = playerResponse["videoDetails"]["thumbnail"]["thumbnails"][0]["url"].getStr().dequery()
       if includeCaptions and playerResponse.hasKey("captions"):
-        generateCaptions(playerResponse["captions"])
+        generateSubtitles(playerResponse["captions"])
+      else:
+        includeCaptions = false
+        echo "<video does not contain subtitles>"
 
       if fileExists(fullFilename) and not showStreams:
         echo "<file exists> ", fullFilename

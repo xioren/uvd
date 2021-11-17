@@ -17,6 +17,7 @@ proc main() =
         -s, --show                      show available streams
         -t, --thumb                     download thumbnail
         -c, --captions                  download captions
+        -l, --language                  desired subtitle language
         --audio-id, --audio-itag        audio stream id/itag
         --video-id, --video-itag        video stream id/itag
         -h, --help                      print this help
@@ -38,8 +39,8 @@ proc main() =
     unknownUrl: string
 
   const
-    sNoVal = {'s', 'h'}
-    lNoVal = @["audio-only", "video-only", "show", "help", "debug", "thumb"]
+    sNoVal = {'s', 'h', 'c'}
+    lNoVal = @["audio-only", "video-only", "captions", "show", "help", "debug", "thumb"]
     acceptedFormats = ["aac", "flac", "m4a", "mp3", "ogg", "wav"]
 
   if args.len < 1:
@@ -67,8 +68,9 @@ proc main() =
         of "t", "thumb":
           iThumb = true
         of "c", "captions":
-          desiredLanguage = val
           iCaptions = true
+        of "l", "language":
+          desiredLanguage = val
         of "f", "format":
           if val in acceptedFormats:
             format = val
@@ -87,7 +89,7 @@ proc main() =
           return
 
     if unknownUrl.contains("vimeo"):
-      vimeoDownload(unknownUrl, format, aItag, vItag, iAudio, iVideo, iThumb, iCaptions, streams, debug)
+      vimeoDownload(unknownUrl, format, aItag, vItag, desiredLanguage, iAudio, iVideo, iThumb, iCaptions, streams, debug)
     elif unknownUrl.contains("youtu"):
       youtubeDownload(unknownUrl, format, aItag, vItag, desiredLanguage, iAudio, iVideo, iThumb, iCaptions, streams, debug)
     else:

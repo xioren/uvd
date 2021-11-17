@@ -67,6 +67,38 @@ proc authorize() =
 
 
 ########################################################
+# subtitles
+########################################################
+
+
+proc generateSubtitles(captions: JsonNode) =
+  var textTrack = newJNull()
+
+  if subtitlesLanguage != "":
+    for track in captions:
+      if track["lang"].getStr() == subtitlesLanguage:
+        textTrack = track
+        break
+    if textTrack.kind == JNull:
+      echo "<subtitles not available natively in desired language>"
+  else:
+    textTrack = captions[0]
+    subtitlesLanguage = textTrack["lang"].getStr()
+
+  if textTrack.kind != JNull:
+    let textTrackUrl = baseUrl & textTrack["url"].getStr()
+
+    let (code, response) = doGet(textTrackUrl)
+    if code.is2xx:
+      includeCaptions = save(response, "subtitles.srt")
+    else:
+      echo "<error downloading subtitles>"
+  else:
+    includeCaptions = false
+    echo "<error obtaining subtitles>"
+
+
+########################################################
 # stream logic
 ########################################################
 
@@ -341,6 +373,13 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
       if debug:
         echo "[debug] default CDN: ", defaultCDN
         echo "[debug] CDN url: ", cdnUrl
+
+      if includeCaptions and configResponse["request"].hasKey("text_tracks"):
+        generateSubtitles(configResponse["request"]["text_tracks"])
+      else:
+        includeCaptions = false
+        echo "<video does not contain subtitles>"
+
       (code, response) = doGet(cdnUrl.dequery())
       let cdnResponse = parseJson(response)
 
@@ -415,12 +454,13 @@ proc getProfile(vimeoUrl: string) =
     getVideo(url)
 
 
-proc vimeoDownload*(vimeoUrl, format, aId, vId: string,
+proc vimeoDownload*(vimeoUrl, format, aId, vId, dLang: string,
                     iAudio, iVideo, iThumb, iCaptions, streams, debugMode: bool) =
   includeAudio = iAudio
   includeVideo = iVideo
   includeThumb = iThumb
   includeCaptions = iCaptions
+  subtitlesLanguage = dLang
   audioFormat = format
   showStreams = streams
   debug = debugMode
