@@ -29,6 +29,7 @@ type
     title: string
     videoId: string
     url: string
+    thumbnail: string
     audioStream: Stream
     videoStream: Stream
 
@@ -45,8 +46,9 @@ const
 
 var
   debug: bool
-  includeAudio, includeVideo: bool
+  includeAudio, includeVideo, includeThumb, includeCaptions: bool
   audioFormat: string
+  desiredLanguage: string
   showStreams: bool
 
 
@@ -193,10 +195,11 @@ proc newAudioStream(cdnUrl, videoId: string, stream: JsonNode): Stream =
     result.exists = true
 
 
-proc newVideo(vimeoUrl, cdnUrl, title, videoId: string, cdnResponse: JsonNode, aId, vId: string): Video =
+proc newVideo(vimeoUrl, cdnUrl, thumbnailUrl, title, videoId: string, cdnResponse: JsonNode, aId, vId: string): Video =
   result.title = title
   result.url = vimeoUrl
   result.videoId = videoId
+  result.thumbnail = thumbnailUrl
   result.videoStream = newVideoStream(cdnUrl, videoId, selectVideoStream(cdnResponse["video"], vId))
   result.audioStream = newAudioStream(cdnUrl, videoId, selectAudioStream(cdnResponse["audio"], aId))
 
@@ -273,6 +276,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
     configResponse: JsonNode
     response: string
     code: HttpCode
+    subtitles: string
   let videoId = extractId(vimeoUrl)
   var standardVimeoUrl = baseUrl & '/' & videoId
 
@@ -325,7 +329,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
       title = configResponse["video"]["title"].getStr()
       safeTitle = makeSafe(title)
       fullFilename = addFileExt(safeTitle, ".mkv")
-      # thumbnailUrl = configResponse["video"]["thumbs"]["base"].getStr()
+      thumbnailUrl = configResponse["video"]["thumbs"]["base"].getStr()
 
     if fileExists(fullFilename) and not showStreams:
       echo "<file exists> ", safeTitle
@@ -344,19 +348,23 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
         reportStreams(cdnResponse)
         return
 
-      let video = newVideo(standardVimeoUrl, cdnUrl, title, videoId, cdnResponse, aId, vId)
+      let video = newVideo(standardVimeoUrl, cdnUrl, thumbnailUrl, title, videoId, cdnResponse, aId, vId)
       echo "title: ", video.title
+
+      if includeThumb:
+        if not grab(video.thumbnail, extractFilename(video.thumbnail).addFileExt("jpeg"), forceDl=true).is2xx:
+          echo "<failed to download thumbnail>"
 
       if includeVideo:
         reportStreamInfo(video.videoStream)
-        if not grab(video.videoStream.urlSegments, filename=video.videoStream.filename,
+        if not grab(video.videoStream.urlSegments, video.videoStream.filename,
                     forceDl=true).is2xx:
           echo "<failed to download video stream>"
           includeVideo = false
 
       if includeAudio and video.audioStream.exists:
         reportStreamInfo(video.audioStream)
-        if not grab(video.audioStream.urlSegments, filename=video.audioStream.filename,
+        if not grab(video.audioStream.urlSegments, video.audioStream.filename,
                     forceDl=true).is2xx:
           echo "<failed to download audio stream>"
           includeAudio = false
@@ -364,7 +372,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
         includeAudio = false
 
       if includeAudio and includeVideo:
-        joinStreams(video.videoStream.filename, video.audioStream.filename, fullFilename)
+        joinStreams(video.videoStream.filename, video.audioStream.filename, fullFilename, desiredLanguage, includeCaptions)
       elif includeAudio and not includeVideo:
         convertAudio(video.audioStream.filename, safeTitle, audioFormat)
       elif includeVideo:
@@ -407,9 +415,12 @@ proc getProfile(vimeoUrl: string) =
     getVideo(url)
 
 
-proc vimeoDownload*(vimeoUrl: string, audio, video, streams: bool, format, aId, vId: string, debugMode: bool) =
-  includeAudio = audio
-  includeVideo = video
+proc vimeoDownload*(vimeoUrl, format, aId, vId: string,
+                    iAudio, iVideo, iThumb, iCaptions, streams, debugMode: bool) =
+  includeAudio = iAudio
+  includeVideo = iVideo
+  includeThumb = iThumb
+  includeCaptions = iCaptions
   audioFormat = format
   showStreams = streams
   debug = debugMode

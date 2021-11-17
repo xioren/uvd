@@ -30,12 +30,28 @@ func makeSafe*(title: string): string =
   title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"), ("#", ""), ("\\", ""))
 
 
-proc joinStreams*(videoStream, audioStream, filename: string, language="en") =
+proc zFill*(this: string, width: int, fill = '0'): string =
+  if this.len >= width:
+    result = this
+  else:
+    let distance = width - this.len
+    result = fill.repeat(distance) & this
+
+
+proc joinStreams*(videoStream, audioStream, filename, language: string, includeCaptions: bool) =
   ## join audio and video streams using ffmpeg
   echo "[joining streams] ", videoStream, " + ", audioStream
-  if execShellCmd(fmt"ffmpeg -y -i {videoStream} -i {audioStream} -metadata:s:1 language={language} -c copy {quoteShell(filename)} > /dev/null 2>&1") == 0:
+  var command: string
+  if includeCaptions:
+    command = fmt"ffmpeg -y -i {videoStream} -i {audioStream} -i subtitles.srt -metadata:s:s:0 language={language} -c copy {quoteShell(filename)} > /dev/null 2>&1"
+  else:
+    command = fmt"ffmpeg -y -i {videoStream} -i {audioStream} -c copy {quoteShell(filename)} > /dev/null 2>&1"
+
+  if execShellCmd(command) == 0:
     removeFile(videoStream)
     removeFile(audioStream)
+    if includeCaptions:
+      removeFile("subtitles.srt")
     echo "[complete] ", filename
   else:
     echo "<error joining streams>"
@@ -120,11 +136,12 @@ proc doGet*(url: string): tuple[httpcode: HttpCode, body: string] =
     echo '<', e.msg, '>'
 
 
-proc download(url, filepath: string): Future[HttpCode] {.async.} =
+proc download(url, filepath: string, silent = false): Future[HttpCode] {.async.} =
   ## download single streams
   let client = newAsyncHttpClient(headers=newHttpHeaders(headers))
   var file = openasync(filepath, fmWrite)
-  client.onProgressChanged = onProgressChanged
+  if not silent:
+    client.onProgressChanged = onProgressChanged
 
   try:
     let resp = await client.request(url)
@@ -161,7 +178,20 @@ proc download(parts: seq[string], filepath: string): Future[HttpCode] {.async.} 
     client.close()
 
 
-proc grab*(url: string | seq[string], filename="", saveLocation=getCurrentDir(), forceDl=false): HttpCode =
+proc save*(content, filepath: string): bool =
+  ## save text file
+  var file = open(filepath, fmWrite)
+
+  try:
+    file.write(content)
+    result = true
+  except Exception as e:
+    echo '<', e.msg, '>'
+  finally:
+    file.close()
+
+
+proc grab*(url: string | seq[string], filename: string, saveLocation=getCurrentDir(), forceDl=false): HttpCode =
   ## download front end
   let filepath = joinPath(saveLocation, filename)
   if not forceDl and fileExists(filepath):

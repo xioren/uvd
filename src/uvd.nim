@@ -11,10 +11,12 @@ proc main() =
       usage: uvd [options] url
 
       options:
-        -a, --audio-only                audio only
-        -v, --video-only                video only
+        -ao, --audio-only               audio only
+        -vo, --video-only               video only
         -f, --format                    audio output format
         -s, --show                      show available streams
+        -t, --thumb                     download thumbnail
+        -c, --captions                  download captions
         --audio-id, --audio-itag        audio stream id/itag
         --video-id, --video-itag        video stream id/itag
         -h, --help                      print this help
@@ -23,18 +25,21 @@ proc main() =
 
   var
     args = commandLineParams()
-    audio = true
-    video = true
+    iAudio = true
+    iVideo = true
+    iThumb: bool
+    iCaptions: bool
     debug: bool
     streams: bool
     aItag = "0"
     vItag = "0"
     format = "ogg"
+    desiredLanguage: string
     unknownUrl: string
 
   const
-    sNoVal = {'a', 'v', 's', 'h'}
-    lNoVal = @["audio-only", "video-only", "show", "help", "debug"]
+    sNoVal = {'s', 'h', 'c'}
+    lNoVal = @["audio-only", "video-only", "captions", "show", "help", "debug", "thumb"]
     acceptedFormats = ["aac", "flac", "m4a", "mp3", "ogg", "wav"]
 
   if args.len < 1:
@@ -54,11 +59,16 @@ proc main() =
         of "debug":
           debug = true
         of "a", "audio-only":
-          video = false
+          iVideo = false
         of "v", "video-only":
-          audio = false
+          iAudio = false
         of "s", "show":
           streams = true
+        of "t", "thumb":
+          iThumb = true
+        of "c", "captions":
+          desiredLanguage = val
+          iCaptions = true
         of "f", "format":
           if val in acceptedFormats:
             format = val
@@ -77,12 +87,11 @@ proc main() =
           return
 
     if unknownUrl.contains("vimeo"):
-      vimeoDownload(unknownUrl, audio, video, streams, format, aItag, vItag, debug)
+      vimeoDownload(unknownUrl, format, aItag, vItag, iAudio, iVideo, iThumb, iCaptions, streams, debug)
     elif unknownUrl.contains("youtu"):
-      youtubeDownload(unknownUrl, audio, video, streams, format, aItag, vItag, debug)
+      youtubeDownload(unknownUrl, format, aItag, vItag, desiredLanguage, iAudio, iVideo, iThumb, iCaptions, streams, debug)
     else:
       echo "<invalid url>"
-
 
 when isMainModule:
   main()

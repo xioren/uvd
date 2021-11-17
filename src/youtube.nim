@@ -143,6 +143,7 @@ type
     title: string
     videoId: string
     url: string
+    thumbnail: string
     audioStream: Stream
     videoStream: Stream
 
@@ -179,7 +180,8 @@ let date = now().format("yyyyMMdd")
 var
   debug: bool
   apiLocale: string
-  includeAudio, includeVideo: bool
+  includeAudio, includeVideo, includeThumb, includeCaptions: bool
+  desiredLanguage: string
   audioFormat: string
   showStreams: bool
   globalBaseJsVersion: string
@@ -201,6 +203,86 @@ var
 #     timeStamp = toUnix(getTime())
 #     sapisid = "" # NOTE: from cookies
 #   result = "SAPISIDHASH " & $timeStamp & '_' & $secureHash(timeStamp & ' ' & sapisid & ' ' & xOrigin)
+
+
+########################################################
+# captions
+########################################################
+
+
+proc formatTime(time: string): string =
+  var parts: seq[string]
+  if time.contains('.'):
+    parts = time.split('.')
+  else:
+    parts = @[time, "000"]
+
+  if parts[1].len > 3:
+    # HACK: for floating point rounding errors
+    parts[1] = parts[1][0..2]
+
+  let td = initDuration(seconds=parseInt(parts[0]), milliseconds=parseInt(parts[1])).toParts()
+  result = ($td[Hours]).zFill(2) & ':' & ($td[Minutes]).zFill(2) & ':' & ($td[Seconds]).zFill(2) & ',' & ($td[Milliseconds]).zFill(3)
+
+
+proc asrToSrt(xml: string): string =
+  let
+    startTimes = xml.findAll(re"""(?<=start=")[^"]+""")
+    durations = xml.findAll(re"""(?<=dur=")[^"]+""")
+    messages = xml.findAll(re"""(?<=>)[^<>]+(?=</text>)""")
+
+
+  for idx in 0..startTimes.high:
+    result.add($idx.succ & '\n')
+    let
+      startPoint = startTimes[idx]
+      duration = durations[idx]
+      endPoint = $(parseFloat(startPoint) + parseFloat(duration))
+
+    if idx < startTimes.high:
+      result.add(formatTime(startPoint) & " --> " & formatTime($min(parseFloat(endPoint), parseFloat(startTimes[idx.succ]))) & '\n')
+      result.add(messages[idx].replace("&amp;#39;", "'") & "\n\n")
+    else:
+      result.add(formatTime(startPoint) & " --> " & formatTime(endPoint) & '\n')
+      result.add(messages[idx].replace("&amp;#39;", "'"))
+
+
+proc generateCaptions(captions: JsonNode) =
+  includeCaptions = false
+  var
+    doTranslate: bool
+    captionTrack = newJNull()
+    defaultAudioTrackIndex, defaultCaptionTrackIndex: int
+  for track in captions["playerCaptionsTracklistRenderer"]["captionTracks"]:
+    if track["languageCode"].getStr() == desiredLanguage:
+      captionTrack = track
+      break
+
+  if captionTrack.kind == JNull:
+    defaultAudioTrackIndex = captions["playerCaptionsTracklistRenderer"]["defaultAudioTrackIndex"].getInt()
+    if captions["playerCaptionsTracklistRenderer"]["audioTracks"][defaultAudioTrackIndex].hasKey("defaultCaptionTrackIndex"):
+      defaultCaptionTrackIndex = captions["playerCaptionsTracklistRenderer"]["audioTracks"][defaultAudioTrackIndex]["defaultCaptionTrackIndex"].getInt()
+
+    if desiredLanguage == "":
+      captionTrack = captions["playerCaptionsTracklistRenderer"]["captionTracks"][defaultCaptionTrackIndex]
+    else:
+      for language in captions["playerCaptionsTracklistRenderer"]["translationLanguages"]:
+        if language["languageCode"].getStr() == desiredLanguage:
+          if captions["playerCaptionsTracklistRenderer"]["captionTracks"][defaultCaptionTrackIndex]["isTranslatable"].getBool():
+            captionTrack = captions["playerCaptionsTracklistRenderer"]["captionTracks"][defaultCaptionTrackIndex]
+            doTranslate = true
+            break
+
+  if captionTrack.kind != JNull:
+    var captionTrackUrl: string
+    if doTranslate:
+      captionTrackUrl = captionTrack["baseUrl"].getStr() & "&tlang=" & desiredLanguage
+    else:
+      captionTrackUrl = captionTrack["baseUrl"].getStr()
+
+    let (code, response) = doGet(captionTrackUrl)
+    if code.is2xx:
+      includeCaptions = save(asrToSrt(response), "subtitles.srt")
 
 
 ########################################################
@@ -742,11 +824,12 @@ proc inStreams(itag: int, streams:JsonNode): bool =
         break
 
 
-proc newVideo(youtubeUrl, dashManifestUrl, title, videoId: string, duration: int,
+proc newVideo(youtubeUrl, dashManifestUrl, thumbnailUrl, title, videoId: string, duration: int,
               streamingData: JsonNode, aItag, vItag: int): Video =
   result.title = title
   result.url = youtubeUrl
   result.videoId = videoId
+  result.thumbnail = thumbnailUrl
   if streamingData.hasKey("adaptiveFormats") and vItag.inStreams(streamingData["adaptiveFormats"]):
     result.videoStream = newVideoStream(youtubeUrl, dashManifestUrl, videoId, duration,
                                         selectVideoStream(streamingData["adaptiveFormats"], vItag))
@@ -872,6 +955,9 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
     response: string
     playerResponse: JsonNode
     dashManifestUrl: string
+    captionTrackUrl: string
+    desiredLanguage: string
+    captions: string
 
   if debug:
     echo "[debug] video id: ", videoId
@@ -899,9 +985,9 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         safeTitle = makeSafe(title)
         fullFilename = addFileExt(safeTitle, ".mkv")
         duration = parseInt(playerResponse["videoDetails"]["lengthSeconds"].getStr())
-        language = playerResponse["captions"]["playerCaptionsTracklistRenderer"]["captionTracks"][0]["languageCode"].getStr()
-        captionTrackUrl = playerResponse["captions"]["playerCaptionsTracklistRenderer"]["captionTracks"][0]["baseUrl"].getStr()
-        # thumbnailUrl = playerResponse["videoDetails"]["thumbnail"]["thumbnails"][0]["url"].getStr().dequery()
+        thumbnailUrl = playerResponse["videoDetails"]["thumbnail"]["thumbnails"][0]["url"].getStr().dequery()
+      if includeCaptions and playerResponse.hasKey("captions"):
+        generateCaptions(playerResponse["captions"])
 
       if fileExists(fullFilename) and not showStreams:
         echo "<file exists> ", fullFilename
@@ -942,19 +1028,21 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         # QUESTION: hlsManifestUrl seems to be for live streamed videos but is it ever needed?
         if playerResponse["streamingData"].hasKey("dashManifestUrl"):
           dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
-        let video = newVideo(standardYoutubeUrl, dashManifestUrl, title, videoId, duration,
+        let video = newVideo(standardYoutubeUrl, dashManifestUrl, thumbnailUrl, title, videoId, duration,
                              playerResponse["streamingData"], aItag, vItag)
         echo "title: ", video.title
+
+        if includeThumb:
+          if not grab(video.thumbnail, extractFilename(video.title).addFileExt("jpeg"), forceDl=true).is2xx:
+            echo "<failed to download thumbnail>"
 
         var attempt: HttpCode
         if includeVideo:
           reportStreamInfo(video.videoStream)
           if video.videoStream.isDash:
-            attempt = grab(video.videoStream.urlSegments, filename=video.videoStream.filename,
-                           forceDl=true)
+            attempt = grab(video.videoStream.urlSegments, video.videoStream.filename, forceDl=true)
           else:
-            attempt = grab(video.videoStream.url, filename=video.videoStream.filename,
-                           forceDl=true)
+            attempt = grab(video.videoStream.url, video.videoStream.filename, forceDl=true)
           if not attempt.is2xx:
             echo "<failed to download video stream>"
             includeVideo = false
@@ -964,11 +1052,9 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         if includeAudio and video.audioStream.exists:
           reportStreamInfo(video.audioStream)
           if video.audioStream.isDash:
-            attempt = grab(video.audioStream.urlSegments, filename=video.audioStream.filename,
-                           forceDl=true)
+            attempt = grab(video.audioStream.urlSegments, video.audioStream.filename, forceDl=true)
           else:
-            attempt = grab(video.audioStream.url, filename=video.audioStream.filename,
-                           forceDl=true)
+            attempt = grab(video.audioStream.url, video.audioStream.filename, forceDl=true)
           if not attempt.is2xx:
             echo "<failed to download audio stream>"
             includeAudio = false
@@ -979,7 +1065,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
 
         # QUESTION: should we return if either audio or video streams fail to download?
         if includeAudio and includeVideo:
-          joinStreams(video.videoStream.filename, video.audioStream.filename, fullFilename, language)
+          joinStreams(video.videoStream.filename, video.audioStream.filename, fullFilename, desiredLanguage, includeCaptions)
         elif includeAudio and not includeVideo:
           convertAudio(video.audioStream.filename, safeTitle, audioFormat)
         elif includeVideo:
@@ -1113,9 +1199,13 @@ proc getChannel(youtubeUrl: string) =
     getPlaylist(playlistUrl & id)
 
 
-proc youtubeDownload*(youtubeUrl: string, audio, video, streams: bool, format, aItag, vItag: string, debugMode: bool) =
-  includeAudio = audio
-  includeVideo = video
+proc youtubeDownload*(youtubeUrl, format, aItag, vItag, dLang: string,
+                      iAudio, iVideo, iThumb, iCaptions, streams, debugMode: bool) =
+  includeAudio = iAudio
+  includeVideo = iVideo
+  includeThumb = iThumb
+  includeCaptions = iCaptions
+  desiredLanguage = dLang
   audioFormat = format
   showStreams = streams
   debug = debugMode
