@@ -39,7 +39,7 @@ proc main() =
     unknownUrl: string
 
   const
-    sNoVal = {'s', 'h', 'S'}
+    sNoVal = {'a', 'v', 's', 'h', 'S'}
     lNoVal = @["audio-only", "video-only", "subtitles", "show", "help", "debug", "thumb"]
     acceptedFormats = ["aac", "flac", "m4a", "mp3", "ogg", "wav"]
 
