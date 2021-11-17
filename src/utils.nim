@@ -47,13 +47,13 @@ proc index[T]*(this: openarray[T], item: T): int =
   raise newException(IndexDefect, "$1 not in $2" % [$item, $this.type])
 
 
-proc joinStreams*(videoStream, audioStream, filename, language: string, includeCaptions: bool) =
+proc joinStreams*(videoStream, audioStream, filename, subtitlesLanguage: string, includeCaptions: bool) =
   ## join audio and video streams using ffmpeg
   echo "[joining streams] ", videoStream, " + ", audioStream
   var command: string
 
   if includeCaptions:
-    command = fmt"ffmpeg -y -i {videoStream} -i {audioStream} -i subtitles.srt -metadata:s:s:0 language={language} -c copy {quoteShell(filename)} > /dev/null 2>&1"
+    command = fmt"ffmpeg -y -i {videoStream} -i {audioStream} -i subtitles.srt -metadata:s:s:0 language={subtitlesLanguage} -c copy {quoteShell(filename)} > /dev/null 2>&1"
   else:
     command = fmt"ffmpeg -y -i {videoStream} -i {audioStream} -c copy {quoteShell(filename)} > /dev/null 2>&1"
 
@@ -61,7 +61,7 @@ proc joinStreams*(videoStream, audioStream, filename, language: string, includeC
     removeFile(videoStream)
     removeFile(audioStream)
     if includeCaptions:
-      removeFile("subtitles.srt")
+      removeFile(addFileExt(subtitlesLanguage, "srt"))
     echo "[complete] ", filename
   else:
     echo "<error joining streams>"

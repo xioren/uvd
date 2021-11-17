@@ -291,7 +291,7 @@ proc generateSubtitles(captions: JsonNode) =
 
     let (code, response) = doGet(captionTrackUrl)
     if code.is2xx:
-      includeCaptions = save(asrToSrt(response), "subtitles.srt")
+      includeCaptions = save(asrToSrt(response), addFileExt(subtitlesLanguage, "srt"))
     else:
       echo "<error downloading subtitles>"
   else:
