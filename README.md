@@ -20,8 +20,8 @@
 usage: uvd [options] url
 
 options:
-  -a, --audio-only               audio only
-  -v, --video-only               video only
+  -a, --audio-only                audio only
+  -v, --video-only                video only
   -f, --format                    audio output format
   -s, --show                      show available streams
   -t, --thumb                     download thumbnail
