@@ -181,7 +181,7 @@ var
   debug: bool
   apiLocale: string
   includeAudio, includeVideo, includeThumb, includeCaptions: bool
-  desiredLanguage: string
+  subtitlesLanguage: string
   audioFormat: string
   showStreams: bool
   globalBaseJsVersion: string
@@ -253,8 +253,9 @@ proc generateCaptions(captions: JsonNode) =
     doTranslate: bool
     captionTrack = newJNull()
     defaultAudioTrackIndex, defaultCaptionTrackIndex: int
+
   for track in captions["playerCaptionsTracklistRenderer"]["captionTracks"]:
-    if track["languageCode"].getStr() == desiredLanguage:
+    if track["languageCode"].getStr() == subtitlesLanguage:
       captionTrack = track
       break
 
@@ -263,11 +264,12 @@ proc generateCaptions(captions: JsonNode) =
     if captions["playerCaptionsTracklistRenderer"]["audioTracks"][defaultAudioTrackIndex].hasKey("defaultCaptionTrackIndex"):
       defaultCaptionTrackIndex = captions["playerCaptionsTracklistRenderer"]["audioTracks"][defaultAudioTrackIndex]["defaultCaptionTrackIndex"].getInt()
 
-    if desiredLanguage == "":
+    if subtitlesLanguage == "":
       captionTrack = captions["playerCaptionsTracklistRenderer"]["captionTracks"][defaultCaptionTrackIndex]
+      subtitlesLanguage = captionTrack["languageCode"].getStr()
     else:
       for language in captions["playerCaptionsTracklistRenderer"]["translationLanguages"]:
-        if language["languageCode"].getStr() == desiredLanguage:
+        if language["languageCode"].getStr() == subtitlesLanguage:
           if captions["playerCaptionsTracklistRenderer"]["captionTracks"][defaultCaptionTrackIndex]["isTranslatable"].getBool():
             captionTrack = captions["playerCaptionsTracklistRenderer"]["captionTracks"][defaultCaptionTrackIndex]
             doTranslate = true
@@ -276,7 +278,7 @@ proc generateCaptions(captions: JsonNode) =
   if captionTrack.kind != JNull:
     var captionTrackUrl: string
     if doTranslate:
-      captionTrackUrl = captionTrack["baseUrl"].getStr() & "&tlang=" & desiredLanguage
+      captionTrackUrl = captionTrack["baseUrl"].getStr() & "&tlang=" & subtitlesLanguage
     else:
       captionTrackUrl = captionTrack["baseUrl"].getStr()
 
@@ -956,7 +958,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
     playerResponse: JsonNode
     dashManifestUrl: string
     captionTrackUrl: string
-    desiredLanguage: string
+    subtitlesLanguage: string
     captions: string
 
   if debug:
@@ -1065,7 +1067,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
 
         # QUESTION: should we return if either audio or video streams fail to download?
         if includeAudio and includeVideo:
-          joinStreams(video.videoStream.filename, video.audioStream.filename, fullFilename, desiredLanguage, includeCaptions)
+          joinStreams(video.videoStream.filename, video.audioStream.filename, fullFilename, subtitlesLanguage, includeCaptions)
         elif includeAudio and not includeVideo:
           convertAudio(video.audioStream.filename, safeTitle, audioFormat)
         elif includeVideo:
@@ -1205,7 +1207,7 @@ proc youtubeDownload*(youtubeUrl, format, aItag, vItag, dLang: string,
   includeVideo = iVideo
   includeThumb = iThumb
   includeCaptions = iCaptions
-  desiredLanguage = dLang
+  subtitlesLanguage = dLang
   audioFormat = format
   showStreams = streams
   debug = debugMode

@@ -48,7 +48,7 @@ var
   debug: bool
   includeAudio, includeVideo, includeThumb, includeCaptions: bool
   audioFormat: string
-  desiredLanguage: string
+  subtitlesLanguage: string
   showStreams: bool
 
 
@@ -372,7 +372,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
         includeAudio = false
 
       if includeAudio and includeVideo:
-        joinStreams(video.videoStream.filename, video.audioStream.filename, fullFilename, desiredLanguage, includeCaptions)
+        joinStreams(video.videoStream.filename, video.audioStream.filename, fullFilename, subtitlesLanguage, includeCaptions)
       elif includeAudio and not includeVideo:
         convertAudio(video.audioStream.filename, safeTitle, audioFormat)
       elif includeVideo:
