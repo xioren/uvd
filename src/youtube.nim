@@ -1044,7 +1044,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         echo "title: ", video.title
 
         if includeThumb:
-          if not grab(video.thumbnail, extractFilename(video.title).addFileExt("jpeg"), forceDl=true).is2xx:
+          if not grab(video.thumbnail, video.title.addFileExt("jpeg"), forceDl=true).is2xx:
             echo "<failed to download thumbnail>"
 
         var attempt: HttpCode

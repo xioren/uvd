@@ -391,7 +391,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
       echo "title: ", video.title
 
       if includeThumb:
-        if not grab(video.thumbnail, extractFilename(video.thumbnail).addFileExt("jpeg"), forceDl=true).is2xx:
+        if not grab(video.thumbnail, video.title.addFileExt("jpeg"), forceDl=true).is2xx:
           echo "<failed to download thumbnail>"
 
       if includeVideo:
