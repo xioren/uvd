@@ -259,6 +259,8 @@ proc generateCaptions(captions: JsonNode) =
       if track["languageCode"].getStr() == subtitlesLanguage:
         captionTrack = track
         break
+    if captionTrack.kind == JNull:
+      echo "<subtitles not available natively in desired language>"
 
   if captionTrack.kind == JNull:
     defaultAudioTrackIndex = captions["playerCaptionsTracklistRenderer"]["defaultAudioTrackIndex"].getInt()
@@ -275,6 +277,8 @@ proc generateCaptions(captions: JsonNode) =
             captionTrack = captions["playerCaptionsTracklistRenderer"]["captionTracks"][defaultCaptionTrackIndex]
             doTranslate = true
             break
+      if captionTrack.kind == JNull:
+        echo "<subtitles not available for translation to desired language>"
 
   if captionTrack.kind != JNull:
     var captionTrackUrl: string
@@ -286,6 +290,8 @@ proc generateCaptions(captions: JsonNode) =
     let (code, response) = doGet(captionTrackUrl)
     if code.is2xx:
       includeCaptions = save(asrToSrt(response), "subtitles.srt")
+    else:
+      echo "<error downloading subtitles>"
 
 
 ########################################################
