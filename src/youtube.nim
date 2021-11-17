@@ -254,10 +254,11 @@ proc generateCaptions(captions: JsonNode) =
     captionTrack = newJNull()
     defaultAudioTrackIndex, defaultCaptionTrackIndex: int
 
-  for track in captions["playerCaptionsTracklistRenderer"]["captionTracks"]:
-    if track["languageCode"].getStr() == subtitlesLanguage:
-      captionTrack = track
-      break
+  if subtitlesLanguage != "":
+    for track in captions["playerCaptionsTracklistRenderer"]["captionTracks"]:
+      if track["languageCode"].getStr() == subtitlesLanguage:
+        captionTrack = track
+        break
 
   if captionTrack.kind == JNull:
     defaultAudioTrackIndex = captions["playerCaptionsTracklistRenderer"]["defaultAudioTrackIndex"].getInt()
@@ -957,8 +958,6 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
     response: string
     playerResponse: JsonNode
     dashManifestUrl: string
-    captionTrackUrl: string
-    subtitlesLanguage: string
     captions: string
 
   if debug:

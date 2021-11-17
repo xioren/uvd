@@ -42,6 +42,7 @@ proc joinStreams*(videoStream, audioStream, filename, language: string, includeC
   ## join audio and video streams using ffmpeg
   echo "[joining streams] ", videoStream, " + ", audioStream
   var command: string
+
   if includeCaptions:
     command = fmt"ffmpeg -y -i {videoStream} -i {audioStream} -i subtitles.srt -metadata:s:s:0 language={language} -c copy {quoteShell(filename)} > /dev/null 2>&1"
   else:
@@ -136,12 +137,11 @@ proc doGet*(url: string): tuple[httpcode: HttpCode, body: string] =
     echo '<', e.msg, '>'
 
 
-proc download(url, filepath: string, silent = false): Future[HttpCode] {.async.} =
+proc download(url, filepath: string): Future[HttpCode] {.async.} =
   ## download single streams
   let client = newAsyncHttpClient(headers=newHttpHeaders(headers))
   var file = openasync(filepath, fmWrite)
-  if not silent:
-    client.onProgressChanged = onProgressChanged
+  client.onProgressChanged = onProgressChanged
 
   try:
     let resp = await client.request(url)
