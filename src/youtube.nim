@@ -259,7 +259,7 @@ proc generateSubtitles(captions: JsonNode) =
         captionTrack = track
         break
     if captionTrack.kind == JNull:
-      echo "<subtitles not available natively in desired language>"
+      echo "<subtitles not available natively in desired language...falling back to translation>"
 
   if captionTrack.kind == JNull:
     defaultAudioTrackIndex = captions["playerCaptionsTracklistRenderer"]["defaultAudioTrackIndex"].getInt()
