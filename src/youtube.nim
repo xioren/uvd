@@ -993,7 +993,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         safeTitle = makeSafe(title)
         fullFilename = addFileExt(safeTitle, ".mkv")
         duration = parseInt(playerResponse["videoDetails"]["lengthSeconds"].getStr())
-        thumbnailUrl = playerResponse["videoDetails"]["thumbnail"]["thumbnails"][0]["url"].getStr().dequery()
+        thumbnailUrl = playerResponse["videoDetails"]["thumbnail"]["thumbnails"][^1]["url"].getStr().dequery().multiReplace(("_webp", ""), (".webp", ".jpg"))
       if includeCaptions:
         if playerResponse.hasKey("captions"):
           generateSubtitles(playerResponse["captions"])
