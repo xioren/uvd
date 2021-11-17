@@ -27,6 +27,7 @@ func dequery*(url: string): string =
 
 func makeSafe*(title: string): string =
   ## make video titles suitable for filenames
+  # NOTE: subjective
   title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"), ("#", ""), ("\\", ""))
 
 
@@ -36,6 +37,14 @@ proc zFill*(this: string, width: int, fill = '0'): string =
   else:
     let distance = width - this.len
     result = fill.repeat(distance) & this
+
+
+proc index[T]*(this: openarray[T], item: T): int =
+  ## provide index of item in d
+  for idx, i in this:
+    if i == item:
+      return idx
+  raise newException(IndexDefect, "$1 not in $2" % [$item, $this.type])
 
 
 proc joinStreams*(videoStream, audioStream, filename, language: string, includeCaptions: bool) =
@@ -179,7 +188,7 @@ proc download(parts: seq[string], filepath: string): Future[HttpCode] {.async.} 
 
 
 proc save*(content, filepath: string): bool =
-  ## save text file
+  ## write content to disk
   var file = open(filepath, fmWrite)
 
   try:

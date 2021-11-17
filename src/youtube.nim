@@ -254,6 +254,7 @@ proc generateSubtitles(captions: JsonNode) =
     defaultAudioTrackIndex, defaultCaptionTrackIndex: int
 
   if subtitlesLanguage != "":
+    # NOTE: check if desired language exists natively
     for track in captions["playerCaptionsTracklistRenderer"]["captionTracks"]:
       if track["languageCode"].getStr() == subtitlesLanguage:
         captionTrack = track
@@ -267,9 +268,11 @@ proc generateSubtitles(captions: JsonNode) =
       defaultCaptionTrackIndex = captions["playerCaptionsTracklistRenderer"]["audioTracks"][defaultAudioTrackIndex]["defaultCaptionTrackIndex"].getInt()
 
     if subtitlesLanguage == "":
+      # NOTE: select default caption track
       captionTrack = captions["playerCaptionsTracklistRenderer"]["captionTracks"][defaultCaptionTrackIndex]
       subtitlesLanguage = captionTrack["languageCode"].getStr()
     else:
+      # NOTE: check if desired language can be translated to
       for language in captions["playerCaptionsTracklistRenderer"]["translationLanguages"]:
         if language["languageCode"].getStr() == subtitlesLanguage:
           if captions["playerCaptionsTracklistRenderer"]["captionTracks"][defaultCaptionTrackIndex]["isTranslatable"].getBool():
@@ -301,13 +304,6 @@ proc generateSubtitles(captions: JsonNode) =
 #[ NOTE: thanks to https://github.com/pytube/pytube/blob/master/pytube/cipher.py
   as a reference ]#
 
-proc index[T](d: openarray[T], item: T): int =
-  ## provide index of item in d
-  for idx, i in d:
-    if i == item:
-      return idx
-  raise newException(IndexDefect, "$1 not in $2" % [$item, $d.type])
-
 
 proc throttleModFunction(d: string | seq[string], e: int): int =
   # NOTE: function(d,e){e=(e%d.length+d.length)%d.length
@@ -316,13 +312,15 @@ proc throttleModFunction(d: string | seq[string], e: int): int =
 
 proc throttleUnshift(d: var (string | seq[string]), e: int) =
   ## handles prepend also
-  # NOTE: function(d,e){e=(e%d.length+d.length)%d.length;d.splice(-e).reverse().forEach(function(f){d.unshift(f)})};
-  # NOTE: function(d,e){for(e=(e%d.length+d.length)%d.length;e--;)d.unshift(d.pop())};
+  #[ NOTE:
+  function(d,e){e=(e%d.length+d.length)%d.length;d.splice(-e).reverse().forEach(function(f){d.unshift(f)})};
+  function(d,e){for(e=(e%d.length+d.length)%d.length;e--;)d.unshift(d.pop())};
+  ]#
   d.rotateLeft(d.len - throttleModFunction(d, e))
 
 
 proc throttleCipher(d: var string, e: var string, f: array[64, char]) =
-  #[
+  #[ NOTE:
   generative forward h: function(d,e){for(var f=64,h=[];++f-h.length-32;){switch(f)
   {case 58:f-=14;case 91:case 92:case 93:continue;case 123:f=47;case 94:case 95:
   case 96:continue;case 46:f=95}h.push(String.fromCharCode(f))}
@@ -334,8 +332,9 @@ proc throttleCipher(d: var string, e: var string, f: array[64, char]) =
   =h[(h.indexOf(l)-h.indexOf(this[m])+m-32+f--)%h.length])},e.split(""))}
 
   non-generative: function(d,e,f){var h=f.length;d.forEach(function(l,m,n){this.push(n[m]=f[(f.indexOf(l)-f.indexOf(this[m])+m+h--)%f.length])},e.split(""))};
+
+  +m-32+f-- == +64 && +m+h-- == +64
   ]#
-  # NOTE: +m-32+f-- == +64 && +m+h-- == +64
   var
     c: char
     n: string
@@ -365,8 +364,10 @@ proc throttleSplice(d: var (string | seq[string]), e: int) =
 
 proc throttleSwap(d: var (string | seq[string]), e: int) =
   ## handles nested splice also
-  #[ swap: function(d,e){e=(e%d.length+d.length)%d.length;var f=d[0];d[0]=d[e];d[e]=f}
-    nested splice: function(d,e){e=(e%d.length+d.length)%d.length;d.splice(0,1,d.splice(e,1,d[0])[0])} ]#
+  #[ NOTE:
+  swap: function(d,e){e=(e%d.length+d.length)%d.length;var f=d[0];d[0]=d[e];d[e]=f}
+  nested splice: function(d,e){e=(e%d.length+d.length)%d.length;d.splice(0,1,d.splice(e,1,d[0])[0])}
+  ]#
   let z = throttleModFunction(d, e)
   swap(d[0], d[z])
 
@@ -445,7 +446,7 @@ proc parseThrottleArray(js: string): seq[string] =
 
 proc parseThrottlePlan(js: string): seq[seq[string]] =
   ## parse steps and indexes of throttle plan
-  # (c[4](c[52])...) --> @[@[4, 52],...]
+  # NOTE: (c[4](c[52])...) --> @[@[4, 52],...]
   let parts = js.captureBetween('{', '}', js.find("try"))
   for part in parts.split("),"):
     result.add(part.findAll(re"(?<=\[)(\d+)(?=\])"))
@@ -734,10 +735,10 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
 proc selectAudioStream(streams: JsonNode, itag: int): JsonNode =
   #[ NOTE: in tests, it seems youtube videos "without audio" still contain empty
     audio streams; furthermore aac streams seem to have a minimum bitrate as "empty"
-    streams still have non trivial bitrate and filesizes. ]#
-  # NOTE: "audio-less" video: https://www.youtube.com/watch?v=fW2e0CZjnFM
-  # NOTE: prefer opus
-  #[ NOTE: the majority of the time there are 4 audio streams:
+    streams still have non trivial bitrate and filesizes.
+  + "audio-less" video: https://www.youtube.com/watch?v=fW2e0CZjnFM
+  + prefer opus
+  + the majority of the time there are 4 audio streams:
     - itag 140 --> m4a
     - itag 251 --> opus
     + two low quality options (1 m4a and 1 opus) ]#
@@ -925,14 +926,14 @@ proc isolatePlaylist(youtubeUrl: string): string =
   result = youtubeUrl.captureBetween('=', '&', youtubeUrl.find("list="))
 
 
-proc giveReasons(Reason: JsonNode) =
-  if Reason.hasKey("runs"):
+proc giveReasons(reason: JsonNode) =
+  if reason.hasKey("runs"):
     stdout.write('<')
-    for run in Reason["runs"]:
+    for run in reason["runs"]:
       stdout.write(run["text"])
     echo '>'
-  elif Reason.hasKey("simpleText"):
-    echo '<', Reason["simpleText"].getStr().strip(chars={'"'}), '>'
+  elif reason.hasKey("simpleText"):
+    echo '<', reason["simpleText"].getStr().strip(chars={'"'}), '>'
 
 
 proc walkErrorMessage(playabilityStatus: JsonNode) =

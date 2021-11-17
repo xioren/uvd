@@ -89,9 +89,11 @@ proc main() =
           return
 
     if unknownUrl.contains("vimeo"):
-      vimeoDownload(unknownUrl, format, aItag, vItag, desiredLanguage, iAudio, iVideo, iThumb, iSubtitles, streams, debug)
+      vimeoDownload(unknownUrl, format, aItag, vItag, desiredLanguage,
+                    iAudio, iVideo, iThumb, iSubtitles, streams, debug)
     elif unknownUrl.contains("youtu"):
-      youtubeDownload(unknownUrl, format, aItag, vItag, desiredLanguage, iAudio, iVideo, iThumb, iSubtitles, streams, debug)
+      youtubeDownload(unknownUrl, format, aItag, vItag, desiredLanguage,
+                      iAudio, iVideo, iThumb, iSubtitles, streams, debug)
     else:
       echo "<invalid url>"
 
