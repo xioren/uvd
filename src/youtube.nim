@@ -1211,11 +1211,11 @@ proc getChannel(youtubeUrl: string) =
 
 
 proc youtubeDownload*(youtubeUrl, format, aItag, vItag, dLang: string,
-                      iAudio, iVideo, iThumb, iCaptions, streams, debugMode: bool) =
+                      iAudio, iVideo, iThumb, iSubtitles, streams, debugMode: bool) =
   includeAudio = iAudio
   includeVideo = iVideo
   includeThumb = iThumb
-  includeCaptions = iCaptions
+  includeCaptions = iSubtitles
   subtitlesLanguage = dLang
   audioFormat = format
   showStreams = streams

@@ -69,7 +69,7 @@ proc authorize() =
 ########################################################
 # subtitles
 ########################################################
-
+# NOTE: example video https://vimeo.com/358296408
 
 proc generateSubtitles(captions: JsonNode) =
   var textTrack = newJNull()
@@ -455,11 +455,11 @@ proc getProfile(vimeoUrl: string) =
 
 
 proc vimeoDownload*(vimeoUrl, format, aId, vId, dLang: string,
-                    iAudio, iVideo, iThumb, iCaptions, streams, debugMode: bool) =
+                    iAudio, iVideo, iThumb, iSubtitles, streams, debugMode: bool) =
   includeAudio = iAudio
   includeVideo = iVideo
   includeThumb = iThumb
-  includeCaptions = iCaptions
+  includeCaptions = iSubtitles
   subtitlesLanguage = dLang
   audioFormat = format
   showStreams = streams
