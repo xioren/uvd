@@ -75,6 +75,7 @@ proc generateSubtitles(captions: JsonNode) =
   var textTrack = newJNull()
 
   if subtitlesLanguage != "":
+    # NOTE: check if desired language exists
     for track in captions:
       if track["lang"].getStr() == subtitlesLanguage:
         textTrack = track
@@ -82,6 +83,7 @@ proc generateSubtitles(captions: JsonNode) =
     if textTrack.kind == JNull:
       echo "<subtitles not available natively in desired language>"
   else:
+    # NOTE: select default track
     textTrack = captions[0]
     subtitlesLanguage = textTrack["lang"].getStr()
 
@@ -316,7 +318,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
     echo "[debug] video id: ", videoId
 
   if vimeoUrl.contains("/config?"):
-    # NOTE: config url already obtained from getProfile
+    # NOTE: config url already obtained (calls from getProfile)
     (code, response) = doGet(vimeoUrl)
   else:
     if isUnlisted(vimeoUrl):
@@ -374,12 +376,6 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
         echo "[debug] default CDN: ", defaultCDN
         echo "[debug] CDN url: ", cdnUrl
 
-      if includeCaptions:
-        if configResponse["request"].hasKey("text_tracks"):
-          generateSubtitles(configResponse["request"]["text_tracks"])
-        else:
-          includeCaptions = false
-          echo "<video does not contain subtitles>"
 
       (code, response) = doGet(cdnUrl.dequery())
       let cdnResponse = parseJson(response)
@@ -394,6 +390,13 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
       if includeThumb:
         if not grab(video.thumbnail, video.title.addFileExt("jpeg"), forceDl=true).is2xx:
           echo "<failed to download thumbnail>"
+
+      if includeCaptions:
+        if configResponse["request"].hasKey("text_tracks"):
+          generateSubtitles(configResponse["request"]["text_tracks"])
+        else:
+          includeCaptions = false
+          echo "<video does not contain subtitles>"
 
       if includeVideo:
         reportStreamInfo(video.videoStream)

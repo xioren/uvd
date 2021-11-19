@@ -333,7 +333,7 @@ proc throttleCipher(d: var string, e: var string, f: array[64, char]) =
 
   non-generative: function(d,e,f){var h=f.length;d.forEach(function(l,m,n){this.push(n[m]=f[(f.indexOf(l)-f.indexOf(this[m])+m+h--)%f.length])},e.split(""))};
 
-  +m-32+f-- == +64 && +m+h-- == +64
+  +m-32+f-- == +64 && +m+h-- == +64 || +f.len
   ]#
   var
     c: char
@@ -644,6 +644,7 @@ proc extractDashInfo(dashManifestUrl, itag: string): tuple[baseUrl, segmentList:
 proc getBitrate(stream: JsonNode): int =
   # NOTE: this is done enough that it warrents its own proc
   if stream.hasKey("averageBitrate"):
+    # NOTE: not present in DASH streams metadata
     result = stream["averageBitrate"].getInt()
   else:
     result = stream["bitrate"].getInt()
@@ -770,6 +771,7 @@ proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime,
     result.size = formatSize(parseInt(stream["contentLength"].getStr()), includeSpace=true)
   else:
     # NOTE: estimate from bitrate
+    # WARNING: this is innacurate when the average bitrate it not available
     result.size = formatSize(int(rawBitrate * duration / 8), includeSpace=true)
 
 
@@ -786,6 +788,7 @@ proc getAudioStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime,
     result.size = formatSize(parseInt(stream["contentLength"].getStr()), includeSpace=true)
   else:
     # NOTE: estimate from bitrate
+    # WARNING: this is innacurate when the average bitrate it not available
     result.size = formatSize(int(rawBitrate * duration / 8), includeSpace=true)
 
 
@@ -794,11 +797,13 @@ proc newVideoStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
     # NOTE: should NEVER be JNull but go through the motions anyway for parity with newAudioStream
     (result.itag, result.mime, result.ext, result.size, result.quality, result.resolution, result.bitrate) = getVideoStreamInfo(stream, duration)
     result.filename = addFileExt(videoId, result.ext)
-    # QUESTION: are all dash segment streams denoted with "FORMAT_STREAM_TYPE_OTF"?
+    # QUESTION: are all DASH segment streams denoted with "FORMAT_STREAM_TYPE_OTF"?
     if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
-      # QUESTION: are dash urls or manifest urls ever ciphered?
+      # QUESTION: are DASH urls or manifest urls ever ciphered?
       var segmentList: string
       result.isDash = true
+      if debug:
+        echo "[debug] DASH manifest: ", dashManifestUrl
       (result.baseUrl, segmentList) = extractDashInfo(dashManifestUrl, $result.itag)
       result.urlSegments = produceUrlSegments(result.baseUrl, segmentList)
       # TODO: add len check here and fallback to stream[0] or similar if needed.
@@ -995,12 +1000,6 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         fullFilename = addFileExt(safeTitle, ".mkv")
         duration = parseInt(playerResponse["videoDetails"]["lengthSeconds"].getStr())
         thumbnailUrl = playerResponse["videoDetails"]["thumbnail"]["thumbnails"][^1]["url"].getStr().dequery().multiReplace(("_webp", ""), (".webp", ".jpg"))
-      if includeCaptions:
-        if playerResponse.hasKey("captions"):
-          generateSubtitles(playerResponse["captions"])
-        else:
-          includeCaptions = false
-          echo "<video does not contain subtitles>"
 
       if fileExists(fullFilename) and not showStreams:
         echo "<file exists> ", fullFilename
@@ -1049,6 +1048,13 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
           if not grab(video.thumbnail, video.title.addFileExt("jpeg"), forceDl=true).is2xx:
             echo "<failed to download thumbnail>"
 
+        if includeCaptions:
+          if playerResponse.hasKey("captions"):
+            generateSubtitles(playerResponse["captions"])
+          else:
+            includeCaptions = false
+            echo "<video does not contain subtitles>"
+
         var attempt: HttpCode
         if includeVideo:
           reportStreamInfo(video.videoStream)
@@ -1076,7 +1082,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         else:
           includeAudio = false
 
-        # QUESTION: should we return if either audio or video streams fail to download?
+        # QUESTION: should we abort if either audio or video streams fail to download?
         if includeAudio and includeVideo:
           joinStreams(video.videoStream.filename, video.audioStream.filename, fullFilename, subtitlesLanguage, includeCaptions)
         elif includeAudio and not includeVideo:
