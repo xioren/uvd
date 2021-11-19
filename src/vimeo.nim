@@ -389,7 +389,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
         return
 
       let video = newVideo(standardVimeoUrl, cdnUrl, thumbnailUrl, title, videoId, cdnResponse, aId, vId)
-      echo "[vimeo] ", video.title
+      echo "[vimeo] title: ", video.title
 
       if includeThumb:
         if not grab(video.thumbnail, video.title.addFileExt("jpeg"), forceDl=true).is2xx:

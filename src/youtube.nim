@@ -1043,7 +1043,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
           dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
         let video = newVideo(standardYoutubeUrl, dashManifestUrl, thumbnailUrl, title, videoId, duration,
                              playerResponse["streamingData"], aItag, vItag)
-        echo "[youtube] ", video.title
+        echo "[youtube] title: ", video.title
 
         if includeThumb:
           if not grab(video.thumbnail, video.title.addFileExt("jpeg"), forceDl=true).is2xx:

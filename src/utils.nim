@@ -28,7 +28,7 @@ func dequery*(url: string): string =
 func makeSafe*(title: string): string =
   ## make video titles suitable for filenames
   # NOTE: subjective
-  title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"), ("#", ""), ("\\", ""))
+  title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"), ("#", ""), ("\\", "-"))
 
 
 proc zFill*(this: string, width: int, fill = '0'): string =
@@ -39,12 +39,12 @@ proc zFill*(this: string, width: int, fill = '0'): string =
     result = fill.repeat(distance) & this
 
 
-proc index*[T](this: openarray[T], item: T): int =
-  ## provide index of item in d
-  for idx, i in this:
-    if i == item:
+proc indexOf*[T](that: openarray[T], this: T): int =
+  ## provide index of this in that
+  for idx, item in that:
+    if item == this:
       return idx
-  raise newException(IndexDefect, "$1 not in $2" % [$item, $this.type])
+  raise newException(IndexDefect, "$1 not in $2" % [$this, $that.type])
 
 
 proc joinStreams*(videoStream, audioStream, filename, subtitlesLanguage: string, includeCaptions: bool) =
