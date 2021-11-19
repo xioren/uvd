@@ -39,7 +39,7 @@ proc zFill*(this: string, width: int, fill = '0'): string =
     result = fill.repeat(distance) & this
 
 
-proc index[T]*(this: openarray[T], item: T): int =
+proc index*[T](this: openarray[T], item: T): int =
   ## provide index of item in d
   for idx, i in this:
     if i == item:

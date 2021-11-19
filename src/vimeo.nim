@@ -237,13 +237,13 @@ proc newVideo(vimeoUrl, cdnUrl, thumbnailUrl, title, videoId: string, cdnRespons
 
 
 proc reportStreamInfo(stream: Stream) =
-  echo "stream: ", stream.filename, '\n',
-       "id: ", stream.id, '\n',
-       "size: ", stream.size
+  echo "[info] stream: ", stream.filename, '\n',
+       "[info] id: ", stream.id, '\n',
+       "[info] size: ", stream.size
   if not stream.quality.isEmptyOrWhitespace():
-    echo "quality: ", stream.quality
-  echo "mime: ", stream.mime, '\n',
-       "segments: ", stream.urlSegments.len
+    echo "[info] quality: ", stream.quality
+  echo "[info] mime: ", stream.mime, '\n',
+       "[info] segments: ", stream.urlSegments.len
 
 
 proc reportStreams(cdnResponse: JsonNode) =
@@ -389,7 +389,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
         return
 
       let video = newVideo(standardVimeoUrl, cdnUrl, thumbnailUrl, title, videoId, cdnResponse, aId, vId)
-      echo "title: ", video.title
+      echo "[vimeo] ", video.title
 
       if includeThumb:
         if not grab(video.thumbnail, video.title.addFileExt("jpeg"), forceDl=true).is2xx:

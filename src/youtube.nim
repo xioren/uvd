@@ -852,13 +852,13 @@ proc newVideo(youtubeUrl, dashManifestUrl, thumbnailUrl, title, videoId: string,
 
 
 proc reportStreamInfo(stream: Stream) =
-  echo "stream: ", stream.filename, '\n',
-       "itag: ", stream.itag, '\n',
-       "size: ", stream.size, '\n',
-       "quality: ", stream.quality, '\n',
-       "mime: ", stream.mime
+  echo "[info] stream: ", stream.filename, '\n',
+       "[info] itag: ", stream.itag, '\n',
+       "[info] size: ", stream.size, '\n',
+       "[info] quality: ", stream.quality, '\n',
+       "[info] mime: ", stream.mime
   if stream.isDash:
-    echo "segments: ", stream.urlSegments.len
+    echo "[info] segments: ", stream.urlSegments.len
 
 
 proc reportStreams(playerResponse: JsonNode, duration: int) =
@@ -1043,7 +1043,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
           dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
         let video = newVideo(standardYoutubeUrl, dashManifestUrl, thumbnailUrl, title, videoId, duration,
                              playerResponse["streamingData"], aItag, vItag)
-        echo "title: ", video.title
+        echo "[youtube] ", video.title
 
         if includeThumb:
           if not grab(video.thumbnail, video.title.addFileExt("jpeg"), forceDl=true).is2xx:
