@@ -339,7 +339,7 @@ proc throttleCipher(d: var string, e: var string, f: array[64, char]) =
     c: char
     n: string
   for m, l in d:
-    c = f[(f.index(l) - f.index(e[m]) + 64) mod 64]
+    c = f[(f.indexOf(l) - f.indexOf(e[m]) + 64) mod 64]
     e.add(c)
     n.add(c)
   d = n
