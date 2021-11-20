@@ -703,10 +703,13 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
   result = newJNull()
 
   if itag == 0:
-    #[ NOTE: vp9 and h.264 are not directly comparable. h.264 requires higher
+    #[ NOTE: av1, vp9 and h.264 are not directly comparable. h.264 requires higher
        bitrate / larger filesize to obtain comparable quality to vp9. scenarios occur where lower resolution h.264
        streams are selected over vp9 streams because they have higher bitrate but are clearly not the most
-       desireable stream --> select highest resolution or av1 if bitrate > all or if vp9/h264 >= 0.8 --> vp9 else h.264 ]#
+       desireable stream. av1 is the defacto succesor to vp9 and thus more desireable.
+       --> select highest resolution or av1 if bitrate > all or if vp9/h264 >= 0.8 --> vp9 else h.264
+       avc1 == streaming version of h264
+      ]#
     let
       bestVP9 = selectVideoByBitrate(streams, "vp9")
       bestH264 = selectVideoByBitrate(streams, "avc1")
@@ -743,10 +746,8 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
     for stream in streams:
       if stream["itag"].getInt() == itag:
         result = stream
-        break
-
-  if result.kind == JNull:
-    # NOTE: there were no viable streams or the itag does not exist
+        return
+    # NOTE: the itag does not exist
     result = selectVideoStream(streams, 0)
 
 
@@ -767,7 +768,7 @@ proc selectAudioStream(streams: JsonNode, itag: int): JsonNode =
     for stream in streams:
       if stream["itag"].getInt() == itag:
         result = stream
-        break
+        return
 
   if result.kind == JNull:
     # NOTE: there were no opus streams or the itag does not exist
