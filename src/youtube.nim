@@ -722,13 +722,13 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
     if bestAV1.kind != JNull:
       av1Semiperimeter = bestAV1["width"].getInt() + bestAV1["height"].getInt()
 
-    if (h264Semiperimeter > vp9Semiperimeter and h264Semiperimeter > bestAV1) or
+    if (h264Semiperimeter > vp9Semiperimeter and h264Semiperimeter > av1Semiperimeter) or
        (bestVP9.kind == JNull and bestAV1.kind == JNull):
       result = bestH264
-    elif (vp9Semiperimeter > h264Semiperimeter and vp9Semiperimeter > bestAV1) or
+    elif (vp9Semiperimeter > h264Semiperimeter and vp9Semiperimeter > av1Semiperimeter) or
          (bestH264.kind == JNull and bestAV1.kind == JNull):
       result = bestVP9
-    elif (bestAV1 > h264Semiperimeter and bestAV1 > vp9Semiperimeter) or
+    elif (av1Semiperimeter > h264Semiperimeter and av1Semiperimeter > vp9Semiperimeter) or
          (bestH264.kind == JNull and bestVP9.kind == JNull):
       result = bestAV1
     else:

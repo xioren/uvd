@@ -310,7 +310,6 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
     configResponse: JsonNode
     response: string
     code: HttpCode
-    subtitles: string
   let videoId = extractId(vimeoUrl)
   var standardVimeoUrl = baseUrl & '/' & videoId
 
