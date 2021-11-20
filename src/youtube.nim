@@ -128,6 +128,7 @@ type
     itag: int
     mime: string
     ext: string
+    codec: string
     size: string
     quality: string
     resolution: string
@@ -643,21 +644,23 @@ proc extractDashInfo(dashManifestUrl, itag: string): tuple[baseUrl, segmentList:
 
 proc getBitrate(stream: JsonNode): int =
   # NOTE: this is done enough that it warrents its own proc
-  if stream.hasKey("averageBitrate"):
+  if stream.kind == JNull:
+    result = 0
+  elif stream.hasKey("averageBitrate"):
     # NOTE: not present in DASH streams metadata
     result = stream["averageBitrate"].getInt()
   else:
     result = stream["bitrate"].getInt()
 
 
-proc selectVideoByBitrate(streams: JsonNode, mime: string): JsonNode =
+proc selectVideoByBitrate(streams: JsonNode, codec: string): JsonNode =
   var
     thisBitrate, maxBitrate, idx, thisSemiperimeter, maxSemiperimeter: int
     select = -1
   result = newJNull()
 
   for stream in streams:
-    if stream["mimeType"].getStr().contains(mime):
+    if stream["mimeType"].getStr().contains(codec):
       thisSemiperimeter = stream["width"].getInt() + stream["height"].getInt()
       if thisSemiperimeter >= maxSemiperimeter:
         if thisSemiperimeter > maxSemiperimeter:
@@ -673,14 +676,14 @@ proc selectVideoByBitrate(streams: JsonNode, mime: string): JsonNode =
     result = streams[select]
 
 
-proc selectAudioByBitrate(streams: JsonNode, mime: string): JsonNode =
+proc selectAudioByBitrate(streams: JsonNode, codec: string): JsonNode =
   var
     thisBitrate, maxBitrate, idx: int
     select = -1
   result = newJNull()
 
   for stream in streams:
-    if stream["mimeType"].getStr().contains(mime):
+    if stream["mimeType"].getStr().contains(codec):
       thisBitrate = getBitrate(stream)
       if thisBitrate > maxBitrate:
         maxBitrate = thisBitrate
@@ -696,29 +699,43 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
     weight was 0.92; this is fine in most cases. however a strong vp9 bias is preferential so
     a value of 0.8 is used. ]#
   const threshold = 0.8
-  var vp9Semiperimeter, h264Semiperimeter: int
+  var vp9Semiperimeter, h264Semiperimeter, av1Semiperimeter: int
   result = newJNull()
 
   if itag == 0:
     #[ NOTE: vp9 and h.264 are not directly comparable. h.264 requires higher
        bitrate / larger filesize to obtain comparable quality to vp9. scenarios occur where lower resolution h.264
        streams are selected over vp9 streams because they have higher bitrate but are clearly not the most
-       desireable stream --> select highest resolution or if ratio >= 0.8 --> vp9 else h.264 ]#
+       desireable stream --> select highest resolution or av1 if bitrate > all or if vp9/h264 >= 0.8 --> vp9 else h.264 ]#
     let
-      bestVP9 = selectVideoByBitrate(streams, "video/webm")
-      bestH264 = selectVideoByBitrate(streams, "video/mp4")
+      bestVP9 = selectVideoByBitrate(streams, "vp9")
+      bestH264 = selectVideoByBitrate(streams, "avc1")
+      bestAV1 = selectVideoByBitrate(streams, "av01")
 
     if bestVP9.kind != JNull:
       vp9Semiperimeter = bestVP9["width"].getInt() + bestVP9["height"].getInt()
     if bestH264.kind != JNull:
       h264Semiperimeter = bestH264["width"].getInt() + bestH264["height"].getInt()
+    if bestAV1.kind != JNull:
+      av1Semiperimeter = bestAV1["width"].getInt() + bestAV1["height"].getInt()
 
-    if h264Semiperimeter > vp9Semiperimeter or bestVP9.kind == JNull:
+    if (h264Semiperimeter > vp9Semiperimeter and h264Semiperimeter > bestAV1) or
+       (bestVP9.kind == JNull and bestAV1.kind == JNull):
       result = bestH264
-    elif vp9Semiperimeter > h264Semiperimeter or bestH264.kind == JNull:
+    elif (vp9Semiperimeter > h264Semiperimeter and vp9Semiperimeter > bestAV1) or
+         (bestH264.kind == JNull and bestAV1.kind == JNull):
       result = bestVP9
+    elif (bestAV1 > h264Semiperimeter and bestAV1 > vp9Semiperimeter) or
+         (bestH264.kind == JNull and bestVP9.kind == JNull):
+      result = bestAV1
     else:
-      if getBitrate(bestVP9) / getBitrate(bestH264) >= threshold:
+      let
+        h264Bitrate = getBitrate(bestH264)
+        vp9Bitrate = getBitrate(bestVP9)
+        av1Bitrate = getBitrate(bestAV1)
+      if av1Bitrate >= vp9Bitrate and av1Bitrate >= h264Bitrate:
+        result = bestAV1
+      elif vp9Bitrate / h264Bitrate >= threshold:
         result = bestVP9
       else:
         result = bestH264
@@ -745,7 +762,7 @@ proc selectAudioStream(streams: JsonNode, itag: int): JsonNode =
     + two low quality options (1 m4a and 1 opus) ]#
   result = newJNull()
   if itag == 0:
-    result = selectAudioByBitrate(streams, "audio/webm")
+    result = selectAudioByBitrate(streams, "opus")
   else:
     for stream in streams:
       if stream["itag"].getInt() == itag:
@@ -754,12 +771,14 @@ proc selectAudioStream(streams: JsonNode, itag: int): JsonNode =
 
   if result.kind == JNull:
     # NOTE: there were no opus streams or the itag does not exist
-    result = selectAudioByBitrate(streams, "audio/mp4")
+    result = selectAudioByBitrate(streams, "mp4a")
 
 
-proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime, ext, size, qlt, resolution, bitrate: string] =
+proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime, codec, ext, size, qlt, resolution, bitrate: string] =
   result.itag = stream["itag"].getInt()
-  result.mime = stream["mimeType"].getStr().split(";")[0]
+  let mimeAndCodec = stream["mimeType"].getStr().split("; codecs=\"")
+  result.mime = mimeAndCodec[0]
+  result.codec = mimeAndCodec[1].strip(chars={'"'})
   result.ext = extensions[result.mime]
   result.qlt = stream["qualityLabel"].getStr()
   result.resolution = $stream["width"].getInt() & 'x' & $stream["height"].getInt()
@@ -775,9 +794,11 @@ proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime,
     result.size = formatSize(int(rawBitrate * duration / 8), includeSpace=true)
 
 
-proc getAudioStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime, ext, size, qlt, bitrate: string] =
+proc getAudioStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime, codec, ext, size, qlt, bitrate: string] =
   result.itag = stream["itag"].getInt()
-  result.mime = stream["mimeType"].getStr().split(";")[0]
+  let mimeAndCodec = stream["mimeType"].getStr().split("; codecs=\"")
+  result.mime = mimeAndCodec[0]
+  result.codec = mimeAndCodec[1].strip(chars={'"'})
   result.ext = extensions[result.mime]
   result.qlt = stream["audioQuality"].getStr().replace("AUDIO_QUALITY_").toLowerAscii()
 
@@ -795,7 +816,7 @@ proc getAudioStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime,
 proc newVideoStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int, stream: JsonNode): Stream =
   if stream.kind != JNull:
     # NOTE: should NEVER be JNull but go through the motions anyway for parity with newAudioStream
-    (result.itag, result.mime, result.ext, result.size, result.quality, result.resolution, result.bitrate) = getVideoStreamInfo(stream, duration)
+    (result.itag, result.mime, result.codec, result.ext, result.size, result.quality, result.resolution, result.bitrate) = getVideoStreamInfo(stream, duration)
     result.filename = addFileExt(videoId, result.ext)
     # QUESTION: are all DASH segment streams denoted with "FORMAT_STREAM_TYPE_OTF"?
     if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
@@ -815,7 +836,7 @@ proc newVideoStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
 
 proc newAudioStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int, stream: JsonNode): Stream =
   if stream.kind != JNull:
-    (result.itag, result.mime, result.ext, result.size, result.quality, result.bitrate) = getAudioStreamInfo(stream, duration)
+    (result.itag, result.mime, result.codec, result.ext, result.size, result.quality, result.bitrate) = getAudioStreamInfo(stream, duration)
     result.filename = addFileExt(videoId, result.ext)
     # QUESTION: are all dash segment stream denoted with "FORMAT_STREAM_TYPE_OTF"?
     if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
@@ -861,7 +882,8 @@ proc reportStreamInfo(stream: Stream) =
        "[info] itag: ", stream.itag, '\n',
        "[info] size: ", stream.size, '\n',
        "[info] quality: ", stream.quality, '\n',
-       "[info] mime: ", stream.mime
+       "[info] mime: ", stream.mime, '\n',
+       "[info] codec: ", stream.codec
   if stream.isDash:
     echo "[info] segments: ", stream.urlSegments.len
 
@@ -869,25 +891,25 @@ proc reportStreamInfo(stream: Stream) =
 proc reportStreams(playerResponse: JsonNode, duration: int) =
   var
     itag: int
-    mime, ext, size, quality, resolution, bitrate: string
+    mime, codec, ext, size, quality, resolution, bitrate: string
 
   if playerResponse["streamingData"].hasKey("adaptiveFormats"):
     for item in playerResponse["streamingData"]["adaptiveFormats"]:
       if item.hasKey("audioQuality"):
-        (itag, mime, ext, size, quality, bitrate) = getAudioStreamInfo(item, duration)
+        (itag, mime, codec, ext, size, quality, bitrate) = getAudioStreamInfo(item, duration)
         echo "[audio]", " itag: ", itag, " quality: ", quality,
-             " bitrate: ", bitrate, " mime: ", mime, " size: ", size
+             " bitrate: ", bitrate, " mime: ", mime, " codec: ", codec, " size: ", size
       else:
-        (itag, mime, ext, size, quality, resolution, bitrate) = getVideoStreamInfo(item, duration)
+        (itag, mime, codec, ext, size, quality, resolution, bitrate) = getVideoStreamInfo(item, duration)
         echo "[video]", " itag: ", itag, " quality: ", quality,
              " resolution: ", resolution, " bitrate: ", bitrate, " mime: ", mime,
-             " size: ", size
+             " codec: ", codec, " size: ", size
   if playerResponse["streamingData"].hasKey("formats"):
     for n in countdown(playerResponse["streamingData"]["formats"].len.pred, 0):
-      (itag, mime, ext, size, quality, resolution, bitrate) = getVideoStreamInfo(playerResponse["streamingData"]["formats"][n], duration)
+      (itag, mime, codec, ext, size, quality, resolution, bitrate) = getVideoStreamInfo(playerResponse["streamingData"]["formats"][n], duration)
       echo "[combined]", " itag: ", itag, " quality: ", quality,
            " resolution: ", resolution, " bitrate: ", bitrate, " mime: ", mime,
-           " size: ", size
+           " codec: ", codec, " size: ", size
 
 
 ########################################################
