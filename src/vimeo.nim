@@ -46,7 +46,7 @@ const
 
 var
   debug: bool
-  includeAudio, includeVideo, includeThumb, includeCaptions: bool
+  includeAudio, includeVideo, includeThumb, includeSubtitles: bool
   audioFormat: string
   subtitlesLanguage: string
   showStreams: bool
@@ -92,11 +92,11 @@ proc generateSubtitles(captions: JsonNode) =
 
     let (code, response) = doGet(textTrackUrl)
     if code.is2xx:
-      includeCaptions = save(response, addFileExt(subtitlesLanguage, "srt"))
+      includeSubtitles = save(response, addFileExt(subtitlesLanguage, "srt"))
     else:
       echo "<error downloading subtitles>"
   else:
-    includeCaptions = false
+    includeSubtitles = false
     echo "<error obtaining subtitles>"
 
 
@@ -390,11 +390,11 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
         if not grab(video.thumbnail, video.title.addFileExt("jpeg"), forceDl=true).is2xx:
           echo "<failed to download thumbnail>"
 
-      if includeCaptions:
+      if includeSubtitles:
         if configResponse["request"].hasKey("text_tracks"):
           generateSubtitles(configResponse["request"]["text_tracks"])
         else:
-          includeCaptions = false
+          includeSubtitles = false
           echo "<video does not contain subtitles>"
 
       if includeVideo:
@@ -414,7 +414,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
         includeAudio = false
 
       if includeAudio and includeVideo:
-        joinStreams(video.videoStream.filename, video.audioStream.filename, fullFilename, subtitlesLanguage, includeCaptions)
+        joinStreams(video.videoStream.filename, video.audioStream.filename, fullFilename, subtitlesLanguage, includeSubtitles)
       elif includeAudio and not includeVideo:
         convertAudio(video.audioStream.filename, safeTitle, audioFormat)
       elif includeVideo:
@@ -462,7 +462,7 @@ proc vimeoDownload*(vimeoUrl, format, aId, vId, dLang: string,
   includeAudio = iAudio
   includeVideo = iVideo
   includeThumb = iThumb
-  includeCaptions = iSubtitles
+  includeSubtitles = iSubtitles
   subtitlesLanguage = dLang
   audioFormat = format
   showStreams = streams

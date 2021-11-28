@@ -98,6 +98,7 @@ proc clearProgress() =
 
 
 proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
+  ## for direct streams
   const barWidth = 50
   let
     bar = '#'.repeat(floor(progress.int / total.int * barWidth).int)
@@ -117,6 +118,7 @@ proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
 
 
 proc onProgressChangedMulti(total, progress, speed: BiggestInt) {.async.} =
+  ## for segmented streams (e.g. DASH)
   stdout.eraseLine()
   stdout.write("size: ", formatSize(total.int, includeSpace=true),
                " segment: ", currentSegment, " of ", totalSegments)

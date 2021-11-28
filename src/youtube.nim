@@ -3,14 +3,15 @@ import std/[json, uri, algorithm, sequtils, parseutils]
 
 import utils
 
-#[ NOTE: age gate tier 1: https://www.youtube.com/watch?v=HtVdAasjOgU
-  NOTE: age gate tier 2: https://www.youtube.com/watch?v=Tq92D6wQ1mg
-  NOTE: age gate tier 3: https://www.youtube.com/watch?v=7iAQCPmpSUI
-  NOTE: age gate tier 4: https://www.youtube.com/watch?v=Cr381pDsSsA ]#
+#[ NOTE:
+  age gate tier 1: https://www.youtube.com/watch?v=HtVdAasjOgU
+  age gate tier 2: https://www.youtube.com/watch?v=Tq92D6wQ1mg
+  age gate tier 3: https://www.youtube.com/watch?v=7iAQCPmpSUI
+  age gate tier 4: https://www.youtube.com/watch?v=Cr381pDsSsA ]#
 
 
 # NOTE: clientVersion can be found in contextUrl response (along with api key)
-# QUESTION: can language be set programatically?
+# QUESTION: can language (hl) be set programatically?
 const
   playerContext = """{
     "context": {
@@ -181,7 +182,7 @@ let date = now().format("yyyyMMdd")
 var
   debug: bool
   apiLocale: string
-  includeAudio, includeVideo, includeThumb, includeCaptions: bool
+  includeAudio, includeVideo, includeThumb, includeSubtitles: bool
   subtitlesLanguage: string
   audioFormat: string
   showStreams: bool
@@ -230,7 +231,7 @@ proc asrToSrt(xml: string): string =
   let
     startTimes = xml.findAll(re"""(?<=start=")[^"]+""")
     durations = xml.findAll(re"""(?<=dur=")[^"]+""")
-    messages = xml.findAll(re"""(?<=>)[^<>]+(?=</text>)""")
+    text = xml.findAll(re"""(?<=>)[^<>]+(?=</text>)""")
 
 
   for idx in 0..startTimes.high:
@@ -241,11 +242,13 @@ proc asrToSrt(xml: string): string =
       endPoint = $(parseFloat(startPoint) + parseFloat(duration))
 
     if idx < startTimes.high:
+      # NOTE: choose min between enpoint of current text and startpoint of next text to eliminate crowding
+      # i.e. only one subtitle entry on screen at a time
       result.add(formatTime(startPoint) & " --> " & formatTime($min(parseFloat(endPoint), parseFloat(startTimes[idx.succ]))) & '\n')
-      result.add(messages[idx].replace("&amp;#39;", "'") & "\n\n")
+      result.add(text[idx].replace("&amp;#39;", "'") & "\n\n")
     else:
       result.add(formatTime(startPoint) & " --> " & formatTime(endPoint) & '\n')
-      result.add(messages[idx].replace("&amp;#39;", "'"))
+      result.add(text[idx].replace("&amp;#39;", "'"))
 
 
 proc generateSubtitles(captions: JsonNode) =
@@ -269,7 +272,7 @@ proc generateSubtitles(captions: JsonNode) =
       defaultCaptionTrackIndex = captions["playerCaptionsTracklistRenderer"]["audioTracks"][defaultAudioTrackIndex]["defaultCaptionTrackIndex"].getInt()
 
     if subtitlesLanguage == "":
-      # NOTE: select default caption track
+      # NOTE: subtitles desired but no language specified --> select default caption track
       captionTrack = captions["playerCaptionsTracklistRenderer"]["captionTracks"][defaultCaptionTrackIndex]
       subtitlesLanguage = captionTrack["languageCode"].getStr()
     else:
@@ -292,12 +295,13 @@ proc generateSubtitles(captions: JsonNode) =
 
     let (code, response) = doGet(captionTrackUrl)
     if code.is2xx:
-      includeCaptions = save(asrToSrt(response), addFileExt(subtitlesLanguage, "srt"))
+      includeSubtitles = save(asrToSrt(response), addFileExt(subtitlesLanguage, "srt"))
     else:
       echo "<error downloading subtitles>"
   else:
-    includeCaptions = false
+    includeSubtitles = false
     echo "<error obtaining subtitles>"
+
 
 ########################################################
 # throttle logic
@@ -347,8 +351,10 @@ proc throttleCipher(d: var string, e: var string, f: array[64, char]) =
 
 
 proc throttleReverse(d: var (string | seq[string])) =
-  # NOTE: function(d){d.reverse()};
-  # NOTE: function(d){for(var e=d.length;e;)d.push(d.splice(--e,1)[0])};
+  #[ NOTE:
+    function(d){d.reverse()};
+    function(d){for(var e=d.length;e;)d.push(d.splice(--e,1)[0])};
+  ]#
   d.reverse()
 
 
@@ -366,8 +372,8 @@ proc throttleSplice(d: var (string | seq[string]), e: int) =
 proc throttleSwap(d: var (string | seq[string]), e: int) =
   ## handles nested splice also
   #[ NOTE:
-  swap: function(d,e){e=(e%d.length+d.length)%d.length;var f=d[0];d[0]=d[e];d[e]=f}
-  nested splice: function(d,e){e=(e%d.length+d.length)%d.length;d.splice(0,1,d.splice(e,1,d[0])[0])}
+    swap: function(d,e){e=(e%d.length+d.length)%d.length;var f=d[0];d[0]=d[e];d[e]=f}
+    nested splice: function(d,e){e=(e%d.length+d.length)%d.length;d.splice(0,1,d.splice(e,1,d[0])[0])}
   ]#
   let z = throttleModFunction(d, e)
   swap(d[0], d[z])
@@ -383,7 +389,7 @@ proc extractThrottleFunctionName(js: string): string =
 
 
 proc extractThrottleCode(mainFunc, js: string): string =
-  ## extract throttle code block block from base.js
+  ## extract throttle code block from base.js
   # NOTE: mainThrottleFunction=function(a){.....}
   var match: array[1, string]
   let pattern = re("($1=function\\(\\w\\){.+?})(?=;)" % mainFunc, flags={reDotAll})
@@ -453,12 +459,12 @@ proc parseThrottlePlan(js: string): seq[seq[string]] =
     result.add(part.findAll(re"(?<=\[)(\d+)(?=\])"))
 
 
-proc calculateN(n: string): string =
+proc transformN(initialN: string): string =
   ## calculate new n throttle value
   var
     tempArray = throttleArray
     firstArg, secondArg, currFunc: string
-    initialN = n
+    n = initialN
     k, e: string
 
   for step in throttlePlan:
@@ -489,36 +495,36 @@ proc calculateN(n: string): string =
         doAssert false
     else:
       if currFunc == "throttleUnshift" or currFunc == "throttlePrepend":
-        throttleUnshift(initialN, parseInt(secondArg))
+        throttleUnshift(n, parseInt(secondArg))
       elif currFunc == "throttleCipherForward":
-        throttleCipher(initialN, secondArg, forwardH)
+        throttleCipher(n, secondArg, forwardH)
       elif currFunc == "throttleCipherReverse":
-        throttleCipher(initialN, secondArg, reverseH)
+        throttleCipher(n, secondArg, reverseH)
       elif currFunc == "throttleCipherGeneric":
         let thirdArg = tempArray[parseInt(step[3])]
         if thirdArg == "throttleCipherForward":
-          throttleCipher(initialN, secondArg, forwardH)
+          throttleCipher(n, secondArg, forwardH)
         else:
-          throttleCipher(initialN, secondArg, reverseH)
+          throttleCipher(n, secondArg, reverseH)
       elif currFunc == "throttleReverse":
-        throttleReverse(initialN)
+        throttleReverse(n)
       elif currFunc == "throttlePush":
-        throttlePush(initialN, secondArg)
+        throttlePush(n, secondArg)
       elif currFunc == "throttleSwap" or currFunc == "throttleNestedSplice":
-        throttleSwap(initialN, parseInt(secondArg))
+        throttleSwap(n, parseInt(secondArg))
       elif currFunc == "throttleSplice":
-        throttleSplice(initialN, parseInt(secondArg))
+        throttleSplice(n, parseInt(secondArg))
       else:
         doAssert false
 
-  result = initialN
+  result = n
 
 
 ########################################################
 # cipher logic
 ########################################################
-# NOTE: thanks to https://github.com/pytube/pytube/blob/master/pytube/cipher.py
-# as a reference
+#[ NOTE: thanks to https://github.com/pytube/pytube/blob/master/pytube/cipher.py
+  as a reference ]#
 
 proc getParts(cipherSignature: string): tuple[url, sc, s: string] =
   ## break cipher string into (url, sc, s)
@@ -605,7 +611,7 @@ proc getSigCipherUrl(signatureCipher: string): string =
 
 
 proc urlOrCipher(stream: JsonNode): string =
-  ## produce stream url, deciphering if necessary
+  ## produce stream url, deciphering if necessary and tranform n throttle string
   if stream.hasKey("url"):
     result = stream["url"].getStr()
   elif stream.hasKey("signatureCipher"):
@@ -615,13 +621,13 @@ proc urlOrCipher(stream: JsonNode): string =
   if nTransforms.haskey(n):
     result = result.replace(n, nTransforms[n])
   else:
-    let calculatedN = calculateN(n)
-    nTransforms[n] = calculatedN
-    if n != calculatedN:
-      result = result.replace(n, calculatedN)
+    let transformedN = transformN(n)
+    nTransforms[n] = transformedN
+    if n != transformedN:
+      result = result.replace(n, transformedN)
     if debug:
       echo "[debug] initial n: ", n
-      echo "[debug] transformed n: ", calculatedN
+      echo "[debug] transformed n: ", transformedN
 
   if debug:
     echo "[debug] download url: ", result
@@ -736,6 +742,7 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
         h264Bitrate = getBitrate(bestH264)
         vp9Bitrate = getBitrate(bestVP9)
         av1Bitrate = getBitrate(bestAV1)
+
       if av1Bitrate >= vp9Bitrate and av1Bitrate >= h264Bitrate:
         result = bestAV1
       elif vp9Bitrate / h264Bitrate >= threshold:
@@ -745,8 +752,7 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
   else:
     for stream in streams:
       if stream["itag"].getInt() == itag:
-        result = stream
-        return
+        return stream
     # NOTE: the itag does not exist
     result = selectVideoStream(streams, 0)
 
@@ -767,8 +773,7 @@ proc selectAudioStream(streams: JsonNode, itag: int): JsonNode =
   else:
     for stream in streams:
       if stream["itag"].getInt() == itag:
-        result = stream
-        return
+        return stream
 
   if result.kind == JNull:
     # NOTE: there were no opus streams or the itag does not exist
@@ -858,8 +863,7 @@ proc inStreams(itag: int, streams:JsonNode): bool =
   else:
     for stream in streams:
       if stream["itag"].getInt() == itag:
-        result = true
-        break
+        return true
 
 
 proc newVideo(youtubeUrl, dashManifestUrl, thumbnailUrl, title, videoId: string, duration: int,
@@ -966,7 +970,7 @@ proc giveReasons(reason: JsonNode) =
 
 proc walkErrorMessage(playabilityStatus: JsonNode) =
   #[ FIXME: some (currently playing) live streams have error messages that do not fall in any of these catagories
-    the the program exits with no output ]#
+    and the program exits with no output ]#
   if playabilityStatus.hasKey("reason"):
     echo '<', playabilityStatus["reason"].getStr().strip(chars={'"'}), '>'
   elif playabilityStatus.hasKey("messages"):
@@ -1028,6 +1032,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         echo "<file exists> ", fullFilename
       else:
         # NOTE: age gate and unplayable video handling
+        # QUESTION: put this in a procedure?
         if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
           echo "[attempting age-gate bypass tier 1]"
           (code, response) = doPost(playerUrl, playerBypassContextTier1 % [videoId, sigTimeStamp, date])
@@ -1071,11 +1076,11 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
           if not grab(video.thumbnail, video.title.addFileExt("jpeg"), forceDl=true).is2xx:
             echo "<failed to download thumbnail>"
 
-        if includeCaptions:
+        if includeSubtitles:
           if playerResponse.hasKey("captions"):
             generateSubtitles(playerResponse["captions"])
           else:
-            includeCaptions = false
+            includeSubtitles = false
             echo "<video does not contain subtitles>"
 
         var attempt: HttpCode
@@ -1107,7 +1112,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
 
         # QUESTION: should we abort if either audio or video streams fail to download?
         if includeAudio and includeVideo:
-          joinStreams(video.videoStream.filename, video.audioStream.filename, fullFilename, subtitlesLanguage, includeCaptions)
+          joinStreams(video.videoStream.filename, video.audioStream.filename, fullFilename, subtitlesLanguage, includeSubtitles)
         elif includeAudio and not includeVideo:
           convertAudio(video.audioStream.filename, safeTitle, audioFormat)
         elif includeVideo:
@@ -1246,7 +1251,7 @@ proc youtubeDownload*(youtubeUrl, format, aItag, vItag, dLang: string,
   includeAudio = iAudio
   includeVideo = iVideo
   includeThumb = iThumb
-  includeCaptions = iSubtitles
+  includeSubtitles = iSubtitles
   subtitlesLanguage = dLang
   audioFormat = format
   showStreams = streams
