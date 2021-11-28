@@ -295,7 +295,11 @@ proc extractHash(vimeoUrl: string): string =
 
 proc isUnlisted(vimeoUrl: string): bool =
   ## check for unlisted hash in vimeo url
-  let slug = vimeoUrl.captureBetween('/', '?', vimeoUrl.find(".com/"))
+  var slug: string
+  if vimeoUrl.contains("/video/"):
+    slug = vimeoUrl.captureBetween('/', '?', vimeoUrl.find("video/"))
+  else:
+    slug = vimeoUrl.captureBetween('/', '?', vimeoUrl.find(".com/"))
   if slug.count('/') > 0:
     result = true
 
@@ -351,7 +355,8 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
       else:
         (code, response) = doGet(signedConfigUrl.replace("\\"))
     elif not code.is2xx:
-      echo '<', code, '>', '\n', "<failed to obtain video metadata>"
+      configResponse = parseJson(response)
+      echo '<', configResponse["message"].getStr().strip(chars={'"'}), '>', '\n', "<failed to obtain video metadata>"
       return
 
   configResponse = parseJson(response)
