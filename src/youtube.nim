@@ -7,7 +7,8 @@ import utils
   age gate tier 1: https://www.youtube.com/watch?v=HtVdAasjOgU
   age gate tier 2: https://www.youtube.com/watch?v=Tq92D6wQ1mg
   age gate tier 3: https://www.youtube.com/watch?v=7iAQCPmpSUI
-  age gate tier 4: https://www.youtube.com/watch?v=Cr381pDsSsA ]#
+  age gate tier 4: https://www.youtube.com/watch?v=Cr381pDsSsA
+]#
 
 
 # NOTE: clientVersion can be found in contextUrl response (along with api key)
@@ -847,6 +848,7 @@ proc newAudioStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
     # QUESTION: are all dash segment stream denoted with "FORMAT_STREAM_TYPE_OTF"?
     if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
       # QUESTION: are dash urls or manifest urls ever ciphered?
+      # QUESTION: are audio streams ever FORMAT_STREAM_TYPE_OTF?
       var segmentList: string
       result.isDash = true
       (result.baseUrl, segmentList) = extractDashInfo(dashManifestUrl, $result.itag)
@@ -899,6 +901,7 @@ proc reportStreams(playerResponse: JsonNode, duration: int) =
     mime, codec, ext, size, quality, resolution, bitrate: string
 
   if playerResponse["streamingData"].hasKey("adaptiveFormats"):
+    # NOTE: streaming formats
     for item in playerResponse["streamingData"]["adaptiveFormats"]:
       if item.hasKey("audioQuality"):
         (itag, mime, codec, ext, size, quality, bitrate) = getAudioStreamInfo(item, duration)
@@ -909,7 +912,9 @@ proc reportStreams(playerResponse: JsonNode, duration: int) =
         echo "[video]", " itag: ", itag, " quality: ", quality,
              " resolution: ", resolution, " bitrate: ", bitrate, " mime: ", mime,
              " codec: ", codec, " size: ", size
+
   if playerResponse["streamingData"].hasKey("formats"):
+    # NOTE: youtube premium download formats
     for n in countdown(playerResponse["streamingData"]["formats"].len.pred, 0):
       (itag, mime, codec, ext, size, quality, resolution, bitrate) = getVideoStreamInfo(playerResponse["streamingData"]["formats"][n], duration)
       echo "[combined]", " itag: ", itag, " quality: ", quality,
@@ -1003,7 +1008,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
   if debug:
     echo "[debug] video id: ", videoId
 
-  # NOTE: make initial request to get base.js version and timestamp
+  # NOTE: make initial request to get base.js version, timestamp, and api locale
   (code, response) = doGet(standardYoutubeUrl)
   if code.is2xx:
     apiLocale = response.captureBetween('\"', '\"', response.find("GAPI_LOCALE\":") + 12)
@@ -1029,10 +1034,12 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         thumbnailUrl = playerResponse["videoDetails"]["thumbnail"]["thumbnails"][^1]["url"].getStr().dequery().multiReplace(("_webp", ""), (".webp", ".jpg"))
 
       if fileExists(fullFilename) and not showStreams:
+        # TODO: solution needed to not skip different videos with same title
+        # IDEA: youtube-dl appends video id to filename
         echo "<file exists> ", fullFilename
       else:
         # NOTE: age gate and unplayable video handling
-        # QUESTION: put this in a procedure?
+        # OPTIMIZE: redundant code here....put this in a procedure?
         if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
           echo "[attempting age-gate bypass tier 1]"
           (code, response) = doPost(playerUrl, playerBypassContextTier1 % [videoId, sigTimeStamp, date])
@@ -1159,7 +1166,7 @@ proc getChannel(youtubeUrl: string) =
     channelResponse: JsonNode
     response: string
     code: HttpCode
-    token, lastToken: string
+    thisToken, lastToken: string
     videoIds: seq[string]
     playlistIds: seq[string]
     tabIdx = 1
@@ -1175,22 +1182,22 @@ proc getChannel(youtubeUrl: string) =
       else:
         for item in section["itemSectionRenderer"]["contents"][0]["gridRenderer"]["items"]:
           if item.hasKey("continuationItemRenderer"):
-            token = item["continuationItemRenderer"]["continuationEndpoint"]["continuationCommand"]["token"].getStr()
-            lastToken = token
+            thisToken = item["continuationItemRenderer"]["continuationEndpoint"]["continuationCommand"]["token"].getStr()
+            lastToken = thisToken
 
             while true:
-              (code, response) = doPost(browseUrl, browseContinueContext % [channel, token, date])
+              (code, response) = doPost(browseUrl, browseContinueContext % [channel, thisToken, date])
               if code.is2xx:
                 channelResponse = parseJson(response)
                 for continuationItem in channelResponse["onResponseReceivedActions"][0]["appendContinuationItemsAction"]["continuationItems"]:
                   if continuationItem.hasKey("continuationItemRenderer"):
-                    token = continuationItem["continuationItemRenderer"]["continuationEndpoint"]["continuationCommand"]["token"].getStr()
+                    thisToken = continuationItem["continuationItemRenderer"]["continuationEndpoint"]["continuationCommand"]["token"].getStr()
                   else:
                     yield continuationItem["grid" & capRenderer & "Renderer"][renderer & "Id"].getStr()
-                if token == lastToken:
+                if thisToken == lastToken:
                   break
                 else:
-                  lastToken = token
+                  lastToken = thisToken
               else:
                 echo "<failed to obtain channel metadata>"
           else:
@@ -1207,7 +1214,7 @@ proc getChannel(youtubeUrl: string) =
       inc tabIdx
 
     if title.endsWith(" - Topic"):
-      # NOTE: for now only get playlists for topic channels
+      # NOTE: for now only get playlists for topic channels (youtube music)
       (code, response) = doPost(browseUrl, browseContext % [channel, date, playlistsTab])
       if code.is2xx:
         echo "[collecting playlists]"
