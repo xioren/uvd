@@ -136,6 +136,8 @@ proc doPost*(url, body: string): tuple[httpcode: HttpCode, body: string] =
     result.body = response.body
   except Exception as e:
     echo '<', e.msg, '>'
+  finally:
+    client.close()
 
 
 proc doGet*(url: string): tuple[httpcode: HttpCode, body: string] =
@@ -146,6 +148,8 @@ proc doGet*(url: string): tuple[httpcode: HttpCode, body: string] =
     result.body = response.body
   except Exception as e:
     echo '<', e.msg, '>'
+  finally:
+    client.close()
 
 
 proc download(url, filepath: string): Future[HttpCode] {.async.} =
