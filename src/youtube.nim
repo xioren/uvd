@@ -1029,13 +1029,11 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
       let
         title = playerResponse["videoDetails"]["title"].getStr()
         safeTitle = makeSafe(title)
-        fullFilename = addFileExt(safeTitle, ".mkv")
+        fullFilename = addFileExt(safeTitle & " [" & videoId & ']', ".mkv")
         duration = parseInt(playerResponse["videoDetails"]["lengthSeconds"].getStr())
         thumbnailUrl = playerResponse["videoDetails"]["thumbnail"]["thumbnails"][^1]["url"].getStr().dequery().multiReplace(("_webp", ""), (".webp", ".jpg"))
 
       if fileExists(fullFilename) and not showStreams:
-        # TODO: solution needed to not skip different videos with same title
-        # IDEA: youtube-dl appends video id to filename
         echo "<file exists> ", fullFilename
       else:
         # NOTE: age gate and unplayable video handling
