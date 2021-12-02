@@ -17,7 +17,7 @@ var
   currentSegment, totalSegments: int
   # HACK: a not ideal solution to erroneosly clearing terminal when no progress was made (e.g. 403 forbidden)
   madeProgress: bool
-  headers* = @[("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.115 Safari/537.36"),
+  headers* = @[("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.45 Safari/537.36"),
                ("accept", "*/*")]
 
 
@@ -98,7 +98,7 @@ proc clearProgress() =
 
 
 proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
-  ## for direct streams
+  ## for contiguous streams
   const barWidth = 50
   let
     bar = '#'.repeat(floor(progress.int / total.int * barWidth).int)
@@ -165,9 +165,9 @@ proc download(url, filepath: string): Future[HttpCode] {.async.} =
   except Exception as e:
     echo '<', e.msg, '>'
   finally:
-    clearProgress()
     file.close()
     client.close()
+    clearProgress()
 
 
 proc download(parts: seq[string], filepath: string): Future[HttpCode] {.async.} =
@@ -187,10 +187,10 @@ proc download(parts: seq[string], filepath: string): Future[HttpCode] {.async.} 
   except Exception as e:
     echo '<', e.msg, '>'
   finally:
-    stdout.eraseLine()
-    madeProgress = false
     file.close()
     client.close()
+    stdout.eraseLine()
+    madeProgress = false
 
 
 proc save*(content, filepath: string): bool =

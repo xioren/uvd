@@ -317,8 +317,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
   let videoId = extractId(vimeoUrl)
   var standardVimeoUrl = baseUrl & '/' & videoId
 
-  if debug:
-    echo "[debug] video id: ", videoId
+  echo "[vimeo] video id: ", videoId
 
   if vimeoUrl.contains("/config?"):
     # NOTE: config url already obtained (calls from getProfile)
@@ -389,7 +388,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
         return
 
       let video = newVideo(standardVimeoUrl, cdnUrl, thumbnailUrl, title, videoId, cdnResponse, aId, vId)
-      echo "[vimeo] title: ", video.title
+      echo "[info] title: ", video.title
 
       if includeThumb:
         if not grab(video.thumbnail, video.title.addFileExt("jpeg"), forceDl=true).is2xx:

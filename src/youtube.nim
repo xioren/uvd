@@ -1005,8 +1005,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
     dashManifestUrl: string
     captions: string
 
-  if debug:
-    echo "[debug] video id: ", videoId
+  echo "[youtube] ", videoId
 
   # NOTE: make initial request to get base.js version, timestamp, and api locale
   (code, response) = doGet(standardYoutubeUrl)
@@ -1075,7 +1074,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
           dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
         let video = newVideo(standardYoutubeUrl, dashManifestUrl, thumbnailUrl, title, videoId, duration,
                              playerResponse["streamingData"], aItag, vItag)
-        echo "[youtube] title: ", video.title
+        echo "[info] title: ", video.title
 
         if includeThumb:
           if not grab(video.thumbnail, video.title.addFileExt("jpeg"), forceDl=true).is2xx:
