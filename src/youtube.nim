@@ -980,7 +980,7 @@ proc walkErrorMessage(playabilityStatus: JsonNode) =
     echo '<', playabilityStatus["reason"].getStr().strip(chars={'"'}), '>'
   elif playabilityStatus.hasKey("messages"):
     for message in playabilityStatus["messages"]:
-      echo '<', message, '>'
+      echo '<', message.getStr().strip(chars={'"'}), '>'
 
   # if playabilityStatus.hasKey("errorScreen"):
   #   if playabilityStatus["errorScreen"]["playerErrorMessageRenderer"].hasKey("reason"):
@@ -1036,28 +1036,17 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         echo "<file exists> ", fullFilename
       else:
         # NOTE: age gate and unplayable video handling
-        # OPTIMIZE: redundant code here....put this in a procedure?
         if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
-          echo "[attempting age-gate bypass tier 1]"
-          (code, response) = doPost(playerUrl, playerBypassContextTier1 % [videoId, sigTimeStamp, date])
-          playerResponse = parseJson(response)
-
-          if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
-            walkErrorMessage(playerResponse["playabilityStatus"])
-            echo "[attempting age-gate bypass tier 2]"
-            (code, response) = doPost(playerUrl, playerBypassContextTier2 % [videoId, sigTimeStamp, date])
+          for idx, ctx in [playerBypassContextTier1, playerBypassContextTier2, playerBypassContextTier3]:
+            echo "[attempting age-gate bypass tier $1]" % $idx.succ
+            (code, response) = doPost(playerUrl, ctx % [videoId, sigTimeStamp, date])
             playerResponse = parseJson(response)
-
             if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
               walkErrorMessage(playerResponse["playabilityStatus"])
-              echo "[attempting age-gate bypass tier 3]"
-              (code, response) = doPost(playerUrl, playerBypassContextTier3 % [videoId, sigTimeStamp, date])
-              playerResponse = parseJson(response)
-
-              if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
-                walkErrorMessage(playerResponse["playabilityStatus"])
+              if idx == 2:
                 return
-
+            else:
+              break
         elif playerResponse["videoDetails"].hasKey("isLive") and playerResponse["videoDetails"]["isLive"].getBool():
           echo "<this video is currently live>"
           return
