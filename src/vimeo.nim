@@ -461,15 +461,15 @@ proc getProfile(vimeoUrl: string) =
     getVideo(url)
 
 
-proc vimeoDownload*(vimeoUrl, format, aId, vId, dLang: string,
-                    iAudio, iVideo, iThumb, iSubtitles, streams, debugMode: bool) =
+proc vimeoDownload*(vimeoUrl, aFormat, aId, vId, sLang: string,
+                    iAudio, iVideo, iThumb, iSubtitles, sStreams, debugMode: bool) =
   includeAudio = iAudio
   includeVideo = iVideo
   includeThumb = iThumb
   includeSubtitles = iSubtitles
-  subtitlesLanguage = dLang
-  audioFormat = format
-  showStreams = streams
+  subtitlesLanguage = sLang
+  audioFormat = aFormat
+  showStreams = sStreams
   debug = debugMode
 
   if extractId(vimeoUrl).all(isDigit):

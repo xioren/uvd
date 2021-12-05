@@ -177,6 +177,9 @@ const
              'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N',
              'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
              'Y', 'Z', '-', '_']
+  videoMetadataFailure = "<failed to obtain video metadata>"
+  channelMetadataFailure = "<failed to obtain channel metadata>"
+  playlistMetadataFailure = "<failed to obtain playlist metadata>"
 
 let date = now().format("yyyyMMdd")
 
@@ -714,7 +717,7 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
        bitrate / larger filesize to obtain comparable quality to vp9. scenarios occur where lower resolution h.264
        streams are selected over vp9 streams because they have higher bitrate but are clearly not the most
        desireable stream. av1 is the defacto succesor to vp9 and thus more desireable.
-       --> select highest resolution or av1 if bitrate > all or if vp9/h264 >= 0.8 --> vp9 else h.264
+       --> select highest resolution or av1 if bitrate > others or if vp9/h264 >= 0.8 --> vp9 else h.264
        avc1 == streaming version of h264
       ]#
     let
@@ -1066,7 +1069,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         echo "[info] title: ", video.title
 
         if includeThumb:
-          if not grab(video.thumbnail, video.title.addFileExt("jpeg"), forceDl=true).is2xx:
+          if not grab(video.thumbnail, addFileExt(video.title & " [" & videoId & ']', ".jpeg"), forceDl=true).is2xx:
             echo "<failed to download thumbnail>"
 
         if includeSubtitles:
@@ -1114,9 +1117,9 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         else:
           echo "<no streams were downloaded>"
     else:
-      echo '<', code, '>', '\n', "<failed to obtain video metadata>"
+      echo '<', code, '>', '\n', videoMetadataFailure
   else:
-    echo '<', code, '>', '\n', "<failed to obtain channel metadata>"
+    echo '<', code, '>', '\n', videoMetadataFailure
 
 
 proc getPlaylist(youtubeUrl: string) =
@@ -1143,7 +1146,7 @@ proc getPlaylist(youtubeUrl: string) =
       for id in ids:
         getVideo(watchUrl & id)
   else:
-    echo '<', code, '>', '\n', "<failed to obtain playlist metadata>"
+    echo '<', code, '>', '\n', playlistMetadataFailure
 
 
 proc getChannel(youtubeUrl: string) =
@@ -1185,7 +1188,7 @@ proc getChannel(youtubeUrl: string) =
                 else:
                   lastToken = thisToken
               else:
-                echo "<failed to obtain channel metadata>"
+                echo channelMetadataFailure
           else:
             yield item["grid" & capRenderer & "Renderer"][renderer & "Id"].getStr()
 
@@ -1224,13 +1227,15 @@ proc getChannel(youtubeUrl: string) =
                   for item in section["itemSectionRenderer"]["contents"][0]["shelfRenderer"]["content"]["horizontalListRenderer"]["items"]:
                     playlistIds.add(item["gridPlaylistRenderer"]["playlistId"].getStr())
                 else:
-                  echo "<failed to obtain channel metadata>"
+                  echo channelMetadataFailure
               else:
-                echo "<failed to obtain channel metadata>"
+                echo channelMetadataFailure
+        else:
+          echo channelMetadataFailure
       else:
-        echo '<', code, '>', '\n', "<failed to obtain channel metadata>"
+        echo '<', code, '>', '\n', channelMetadataFailure
   else:
-    echo '<', code, '>', '\n', "<failed to obtain channel metadata>"
+    echo '<', code, '>', '\n', channelMetadataFailure
 
   echo '[', videoIds.len, " videos queued]", '\n', '[', playlistIds.len, " playlists queued]"
   for id in videoIds:
@@ -1239,15 +1244,15 @@ proc getChannel(youtubeUrl: string) =
     getPlaylist(playlistUrl & id)
 
 
-proc youtubeDownload*(youtubeUrl, format, aItag, vItag, dLang: string,
-                      iAudio, iVideo, iThumb, iSubtitles, streams, debugMode: bool) =
+proc youtubeDownload*(youtubeUrl, aFormat, aItag, vItag, sLang: string,
+                      iAudio, iVideo, iThumb, iSubtitles, sStreams, debugMode: bool) =
   includeAudio = iAudio
   includeVideo = iVideo
   includeThumb = iThumb
   includeSubtitles = iSubtitles
-  subtitlesLanguage = dLang
-  audioFormat = format
-  showStreams = streams
+  subtitlesLanguage = sLang
+  audioFormat = aFormat
+  showStreams = sStreams
   debug = debugMode
 
   if "/channel/" in youtubeUrl or "/c/" in youtubeUrl:
