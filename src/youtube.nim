@@ -946,9 +946,11 @@ proc parseBaseJS() =
 
 proc isolateVideoId(youtubeUrl: string): string =
   if youtubeUrl.contains("youtu.be"):
-    result = youtubeUrl.captureBetween('/', '?', 8)
+    result = youtubeUrl.captureBetween('/', '?', youtubeUrl.find(".be"))
   elif youtubeUrl.contains("/shorts/"):
-    result = youtubeUrl.captureBetween('/', '?', 24)
+    result = youtubeUrl.captureBetween('/', '?', youtubeUrl.find("shorts/"))
+  elif youtubeUrl.contains("/embed/"):
+    result = youtubeUrl.captureBetween('/', '?', youtubeUrl.find("embed/"))
   else:
     result = youtubeUrl.captureBetween('=', '&')
 
@@ -1069,7 +1071,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         echo "[info] title: ", video.title
 
         if includeThumb:
-          if not grab(video.thumbnail, addFileExt(video.title & " [" & videoId & ']', ".jpeg"), forceDl=true).is2xx:
+          if not grab(video.thumbnail, fullFilename.changeFileExt("jpeg"), forceDl=true).is2xx:
             echo "<failed to download thumbnail>"
 
         if includeSubtitles:
@@ -1110,7 +1112,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         if includeAudio and includeVideo:
           joinStreams(video.videoStream.filename, video.audioStream.filename, fullFilename, subtitlesLanguage, includeSubtitles)
         elif includeAudio and not includeVideo:
-          convertAudio(video.audioStream.filename, safeTitle, audioFormat)
+          convertAudio(video.audioStream.filename, safeTitle & " [" & videoId & ']', audioFormat)
         elif includeVideo:
           moveFile(video.videoStream.filename, fullFilename.changeFileExt(video.videoStream.ext))
           echo "[complete] ", addFileExt(safeTitle, video.videoStream.ext)

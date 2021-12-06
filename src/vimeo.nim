@@ -391,7 +391,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
       echo "[info] title: ", video.title
 
       if includeThumb:
-        if not grab(video.thumbnail, video.title.addFileExt("jpeg"), forceDl=true).is2xx:
+        if not grab(video.thumbnail, fullFilename.changeFileExt("jpeg"), forceDl=true).is2xx:
           echo "<failed to download thumbnail>"
 
       if includeSubtitles:
@@ -420,7 +420,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
       if includeAudio and includeVideo:
         joinStreams(video.videoStream.filename, video.audioStream.filename, fullFilename, subtitlesLanguage, includeSubtitles)
       elif includeAudio and not includeVideo:
-        convertAudio(video.audioStream.filename, safeTitle, audioFormat)
+        convertAudio(video.audioStream.filename, safeTitle & " [" & videoId & ']', audioFormat)
       elif includeVideo:
         moveFile(video.videoStream.filename, fullFilename.changeFileExt(video.videoStream.ext))
         echo "[complete] ", addFileExt(safeTitle, video.videoStream.ext)
