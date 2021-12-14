@@ -12,7 +12,7 @@ import utils
 
 
 # NOTE: clientVersion can be found in contextUrl response (along with api key)
-# QUESTION: can language (hl) be set programatically?
+# QUESTION: can language (hl) be set programatically? should it be?
 const
   playerContext = """{
     "context": {
@@ -103,26 +103,26 @@ const
       "client": {
         "hl": "en",
         "clientName": "WEB",
-        "clientVersion": "2.$3.00.00",
+        "clientVersion": "2.$2.00.00",
         "mainAppWebInfo": {
           "graftUrl": "/channel/$1/videos"
         }
       }
     },
-    "continuation": "$2"
+    "continuation": "$3"
   }"""
   playlistContext = """{
     "context": {
       "client": {
         "hl": "en",
         "clientName": "WEB",
-        "clientVersion": "2.$1.00.00",
+        "clientVersion": "2.$2.00.00",
         "mainAppWebInfo": {
-          "graftUrl": "/playlist?list=$2"
+          "graftUrl": "/playlist?list=$1"
         }
       }
     },
-    "playlistId": "$2"
+    "playlistId": "$1"
   }"""
 
 type
@@ -177,9 +177,9 @@ const
              'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N',
              'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
              'Y', 'Z', '-', '_']
-  videoMetadataFailure = "<failed to obtain video metadata>"
-  channelMetadataFailure = "<failed to obtain channel metadata>"
-  playlistMetadataFailure = "<failed to obtain playlist metadata>"
+  videoMetadataFailureMessage = "<failed to obtain video metadata>"
+  channelMetadataFailureMessage = "<failed to obtain channel metadata>"
+  playlistMetadataFailureMessage = "<failed to obtain playlist metadata>"
 
 let date = now().format("yyyyMMdd")
 
@@ -342,7 +342,7 @@ proc throttleCipher(d: var string, e: var string, f: array[64, char]) =
 
   non-generative: function(d,e,f){var h=f.length;d.forEach(function(l,m,n){this.push(n[m]=f[(f.indexOf(l)-f.indexOf(this[m])+m+h--)%f.length])},e.split(""))};
 
-  +m-32+f-- == +64 && +m+h-- == +64 || +f.len
+  +m-32+f-- == +m+h-- == +64 == +f.len
   ]#
   var
     c: char
@@ -632,7 +632,6 @@ proc urlOrCipher(stream: JsonNode): string =
     if debug:
       echo "[debug] initial n: ", n
       echo "[debug] transformed n: ", transformedN
-
   if debug:
     echo "[debug] download url: ", result
 
@@ -706,53 +705,52 @@ proc selectAudioByBitrate(streams: JsonNode, codec: string): JsonNode =
 
 proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
   #[ NOTE: in adding up all samples where (subjectively) vp9 looked better, the average
-    weight was 0.92; this is fine in most cases. however a strong vp9 bias is preferential so
+    weight (vp9/avc1) was 0.92; this is fine in most cases. however a strong vp9 bias is preferential so
     a value of 0.8 is used. ]#
   const threshold = 0.8
-  var vp9Semiperimeter, h264Semiperimeter, av1Semiperimeter: int
+  var vp9Semiperimeter, avc1Semiperimeter, av1Semiperimeter: int
   result = newJNull()
 
   if itag == 0:
-    #[ NOTE: av1, vp9 and h.264 are not directly comparable. h.264 requires higher
-       bitrate / larger filesize to obtain comparable quality to vp9. scenarios occur where lower resolution h.264
-       streams are selected over vp9 streams because they have higher bitrate but are clearly not the most
-       desireable stream. av1 is the defacto succesor to vp9 and thus more desireable.
-       --> select highest resolution or av1 if bitrate > others or if vp9/h264 >= 0.8 --> vp9 else h.264
-       avc1 == streaming version of h264
+    #[ NOTE: av1, vp9 and avc1 are not directly comparable. avc1 requires higher
+       bitrate / larger filesize to obtain comparable quality to vp9/av1. scenarios
+       can occur where lower resolution avc1 streams are selected because they have
+       higher bitrate but are not necessarily the most desireable stream.
+       order of selection: highest resolution stream (any codec) --> av1 if bitrate >= others --> vp9 if vp9/avc1 >= 0.8 --> avc1
       ]#
     let
       bestVP9 = selectVideoByBitrate(streams, "vp9")
-      bestH264 = selectVideoByBitrate(streams, "avc1")
+      bestAVC1 = selectVideoByBitrate(streams, "avc1")
       bestAV1 = selectVideoByBitrate(streams, "av01")
 
     if bestVP9.kind != JNull:
       vp9Semiperimeter = bestVP9["width"].getInt() + bestVP9["height"].getInt()
-    if bestH264.kind != JNull:
-      h264Semiperimeter = bestH264["width"].getInt() + bestH264["height"].getInt()
+    if bestAVC1.kind != JNull:
+      avc1Semiperimeter = bestAVC1["width"].getInt() + bestAVC1["height"].getInt()
     if bestAV1.kind != JNull:
       av1Semiperimeter = bestAV1["width"].getInt() + bestAV1["height"].getInt()
 
-    if (h264Semiperimeter > vp9Semiperimeter and h264Semiperimeter > av1Semiperimeter) or
+    if (avc1Semiperimeter > vp9Semiperimeter and avc1Semiperimeter > av1Semiperimeter) or
        (bestVP9.kind == JNull and bestAV1.kind == JNull):
-      result = bestH264
-    elif (vp9Semiperimeter > h264Semiperimeter and vp9Semiperimeter > av1Semiperimeter) or
-         (bestH264.kind == JNull and bestAV1.kind == JNull):
+      result = bestAVC1
+    elif (vp9Semiperimeter > avc1Semiperimeter and vp9Semiperimeter > av1Semiperimeter) or
+         (bestAVC1.kind == JNull and bestAV1.kind == JNull):
       result = bestVP9
-    elif (av1Semiperimeter > h264Semiperimeter and av1Semiperimeter > vp9Semiperimeter) or
-         (bestH264.kind == JNull and bestVP9.kind == JNull):
+    elif (av1Semiperimeter > avc1Semiperimeter and av1Semiperimeter > vp9Semiperimeter) or
+         (bestAVC1.kind == JNull and bestVP9.kind == JNull):
       result = bestAV1
     else:
       let
-        h264Bitrate = getBitrate(bestH264)
+        avc1Bitrate = getBitrate(bestAVC1)
         vp9Bitrate = getBitrate(bestVP9)
         av1Bitrate = getBitrate(bestAV1)
 
-      if av1Bitrate >= vp9Bitrate and av1Bitrate >= h264Bitrate:
+      if av1Bitrate >= vp9Bitrate and av1Bitrate >= avc1Bitrate:
         result = bestAV1
-      elif vp9Bitrate / h264Bitrate >= threshold:
+      elif vp9Bitrate / avc1Bitrate >= threshold:
         result = bestVP9
       else:
-        result = bestH264
+        result = bestAVC1
   else:
     for stream in streams:
       if stream["itag"].getInt() == itag:
@@ -1119,9 +1117,9 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         else:
           echo "<no streams were downloaded>"
     else:
-      echo '<', code, '>', '\n', videoMetadataFailure
+      echo '<', code, '>', '\n', videoMetadataFailureMessage
   else:
-    echo '<', code, '>', '\n', videoMetadataFailure
+    echo '<', code, '>', '\n', videoMetadataFailureMessage
 
 
 proc getPlaylist(youtubeUrl: string) =
@@ -1131,7 +1129,7 @@ proc getPlaylist(youtubeUrl: string) =
   if debug:
     echo "[debug] playlist id: ", playlistId
 
-  let (code, response) = doPost(nextUrl, playlistContext % [date, playlistId])
+  let (code, response) = doPost(nextUrl, playlistContext % [playlistId, date])
   if code.is2xx:
     let
       playlistResponse = parseJson(response)
@@ -1148,7 +1146,7 @@ proc getPlaylist(youtubeUrl: string) =
       for id in ids:
         getVideo(watchUrl & id)
   else:
-    echo '<', code, '>', '\n', playlistMetadataFailure
+    echo '<', code, '>', '\n', playlistMetadataFailureMessage
 
 
 proc getChannel(youtubeUrl: string) =
@@ -1177,7 +1175,7 @@ proc getChannel(youtubeUrl: string) =
             lastToken = thisToken
 
             while true:
-              (code, response) = doPost(browseUrl, browseContinueContext % [channel, thisToken, date])
+              (code, response) = doPost(browseUrl, browseContinueContext % [channel, date, thisToken])
               if code.is2xx:
                 channelResponse = parseJson(response)
                 for continuationItem in channelResponse["onResponseReceivedActions"][0]["appendContinuationItemsAction"]["continuationItems"]:
@@ -1190,7 +1188,7 @@ proc getChannel(youtubeUrl: string) =
                 else:
                   lastToken = thisToken
               else:
-                echo channelMetadataFailure
+                echo channelMetadataFailureMessage
           else:
             yield item["grid" & capRenderer & "Renderer"][renderer & "Id"].getStr()
 
@@ -1229,15 +1227,15 @@ proc getChannel(youtubeUrl: string) =
                   for item in section["itemSectionRenderer"]["contents"][0]["shelfRenderer"]["content"]["horizontalListRenderer"]["items"]:
                     playlistIds.add(item["gridPlaylistRenderer"]["playlistId"].getStr())
                 else:
-                  echo channelMetadataFailure
+                  echo channelMetadataFailureMessage
               else:
-                echo channelMetadataFailure
+                echo channelMetadataFailureMessage
         else:
-          echo channelMetadataFailure
+          echo channelMetadataFailureMessage
       else:
-        echo '<', code, '>', '\n', channelMetadataFailure
+        echo '<', code, '>', '\n', channelMetadataFailureMessage
   else:
-    echo '<', code, '>', '\n', channelMetadataFailure
+    echo '<', code, '>', '\n', channelMetadataFailureMessage
 
   echo '[', videoIds.len, " videos queued]", '\n', '[', playlistIds.len, " playlists queued]"
   for id in videoIds:

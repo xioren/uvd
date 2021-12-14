@@ -304,6 +304,18 @@ proc isUnlisted(vimeoUrl: string): bool =
     result = true
 
 
+proc getBestThumb(thumbs: JsonNode): string =
+  # QUESTION: are there other resolutions?
+  if thumbs.hasKey("base"):
+    result = thumbs["base"].getStr()
+  elif thumbs.hasKey("1280"):
+    result = thumbs["1280"].getStr()
+  elif thumbs.hasKey("960"):
+    result = thumbs["960"].getStr()
+  elif thumbs.hasKey("640"):
+    result = thumbs["640"].getStr()
+
+
 ########################################################
 # main
 ########################################################
@@ -314,6 +326,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
     configResponse: JsonNode
     response: string
     code: HttpCode
+    thumbnailUrl: string
   let videoId = extractId(vimeoUrl)
   var standardVimeoUrl = baseUrl & '/' & videoId
 
@@ -366,7 +379,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
       title = configResponse["video"]["title"].getStr()
       safeTitle = makeSafe(title)
       fullFilename = addFileExt(safeTitle & " [" & videoId & ']', ".mkv")
-      thumbnailUrl = configResponse["video"]["thumbs"]["base"].getStr()
+      thumbnailUrl = getBestThumb(configResponse["video"]["thumbs"])
 
     if fileExists(fullFilename) and not showStreams:
       echo "<file exists> ", safeTitle
@@ -390,7 +403,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
       let video = newVideo(standardVimeoUrl, cdnUrl, thumbnailUrl, title, videoId, cdnResponse, aId, vId)
       echo "[info] title: ", video.title
 
-      if includeThumb:
+      if includeThumb and thumbnailUrl != "":
         if not grab(video.thumbnail, fullFilename.changeFileExt("jpeg"), forceDl=true).is2xx:
           echo "<failed to download thumbnail>"
 
