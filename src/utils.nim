@@ -1,5 +1,5 @@
 import std/[os, re, strutils, strformat, asyncdispatch, terminal, asyncfile,
-            tables, times, httpclient]
+            tables, times, httpclient, sets]
 from math import floor
 
 export asyncdispatch, os, strutils, re, tables, httpclient, times
@@ -22,7 +22,8 @@ var
 
 
 func dequery*(url: string): string =
-  url.rsplit('?', 1)[0]
+  ## removes queries and anchors
+  url.rsplit('?', 1)[0].rsplit('#', 1)[0]
 
 
 func makeSafe*(title: string): string =
@@ -45,6 +46,13 @@ proc indexOf*[T](that: openarray[T], this: T): int =
     if item == this:
       return idx
   raise newException(IndexDefect, "$1 not in $2" % [$this, $that.type])
+
+
+proc `++`*[A](this, that: set[A]): OrderedSet[A] =
+  ## Order preserving union of two sets
+  result = initOrderedSet[A](this.len + that.len)
+  for key in items(this): result.incl(key)
+  for key in items(that): result.incl(key)
 
 
 proc joinStreams*(videoStream, audioStream, filename, subtitlesLanguage: string, includeCaptions: bool) =
@@ -214,6 +222,6 @@ proc grab*(url: string | seq[string], filename: string, saveLocation=getCurrentD
   else:
     result = waitFor download(url, filepath)
     if result.is2xx:
-      echo "[success] ", filename
+      echo "[complete] ", filename
     else:
       echo '<', result, '>'

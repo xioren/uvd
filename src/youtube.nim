@@ -155,6 +155,7 @@ const
   baseUrl = "https://www.youtube.com"
   watchUrl = "https://www.youtube.com/watch?v="
   # channelUrl = "https://www.youtube.com/channel/"
+  # channelVanityUrl = "https://www.youtube.com/c/"
   playlistUrl = "https://www.youtube.com/playlist?list="
   playerUrl = "https://youtubei.googleapis.com/youtubei/v1/player?key=" & apiKey
   browseUrl = "https://youtubei.googleapis.com/youtubei/v1/browse?key=" & apiKey
@@ -163,20 +164,13 @@ const
   # contextUrl = "https://www.youtube.com/sw.js_data"
   videosTab = "EgZ2aWRlb3M%3D"
   playlistsTab = "EglwbGF5bGlzdHM%3D"
-  forwardH = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
-             'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
-             'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd',
-             'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n',
-             'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x',
-             'y', 'z', '0', '1', '2', '3', '4', '5', '6', '7',
-             '8', '9', '-', '_']
-  reverseH = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-             'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j',
-             'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
-             'u', 'v', 'w', 'x', 'y', 'z', 'A', 'B', 'C', 'D',
-             'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N',
-             'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
-             'Y', 'Z', '-', '_']
+  Upper = {'A'..'Z'}
+  Lower = {'a'..'z'}
+  Misc = {'-', '_'}
+  # NOTE: {A..Za..z0..9-_}
+  forwardH = Letters ++ Digits ++ Misc
+  # NOTE: {0..9a..zA..Z-_}
+  reverseH = Digits ++ Lower ++ Upper ++ Misc
   videoMetadataFailureMessage = "<failed to obtain video metadata>"
   channelMetadataFailureMessage = "<failed to obtain channel metadata>"
   playlistMetadataFailureMessage = "<failed to obtain playlist metadata>"
@@ -314,35 +308,35 @@ proc generateSubtitles(captions: JsonNode) =
   as a reference ]#
 
 
-proc throttleModFunction(d: string | seq[string], e: int): int =
+proc throttleModFunction(d: string | seq[string], e: int): int {.inline.} =
   # NOTE: function(d,e){e=(e%d.length+d.length)%d.length
   result = (e mod d.len + d.len) mod d.len
 
 
-proc throttleUnshift(d: var (string | seq[string]), e: int) =
+proc throttleUnshift(d: var (string | seq[string]), e: int) {.inline.} =
   ## handles prepend also
   #[ NOTE:
-  function(d,e){e=(e%d.length+d.length)%d.length;d.splice(-e).reverse().forEach(function(f){d.unshift(f)})};
-  function(d,e){for(e=(e%d.length+d.length)%d.length;e--;)d.unshift(d.pop())};
+    function(d,e){e=(e%d.length+d.length)%d.length;d.splice(-e).reverse().forEach(function(f){d.unshift(f)})};
+    function(d,e){for(e=(e%d.length+d.length)%d.length;e--;)d.unshift(d.pop())};
   ]#
   d.rotateLeft(d.len - throttleModFunction(d, e))
 
 
-proc throttleCipher(d: var string, e: var string, f: array[64, char]) =
+proc throttleCipher(d: var string, e: var string, f: array[64, char]) {.inline.} =
   #[ NOTE:
-  generative forward h: function(d,e){for(var f=64,h=[];++f-h.length-32;){switch(f)
-  {case 58:f-=14;case 91:case 92:case 93:continue;case 123:f=47;case 94:case 95:
-  case 96:continue;case 46:f=95}h.push(String.fromCharCode(f))}
-  d.forEach(function(l,m,n){this.push(n[m]=h[(h.indexOf(l)-h.indexOf(this[m])+m-32+f--)%h.length])}
+    generative forward h: function(d,e){for(var f=64,h=[];++f-h.length-32;){switch(f)
+    {case 58:f-=14;case 91:case 92:case 93:continue;case 123:f=47;case 94:case 95:
+    case 96:continue;case 46:f=95}h.push(String.fromCharCode(f))}
+    d.forEach(function(l,m,n){this.push(n[m]=h[(h.indexOf(l)-h.indexOf(this[m])+m-32+f--)%h.length])}
 
-  generative reverse h: function(d,e){for(var f=64,h=[];++f-h.length-32;){switch(f){case 91:f=44;continue;
-  case 123:f=65;break;case 65:f-=18;continue;case 58:f=96;continue;case 46:f=95}
-  h.push(String.fromCharCode(f))}d.forEach(function(l,m,n){this.push(n[m]
-  =h[(h.indexOf(l)-h.indexOf(this[m])+m-32+f--)%h.length])},e.split(""))}
+    generative reverse h: function(d,e){for(var f=64,h=[];++f-h.length-32;){switch(f){case 91:f=44;continue;
+    case 123:f=65;break;case 65:f-=18;continue;case 58:f=96;continue;case 46:f=95}
+    h.push(String.fromCharCode(f))}d.forEach(function(l,m,n){this.push(n[m]
+    =h[(h.indexOf(l)-h.indexOf(this[m])+m-32+f--)%h.length])},e.split(""))}
 
-  non-generative: function(d,e,f){var h=f.length;d.forEach(function(l,m,n){this.push(n[m]=f[(f.indexOf(l)-f.indexOf(this[m])+m+h--)%f.length])},e.split(""))};
+    non-generative: function(d,e,f){var h=f.length;d.forEach(function(l,m,n){this.push(n[m]=f[(f.indexOf(l)-f.indexOf(this[m])+m+h--)%f.length])},e.split(""))};
 
-  +m-32+f-- == +m+h-- == +64 == +f.len
+    +m-32+f-- == +m+h-- == +64 == +f.len
   ]#
   var
     c: char
@@ -354,7 +348,7 @@ proc throttleCipher(d: var string, e: var string, f: array[64, char]) =
   d = n
 
 
-proc throttleReverse(d: var (string | seq[string])) =
+proc throttleReverse(d: var (string | seq[string])) {.inline.} =
   #[ NOTE:
     function(d){d.reverse()};
     function(d){for(var e=d.length;e;)d.push(d.splice(--e,1)[0])};
@@ -362,18 +356,18 @@ proc throttleReverse(d: var (string | seq[string])) =
   d.reverse()
 
 
-proc throttlePush(d: var (string | seq[string]), e: string) =
+proc throttlePush(d: var (string | seq[string]), e: string) {.inline.} =
   d.add(e)
 
 
-proc throttleSplice(d: var (string | seq[string]), e: int) =
+proc throttleSplice(d: var (string | seq[string]), e: int) {.inline.} =
   ## javascript splice
   # NOTE: function(d,e){e=(e%d.length+d.length)%d.length;d.splice(e,1)};
   let z = throttleModFunction(d, e)
   d.delete(z..z)
 
 
-proc throttleSwap(d: var (string | seq[string]), e: int) =
+proc throttleSwap(d: var (string | seq[string]), e: int) {.inline.} =
   ## handles nested splice also
   #[ NOTE:
     swap: function(d,e){e=(e%d.length+d.length)%d.length;var f=d[0];d[0]=d[e];d[e]=f}
@@ -705,7 +699,7 @@ proc selectAudioByBitrate(streams: JsonNode, codec: string): JsonNode =
 
 proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
   #[ NOTE: in adding up all samples where (subjectively) vp9 looked better, the average
-    weight (vp9/avc1) was 0.92; this is fine in most cases. however a strong vp9 bias is preferential so
+    weight (vp9 bitrate/avc1 bitrate) was 0.92; this is fine in most cases. however a strong vp9 bias is preferential so
     a value of 0.8 is used. ]#
   const threshold = 0.8
   var vp9Semiperimeter, avc1Semiperimeter, av1Semiperimeter: int
@@ -906,21 +900,33 @@ proc reportStreams(playerResponse: JsonNode, duration: int) =
     for item in playerResponse["streamingData"]["adaptiveFormats"]:
       if item.hasKey("audioQuality"):
         (itag, mime, codec, ext, size, quality, bitrate) = getAudioStreamInfo(item, duration)
-        echo "[audio]", " itag: ", itag, " quality: ", quality,
-             " bitrate: ", bitrate, " mime: ", mime, " codec: ", codec, " size: ", size
+        echo "[audio]", " itag: ", itag,
+             " quality: ", quality,
+             " bitrate: ", bitrate,
+             " mime: ", mime,
+             " codec: ", codec,
+             " size: ", size
       else:
         (itag, mime, codec, ext, size, quality, resolution, bitrate) = getVideoStreamInfo(item, duration)
-        echo "[video]", " itag: ", itag, " quality: ", quality,
-             " resolution: ", resolution, " bitrate: ", bitrate, " mime: ", mime,
-             " codec: ", codec, " size: ", size
+        echo "[video]", " itag: ", itag,
+             " quality: ", quality,
+             " resolution: ", resolution,
+             " bitrate: ", bitrate,
+             " mime: ", mime,
+             " codec: ", codec,
+             " size: ", size
 
   if playerResponse["streamingData"].hasKey("formats"):
     # NOTE: youtube premium download formats
-    for n in countdown(playerResponse["streamingData"]["formats"].len.pred, 0):
+    for n in countdown(playerResponse["streamingData"]["formats"].high, 0):
       (itag, mime, codec, ext, size, quality, resolution, bitrate) = getVideoStreamInfo(playerResponse["streamingData"]["formats"][n], duration)
-      echo "[combined]", " itag: ", itag, " quality: ", quality,
-           " resolution: ", resolution, " bitrate: ", bitrate, " mime: ", mime,
-           " codec: ", codec, " size: ", size
+      echo "[combined]", " itag: ", itag,
+           " quality: ", quality,
+           " resolution: ", resolution,
+           " bitrate: ", bitrate,
+           " mime: ", mime,
+           " codec: ", codec,
+           " size: ", size
 
 
 ########################################################
@@ -1051,7 +1057,10 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
             else:
               break
         elif playerResponse["videoDetails"].hasKey("isLive") and playerResponse["videoDetails"]["isLive"].getBool():
-          echo "<this video is currently live>"
+          if playerResponse["videoDetails"]["isLiveContent"].getBool():
+            echo "<this video is currently live>"
+          else:
+            echo "<this video is currently premiering>"
           return
         elif playerResponse["playabilityStatus"]["status"].getStr() != "OK":
           walkErrorMessage(playerResponse["playabilityStatus"])
@@ -1106,7 +1115,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         else:
           includeAudio = false
 
-        # QUESTION: should we abort if either audio or video streams fail to download?
+        # QUESTION: should we abort if either audio or video streams failed to download?
         if includeAudio and includeVideo:
           joinStreams(video.videoStream.filename, video.audioStream.filename, fullFilename, subtitlesLanguage, includeSubtitles)
         elif includeAudio and not includeVideo:

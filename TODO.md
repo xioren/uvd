@@ -4,3 +4,4 @@
 + solution to bitrate/average bitrate comparations
 + unify program output messages format
 + windows support
++ differentiate error message for live and premiering videos

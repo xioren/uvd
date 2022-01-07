@@ -255,14 +255,20 @@ proc reportStreams(cdnResponse: JsonNode) =
   for item in cdnResponse["video"]:
     dimensions = $item["width"].getInt() & "x" & $item["height"].getInt()
     (id, mime, ext, size, quality, bitrate) = getVideoStreamInfo(item)
-    echo "[video]", " id: ", id, " quality: ", quality,
-         " resolution: ", dimensions, " bitrate: ", bitrate, " mime: ", mime, " size: ", size
+    echo "[video]", " id: ", id,
+         " quality: ", quality,
+         " resolution: ", dimensions,
+         " bitrate: ", bitrate,
+         " mime: ", mime,
+         " size: ", size
 
   if cdnResponse["audio"].kind != JNull:
     for item in cdnResponse["audio"]:
       (id, mime, ext, size, quality, bitrate) = getAudioStreamInfo(item)
-      echo "[audio]", " id: ", id, " bitrate: ", bitrate,
-           " mime: ", mime, " size: ", size
+      echo "[audio]", " id: ", id,
+           " bitrate: ", bitrate,
+           " mime: ", mime,
+           " size: ", size
 
 
 proc getProfileIds(vimeoUrl: string): tuple[profileId, sectionId: string] =
@@ -286,7 +292,7 @@ proc extractId(vimeoUrl: string): string =
   elif vimeoUrl.contains("/video/"):
     result = vimeoUrl.captureBetween('/', '?', vimeoUrl.find("video/"))
   else:
-    result = vimeoUrl.captureBetween('/', start=vimeoUrl.find(".com/"))
+    result = vimeoUrl.captureBetween('/', '?', start=vimeoUrl.find(".com/"))
 
 
 proc extractHash(vimeoUrl: string): string =
