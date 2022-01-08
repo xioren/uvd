@@ -164,13 +164,21 @@ const
   # contextUrl = "https://www.youtube.com/sw.js_data"
   videosTab = "EgZ2aWRlb3M%3D"
   playlistsTab = "EglwbGF5bGlzdHM%3D"
-  Upper = {'A'..'Z'}
-  Lower = {'a'..'z'}
-  Misc = {'-', '_'}
-  # NOTE: {A..Za..z0..9-_}
-  forwardH = Letters ++ Digits ++ Misc
-  # NOTE: {0..9a..zA..Z-_}
-  reverseH = Digits ++ Lower ++ Upper ++ Misc
+  # TODO: generate programatically
+  forwardH = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
+              'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
+              'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd',
+              'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n',
+              'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x',
+              'y', 'z', '0', '1', '2', '3', '4', '5', '6', '7',
+              '8', '9', '-', '_']
+  reverseH = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+              'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j',
+              'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
+              'u', 'v', 'w', 'x', 'y', 'z', 'A', 'B', 'C', 'D',
+              'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N',
+              'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
+              'Y', 'Z', '-', '_']
   videoMetadataFailureMessage = "<failed to obtain video metadata>"
   channelMetadataFailureMessage = "<failed to obtain channel metadata>"
   playlistMetadataFailureMessage = "<failed to obtain playlist metadata>"

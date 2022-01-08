@@ -48,13 +48,6 @@ proc indexOf*[T](that: openarray[T], this: T): int =
   raise newException(IndexDefect, "$1 not in $2" % [$this, $that.type])
 
 
-proc `++`*[A](this, that: set[A]): OrderedSet[A] =
-  ## Order preserving union of two sets
-  result = initOrderedSet[A](this.len + that.len)
-  for key in items(this): result.incl(key)
-  for key in items(that): result.incl(key)
-
-
 proc joinStreams*(videoStream, audioStream, filename, subtitlesLanguage: string, includeCaptions: bool) =
   ## join audio and video streams using ffmpeg
   echo "[joining streams] ", videoStream, " + ", audioStream
