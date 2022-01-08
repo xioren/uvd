@@ -926,7 +926,7 @@ proc reportStreams(playerResponse: JsonNode, duration: int) =
 
   if playerResponse["streamingData"].hasKey("formats"):
     # NOTE: youtube premium download formats
-    for n in countdown(playerResponse["streamingData"]["formats"].high, 0):
+    for n in countdown(playerResponse["streamingData"]["formats"].len.pred, 0):
       (itag, mime, codec, ext, size, quality, resolution, bitrate) = getVideoStreamInfo(playerResponse["streamingData"]["formats"][n], duration)
       echo "[combined]", " itag: ", itag,
            " quality: ", quality,
