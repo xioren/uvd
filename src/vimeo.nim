@@ -242,7 +242,7 @@ proc reportStreamInfo(stream: Stream) =
   echo "[info] stream: ", stream.filename, '\n',
        "[info] id: ", stream.id, '\n',
        "[info] size: ", stream.size
-  if not stream.quality.isEmptyOrWhitespace():
+  if not stream.quality == "":
     echo "[info] quality: ", stream.quality
   echo "[info] mime: ", stream.mime, '\n',
        "[info] segments: ", stream.urlSegments.len

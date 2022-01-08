@@ -1,8 +1,8 @@
-import std/[os, re, strutils, strformat, asyncdispatch, terminal, asyncfile,
-            tables, times, httpclient, sets]
+import std/[asyncdispatch, asyncfile, httpclient, os, re,
+            sets, strformat, strutils, tables, terminal, times]
 from math import floor
 
-export asyncdispatch, os, strutils, re, tables, httpclient, times
+export asyncdispatch, httpclient, os, re, strutils, tables, times
 
 
 const
@@ -27,7 +27,7 @@ func dequery*(url: string): string =
 
 
 func makeSafe*(title: string): string =
-  ## make video titles suitable for filenames
+  ## make video titles more suitable for filenames
   # NOTE: subjective
   title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"), ("#", ""), ("\\", "-"))
 
@@ -41,11 +41,18 @@ proc zFill*(this: string, width: int, fill = '0'): string =
 
 
 proc indexOf*[T](that: openarray[T], this: T): int =
-  ## provide index of this in that
+  ## provide index of this in item that
   for idx, item in that:
     if item == this:
       return idx
   raise newException(IndexDefect, "$1 not in $2" % [$this, $that.type])
+
+
+proc easyFind*(this: string, that: Regex): string =
+  ## quality of life proc to encapsulate regex find logic
+  var putHere: array[1, string]
+  discard this.find(that, putHere)
+  result = putHere[0]
 
 
 proc joinStreams*(videoStream, audioStream, filename, subtitlesLanguage: string, includeCaptions: bool) =

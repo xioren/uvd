@@ -388,34 +388,27 @@ proc throttleSwap(d: var (string | seq[string]), e: int) {.inline.} =
 proc extractThrottleFunctionName(js: string): string =
   ## extract main throttle function
   # NOTE: a.C&&(b=a.get("n"))&&(b=kha(b),a.set("n",b)) --> kha
-  var match: array[1, string]
-  let pattern = re"(a\.[A-Z]&&\(b=a.[sg]et[^}]+)"
-  discard js.find(pattern, match)
-  result = match[0].captureBetween('=', '(', match[0].find("a.set") - 10)
+  let found = js.easyFind(re"(a\.[A-Z]&&\(b=a.[sg]et[^}]+)")
+  result = found.captureBetween('=', '(', found.find("a.set") - 10)
 
 
 proc extractThrottleCode(mainFunc, js: string): string =
   ## extract throttle code block from base.js
   # NOTE: mainThrottleFunction=function(a){.....}
-  var match: array[1, string]
-  let pattern = re("($1=function\\(\\w\\){.+?})(?=;)" % mainFunc, flags={reDotAll})
-  discard js.find(pattern, match)
-  result = match[0]
+  result = js.easyFind(re("($1=function\\(\\w\\){.+?})(?=;)" % mainFunc, flags={reDotAll}))
 
 
 iterator splitThrottleArray(js: string): string =
   ## split c array into individual elements
   var
-    match: array[1, string]
     step = newString(1)
     scope: int
 
-  discard js.find(re("(?<=,c=\\[)(.+)(?=\\];\n?c)", flags={reDotAll}), match)
-  let maxIdx = match[0].high
+  let found = js.easyFind(re("(?<=,c=\\[)(.+)(?=\\];\n?c)", flags={reDotAll}))
 
-  for idx, c in match[0]:
-    if (c == ',' and scope == 0 and '{' notin match[0][idx..min(idx + 5, maxIdx)]) or idx == maxIdx:
-      if idx == maxIdx:
+  for idx, c in found:
+    if (c == ',' and scope == 0 and '{' notin found[idx..min(idx + 5, found.high)]) or idx == found.high:
+      if idx == found.high:
         step.add(c)
       yield step.multiReplace(("\x00", ""), ("\n", ""))
       step = newString(1)
@@ -544,10 +537,8 @@ proc extractFunctionPlan(js: string): seq[string] =
 
   #[ NOTE: matches vy=function(a){a=a.split("");uy.bH(a,3);uy.Fg(a,7);uy.Fg(a,50);
     uy.S6(a,71);uy.bH(a,2);uy.S6(a,80);uy.Fg(a,38);return a.join("")}; ]#
-  let functionPattern = re"([a-zA-Z]{2}\=function\(a\)\{a\=a\.split\([^\(]+\);[a-zA-Z]{2}\.[^\n]+)"
-  var match: array[1, string]
-  discard js.find(functionPattern, match)
-  match[0].split(';')[1..^3]
+  let found = js.easyFind(re"([a-zA-Z]{2}\=function\(a\)\{a\=a\.split\([^\(]+\);[a-zA-Z]{2}\.[^\n]+)")
+  result = found.split(';')[1..^3]
 
 
 proc extractParentFunctionName(jsFunction: string): string =
@@ -575,10 +566,8 @@ proc extractIndex(jsFunction: string): int =
 proc createFunctionMap(js, mainFunc: string): Table[string, string] =
   ## map functions to corresponding function names
   ## {"wW": "function(a){a.reverse()}", "Nh": "function(a,b){a.splice(0,b)}"...}
-  var match: array[1, string]
-  let pattern = re("(?<=var $1={)(.+?)(?=};)" % mainFunc, flags={reDotAll})
-  discard js.find(pattern, match)
-  for item in match[0].split(",\n"):
+  let found = js.easyFind(re("(?<=var $1={)(.+?)(?=};)" % mainFunc, flags={reDotAll}))
+  for item in found.split(",\n"):
     let parts = item.split(':')
     result[parts[0]] = parts[1]
 
@@ -646,11 +635,9 @@ proc produceUrlSegments(baseUrl, segmentList: string): seq[string] =
 
 proc extractDashInfo(dashManifestUrl, itag: string): tuple[baseUrl, segmentList: string] =
   let (_, xml) = doGet(dashManifestUrl)
-  var match: array[1, string]
-  discard xml.find(re("""(?<=<Representation\s)(id="$1".+?)(?=</Representation>)""" % itag), match)
-  result.baseUrl = match[0].captureBetween('>', '<', match[0].find("<BaseURL>") + 8)
-  discard match[0].find(re("(?<=<SegmentList>)(.+)(?=</SegmentList>)"), match)
-  result.segmentList = match[0]
+  let found = xml.easyFind(re("""(?<=<Representation\s)(id="$1".+?)(?=</Representation>)""" % itag))
+  result.baseUrl = found.captureBetween('>', '<', found.find("<BaseURL>") + 8)
+  result.segmentList = found.easyFind(re("(?<=<SegmentList>)(.+)(?=</SegmentList>)"))
 
 
 proc getBitrate(stream: JsonNode): int =
