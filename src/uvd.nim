@@ -11,17 +11,17 @@ proc main() =
       usage: uvd [options] url
 
       options:
-        -a, --audio-only                audio only
-        -v, --video-only                video only
-        -f, --format                    audio output format
-        -s, --show                      show available streams
-        -t, --thumb                     download thumbnail
-        -S, --subtitles                 download subtitles
-        -l, --language                  desired subtitle language
-        --audio-id, --audio-itag        audio stream id/itag
-        --video-id, --video-itag        video stream id/itag
-        -h, --help                      print this help
-        -V, --version                   print version
+        -a, --audio-only                  audio only
+        -v, --video-only                  video only
+        -f, --format <format>             audio output format
+        -s, --show                        show available streams
+        -t, --thumb                       download thumbnail
+        -S, --subtitles                   download subtitles
+        -l, --language <iso code>         desired subtitle language
+        --audio-id, --audio-itag <itag>   audio stream id/itag
+        --video-id, --video-itag <itag>   video stream id/itag
+        -h, --help                        print this help
+        -V, --version                     print version
       """
 
   var
