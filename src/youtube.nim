@@ -480,38 +480,40 @@ proc transformN(initialN: string): string =
 
     # TODO: im sure there is a clever way to compact this
     if firstArg == "null":
-      if currFunc == "throttleUnshift" or currFunc == "throttlePrepend":
+      case currFunc
+      of "throttleUnshift", "throttlePrepend":
         throttleUnshift(tempArray, parseInt(secondArg))
-      elif currFunc == "throttleReverse":
+      of "throttleReverse":
         throttleReverse(tempArray)
-      elif currFunc == "throttlePush":
+      of "throttlePush":
         throttlePush(tempArray, secondArg)
-      elif currFunc == "throttleSwap" or currFunc == "throttleNestedSplice":
+      of "throttleSwap", "throttleNestedSplice":
         throttleSwap(tempArray, parseInt(secondArg))
-      elif currFunc == "throttleSplice":
+      of "throttleSplice":
         throttleSplice(tempArray, parseInt(secondArg))
       else:
         doAssert false
     else:
-      if currFunc == "throttleUnshift" or currFunc == "throttlePrepend":
+      case currFunc
+      of "throttleUnshift", "throttlePrepend":
         throttleUnshift(n, parseInt(secondArg))
-      elif currFunc == "throttleCipherForward":
+      of "throttleCipherForward":
         throttleCipher(n, secondArg, forwardH)
-      elif currFunc == "throttleCipherReverse":
+      of "throttleCipherReverse":
         throttleCipher(n, secondArg, reverseH)
-      elif currFunc == "throttleCipherGeneric":
+      of "throttleCipherGeneric":
         let thirdArg = tempArray[parseInt(step[3])]
         if thirdArg == "throttleCipherForward":
           throttleCipher(n, secondArg, forwardH)
         else:
           throttleCipher(n, secondArg, reverseH)
-      elif currFunc == "throttleReverse":
+      of "throttleReverse":
         throttleReverse(n)
-      elif currFunc == "throttlePush":
+      of "throttlePush":
         throttlePush(n, secondArg)
-      elif currFunc == "throttleSwap" or currFunc == "throttleNestedSplice":
+      of "throttleSwap", "throttleNestedSplice":
         throttleSwap(n, parseInt(secondArg))
-      elif currFunc == "throttleSplice":
+      of "throttleSplice":
         throttleSplice(n, parseInt(secondArg))
       else:
         doAssert false
