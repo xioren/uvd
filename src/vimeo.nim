@@ -38,14 +38,13 @@ const
   apiUrl = "https://api.vimeo.com"
   configUrl = "https://player.vimeo.com/video/$1/config"
   unlistedConfigUrl = "https://player.vimeo.com/video/$1/config?h=$2"
-  # detailsUrl = "http://vimeo.com/api/v2/video/$1.json"
+  # detailsUrl = "https://vimeo.com/api/v2/video/$1.json"
   authorizationUrl = "https://vimeo.com/_rv/viewer"
   profileUrl = "https://api.vimeo.com/users/$1/profile_sections?fields=uri%2Ctitle%2CuserUri%2Curi%2C"
   videosUrl = "https://api.vimeo.com/users/$1/profile_sections/$2/videos?fields=video_details%2Cprofile_section_uri%2Ccolumn_width%2Cclip.uri%2Cclip.name%2Cclip.type%2Cclip.categories.name%2Cclip.categories.uri%2Cclip.config_url%2Cclip.pictures%2Cclip.height%2Cclip.width%2Cclip.duration%2Cclip.description%2Cclip.created_time%2C&page=1&per_page=10"
   bypassUrl = "https://player.vimeo.com/video/$1?app_id=122963&referrer=https%3A%2F%2Fwww.patreon.com%2F"
 
 var
-  debug: bool
   includeAudio, includeVideo, includeThumb, includeSubtitles: bool
   audioFormat: string
   subtitlesLanguage: string
@@ -63,7 +62,7 @@ proc authorize() =
     let authResponse = parseJson(response)
     headers.add(("authorization", "jwt " & authResponse["jwt"].getStr()))
   else:
-    echo "<authorization failed>"
+    consoleLog.log(lvlError, "authorization failed")
 
 
 ########################################################
@@ -81,7 +80,7 @@ proc generateSubtitles(captions: JsonNode) =
         textTrack = track
         break
     if textTrack.kind == JNull:
-      echo "<subtitles not available natively in desired language>"
+      consoleLog.log(lvlError, "subtitles not available in desired language")
   else:
     # NOTE: select default track
     textTrack = captions[0]
@@ -92,12 +91,12 @@ proc generateSubtitles(captions: JsonNode) =
 
     let (code, response) = doGet(textTrackUrl)
     if code.is2xx:
-      includeSubtitles = save(response, addFileExt(subtitlesLanguage, "srt"))
+      includeSubtitles = response.save(addFileExt(subtitlesLanguage, "srt"))
     else:
-      echo "<error downloading subtitles>"
+      consoleLog.log(lvlError, "failed to download subtitles")
   else:
     includeSubtitles = false
-    echo "<error obtaining subtitles>"
+    consoleLog.log(lvlError, "failed to obtain subtitles")
 
 
 ########################################################
@@ -239,13 +238,13 @@ proc newVideo(vimeoUrl, cdnUrl, thumbnailUrl, title, videoId: string, cdnRespons
 
 
 proc reportStreamInfo(stream: Stream) =
-  echo "[info] stream: ", stream.filename, '\n',
-       "[info] id: ", stream.id, '\n',
-       "[info] size: ", stream.size
+  consoleLog.log(lvlInfo, "stream: ", stream.filename)
+  consoleLog.log(lvlInfo, "id: ", stream.id)
+  consoleLog.log(lvlInfo, "size: ", stream.size)
   if not (stream.quality == ""):
-    echo "[info] quality: ", stream.quality
-  echo "[info] mime: ", stream.mime, '\n',
-       "[info] segments: ", stream.urlSegments.len
+    consoleLog.log(lvlInfo, "quality: ", stream.quality)
+  consoleLog.log(lvlInfo, "mime: ", stream.mime)
+  consoleLog.log(lvlInfo, "segments: ", stream.urlSegments.len)
 
 
 proc reportStreams(cdnResponse: JsonNode) =
@@ -283,7 +282,7 @@ proc getProfileIds(vimeoUrl: string): tuple[profileId, sectionId: string] =
     let parts = profileResponse["data"][0]["uri"].getStr().split('/')
     result = (parts[2], parts[^1])
   else:
-    echo "<failed to obtain profile metadata>"
+    consoleLog.log(lvlError, "failed to obtain profile metadata")
 
 
 proc extractId(vimeoUrl: string): string =
@@ -344,8 +343,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
   else:
     if isUnlisted(vimeoUrl):
       let unlistedHash = extractHash(vimeoUrl)
-      if debug:
-        echo "[debug] unlisted hash: ", unlistedHash
+      consoleLog.log(lvlDebug, "unlisted hash: ", unlistedHash)
       standardVimeoUrl = standardVimeoUrl & '/' & unlistedHash
       (code, response) = doGet(unlistedConfigUrl % [videoId, unlistedHash])
     else:
@@ -353,12 +351,12 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
     if code == Http403:
       # NOTE: videos where this step was previously necessary now seem to work without it.
       # QUESTION: can it be removed?
-      echo "[trying signed config url]"
+      consoleLog.log(lvlNotice, "trying signed config url")
       (code, response) = doGet(standardVimeoUrl)
       let signedConfigUrl = response.captureBetween('"', '"', response.find(""""config_url":""") + 13)
 
       if not signedConfigUrl.contains("vimeo"):
-        echo "[trying embed url]"
+        consoleLog.log(lvlNotice, "trying embed url")
         # HACK: use patreon embed url to get meta data
         # QUESTION: is there a seperate bypass url for unlisted videos?
         headers.add(("referer", "https://cdn.embedly.com/"))
@@ -368,18 +366,19 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
         if embedResponse.contains("cdn_url"):
           response = embedResponse
         else:
-          echo "<failed to obtain video metadata>"
+          consoleLog.log(lvlFatal, "failed to obtain video metadata")
           return
       else:
         (code, response) = doGet(signedConfigUrl.replace("\\"))
     elif not code.is2xx:
       configResponse = parseJson(response)
-      echo '<', configResponse["message"].getStr().strip(chars={'"'}), '>', '\n', "<failed to obtain video metadata>"
+      consoleLog.log(lvlError, configResponse["message"].getStr().strip(chars={'"'}))
+      consoleLog.log(lvlFatal, "failed to obtain video metadata")
       return
 
   configResponse = parseJson(response)
   if not configResponse["video"].hasKey("owner"):
-    echo "<video does not exist or is hidden>"
+    consoleLog.log(lvlFatal, "video does not exist or is hidden")
   else:
     let
       title = configResponse["video"]["title"].getStr()
@@ -388,16 +387,14 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
       thumbnailUrl = getBestThumb(configResponse["video"]["thumbs"])
 
     if fileExists(fullFilename) and not showStreams:
-      echo "<file exists> ", safeTitle
+      consoleLog.log(lvlFatal, "file exists: ", safeTitle)
     else:
       let
         defaultCDN = configResponse["request"]["files"]["dash"]["default_cdn"].getStr()
         cdnUrl = configResponse["request"]["files"]["dash"]["cdns"][defaultCDN]["url"].getStr()
 
-      if debug:
-        echo "[debug] default CDN: ", defaultCDN
-        echo "[debug] CDN url: ", cdnUrl
-
+      consoleLog.log(lvlDebug, "default CDN: ", defaultCDN)
+      consoleLog.log(lvlDebug, "CDN url: ", cdnUrl)
 
       (code, response) = doGet(cdnUrl.dequery())
       let cdnResponse = parseJson(response)
@@ -407,31 +404,31 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
         return
 
       let video = newVideo(standardVimeoUrl, cdnUrl, thumbnailUrl, title, videoId, cdnResponse, aId, vId)
-      echo "[info] title: ", video.title
+      consoleLog.log(lvlInfo, "title: ", video.title)
 
       if includeThumb and thumbnailUrl != "":
         if not grab(video.thumbnail, fullFilename.changeFileExt("jpeg"), forceDl=true).is2xx:
-          echo "<failed to download thumbnail>"
+          consoleLog.log(lvlError, "failed to download thumbnail")
 
       if includeSubtitles:
         if configResponse["request"].hasKey("text_tracks"):
           generateSubtitles(configResponse["request"]["text_tracks"])
         else:
           includeSubtitles = false
-          echo "<video does not contain subtitles>"
+          consoleLog.log(lvlError, "video does not contain subtitles")
 
       if includeVideo:
         reportStreamInfo(video.videoStream)
         if not grab(video.videoStream.urlSegments, video.videoStream.filename,
                     forceDl=true).is2xx:
-          echo "<failed to download video stream>"
+          consoleLog.log(lvlError, "failed to download video stream")
           includeVideo = false
 
       if includeAudio and video.audioStream.exists:
         reportStreamInfo(video.audioStream)
         if not grab(video.audioStream.urlSegments, video.audioStream.filename,
                     forceDl=true).is2xx:
-          echo "<failed to download audio stream>"
+          consoleLog.log(lvlError, "failed to download audio stream")
           includeAudio = false
       else:
         includeAudio = false
@@ -442,9 +439,9 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
         convertAudio(video.audioStream.filename, safeTitle & " [" & videoId & ']', audioFormat)
       elif includeVideo:
         moveFile(video.videoStream.filename, fullFilename.changeFileExt(video.videoStream.ext))
-        echo "[complete] ", addFileExt(safeTitle, video.videoStream.ext)
+        consoleLog.log(lvlInfo, "complete: ", addFileExt(safeTitle, video.videoStream.ext))
       else:
-        echo "<no streams were downloaded>"
+        consoleLog.log(lvlError, "no streams were downloaded")
 
 
 proc getProfile(vimeoUrl: string) =
@@ -460,10 +457,9 @@ proc getProfile(vimeoUrl: string) =
   let (userId, sectionId) = getProfileIds(profileUrl % userSlug)
   nextUrl = videosUrl % [userId, sectionId]
 
-  if debug:
-    echo "[debug] slug: ", userSlug, " user id: ", userId, " sectionId: ", sectionId
+  consoleLog.log(lvlDebug, "slug: ", userSlug, " user id: ", userId, " sectionId: ", sectionId)
 
-  echo "[collecting videos]"
+  consoleLog.log(lvlInfo, "collecting videos")
   while nextUrl != apiUrl:
     (code, response) = doGet(nextUrl)
     if code.is2xx:
@@ -472,16 +468,16 @@ proc getProfile(vimeoUrl: string) =
         urls.add(video["clip"]["config_url"].getStr())
       nextUrl = apiUrl & profileResponse["paging"]["next"].getStr()
     else:
-      echo "<failed to obtain profile metadata>"
+      consoleLog.log(lvlFatal, "failed to obtain profile metadata")
       return
 
-  echo '[', urls.len, " videos queued]"
+  consoleLog.log(lvlInfo, urls.len, " videos queued")
   for url in urls:
     getVideo(url)
 
 
 proc vimeoDownload*(vimeoUrl, aFormat, aId, vId, sLang: string,
-                    iAudio, iVideo, iThumb, iSubtitles, sStreams, debugMode: bool) =
+                    iAudio, iVideo, iThumb, iSubtitles, sStreams, debug: bool) =
   includeAudio = iAudio
   includeVideo = iVideo
   includeThumb = iThumb
@@ -489,7 +485,8 @@ proc vimeoDownload*(vimeoUrl, aFormat, aId, vId, sLang: string,
   subtitlesLanguage = sLang
   audioFormat = aFormat
   showStreams = sStreams
-  debug = debugMode
+
+  setupLogger(debug)
 
   if extractId(vimeoUrl).all(isDigit):
     getVideo(vimeoUrl, aId, vId)

@@ -179,9 +179,9 @@ const
               'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N',
               'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
               'Y', 'Z', '-', '_']
-  videoMetadataFailureMessage = "<failed to obtain video metadata>"
-  channelMetadataFailureMessage = "<failed to obtain channel metadata>"
-  playlistMetadataFailureMessage = "<failed to obtain playlist metadata>"
+  videoMetadataFailureMessage = "failed to obtain video metadata"
+  channelMetadataFailureMessage = "failed to obtain channel metadata"
+  playlistMetadataFailureMessage = "failed to obtain playlist metadata"
 
 let date = now().format("yyyyMMdd")
 
@@ -270,7 +270,7 @@ proc generateSubtitles(captions: JsonNode) =
         captionTrack = track
         break
     if captionTrack.kind == JNull:
-      echo "<subtitles not available natively in desired language...falling back to translation>"
+      consoleLog.log(lvlNotice, "subtitles not available natively in desired language...falling back to translation")
 
   if captionTrack.kind == JNull:
     defaultAudioTrackIndex = captions["playerCaptionsTracklistRenderer"]["defaultAudioTrackIndex"].getInt()
@@ -290,7 +290,7 @@ proc generateSubtitles(captions: JsonNode) =
             doTranslate = true
             break
       if captionTrack.kind == JNull:
-        echo "<subtitles not available for translation to desired language>"
+        consoleLog.log(lvlError, "subtitles not available for translation to desired language")
 
   if captionTrack.kind != JNull:
     var captionTrackUrl: string
@@ -303,10 +303,10 @@ proc generateSubtitles(captions: JsonNode) =
     if code.is2xx:
       includeSubtitles = save(asrToSrt(response), addFileExt(subtitlesLanguage, "srt"))
     else:
-      echo "<error downloading subtitles>"
+      consoleLog.log(lvlError, "error downloading subtitles")
   else:
     includeSubtitles = false
-    echo "<error obtaining subtitles>"
+    consoleLog.log(lvlError, "error obtaining subtitles")
 
 
 ########################################################
@@ -622,11 +622,9 @@ proc urlOrCipher(stream: JsonNode): string =
     nTransforms[n] = transformedN
     if n != transformedN:
       result = result.replace(n, transformedN)
-    if debug:
-      echo "[debug] initial n: ", n
-      echo "[debug] transformed n: ", transformedN
-  if debug:
-    echo "[debug] download url: ", result
+    consoleLog.log(lvlDebug, "initial n: ", n)
+    consoleLog.log(lvlDebug, "transformed n: ", transformedN)
+  consoleLog.log(lvlDebug, "download url: ", result)
 
 
 proc produceUrlSegments(baseUrl, segmentList: string): seq[string] =
@@ -822,8 +820,7 @@ proc newVideoStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
       # QUESTION: are DASH urls or manifest urls ever ciphered?
       var segmentList: string
       result.isDash = true
-      if debug:
-        echo "[debug] DASH manifest: ", dashManifestUrl
+      consoleLog.log(lvlDebug, "DASH manifest: ", dashManifestUrl)
       (result.baseUrl, segmentList) = extractDashInfo(dashManifestUrl, $result.itag)
       result.urlSegments = produceUrlSegments(result.baseUrl, segmentList)
       # TODO: add len check here and fallback to stream[0] or similar if needed.
@@ -877,14 +874,14 @@ proc newVideo(youtubeUrl, dashManifestUrl, thumbnailUrl, title, videoId: string,
 
 
 proc reportStreamInfo(stream: Stream) =
-  echo "[info] stream: ", stream.filename, '\n',
-       "[info] itag: ", stream.itag, '\n',
-       "[info] size: ", stream.size, '\n',
-       "[info] quality: ", stream.quality, '\n',
-       "[info] mime: ", stream.mime, '\n',
-       "[info] codec: ", stream.codec
+  consoleLog.log(lvlInfo, "stream: ", stream.filename)
+  consoleLog.log(lvlInfo, "itag: ", stream.itag)
+  consoleLog.log(lvlInfo, "size: ", stream.size)
+  consoleLog.log(lvlInfo, "quality: ", stream.quality)
+  consoleLog.log(lvlInfo, "mime: ", stream.mime)
+  consoleLog.log(lvlInfo, "codec: ", stream.codec)
   if stream.isDash:
-    echo "[info] segments: ", stream.urlSegments.len
+    consoleLog.log(lvlInfo, "segments: ", stream.urlSegments.len)
 
 
 proc reportStreams(playerResponse: JsonNode, duration: int) =
@@ -932,8 +929,7 @@ proc reportStreams(playerResponse: JsonNode, duration: int) =
 
 
 proc parseBaseJS() =
-  if debug:
-    echo "[debug] baseJS version: ", globalBaseJsVersion, " api locale: ", apiLocale
+  consoleLog.log(lvlDebug, "baseJS version: ", globalBaseJsVersion, " api locale: ", apiLocale)
   let (code, response) = doGet(baseJsUrl % [globalBaseJsVersion, apiLocale])
   if code.is2xx:
     # NOTE: signature code
@@ -971,22 +967,22 @@ proc isolatePlaylist(youtubeUrl: string): string =
 
 proc giveReasons(reason: JsonNode) =
   if reason.hasKey("runs"):
-    stdout.write('<')
+    stdout.write("[ERROR] ")
     for run in reason["runs"]:
       stdout.write(run["text"])
-    echo '>'
+    echo
   elif reason.hasKey("simpleText"):
-    echo '<', reason["simpleText"].getStr().strip(chars={'"'}), '>'
+    consoleLog.log(lvlError, reason["simpleText"].getStr().strip(chars={'"'}))
 
 
 proc walkErrorMessage(playabilityStatus: JsonNode) =
   #[ FIXME: some (currently playing) live streams have error messages that do not fall in any of these catagories
     and the program exits with no output ]#
   if playabilityStatus.hasKey("reason"):
-    echo '<', playabilityStatus["reason"].getStr().strip(chars={'"'}), '>'
+    consoleLog.log(lvlError, playabilityStatus["reason"].getStr().strip(chars={'"'}))
   elif playabilityStatus.hasKey("messages"):
     for message in playabilityStatus["messages"]:
-      echo '<', message.getStr().strip(chars={'"'}), '>'
+      consoleLog.log(lvlError, message.getStr().strip(chars={'"'}))
 
   # if playabilityStatus.hasKey("errorScreen"):
   #   if playabilityStatus["errorScreen"]["playerErrorMessageRenderer"].hasKey("reason"):
@@ -1039,12 +1035,12 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         thumbnailUrl = playerResponse["videoDetails"]["thumbnail"]["thumbnails"][^1]["url"].getStr().dequery().multiReplace(("_webp", ""), (".webp", ".jpg"))
 
       if fileExists(fullFilename) and not showStreams:
-        echo "<file exists> ", fullFilename
+        consoleLog.log(lvlError, "file exists: ", fullFilename)
       else:
         # NOTE: age gate and unplayable video handling
         if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
           for idx, ctx in [playerBypassContextTier1, playerBypassContextTier2, playerBypassContextTier3]:
-            echo "[attempting age-gate bypass tier $1]" % $idx.succ
+            consoleLog.log(lvlNotice, "attempting age-gate bypass tier $1" % $idx.succ)
             (code, response) = doPost(playerUrl, ctx % [videoId, sigTimeStamp, date])
             playerResponse = parseJson(response)
             if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
@@ -1055,9 +1051,9 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
               break
         elif playerResponse["videoDetails"].hasKey("isLive") and playerResponse["videoDetails"]["isLive"].getBool():
           if playerResponse["videoDetails"]["isLiveContent"].getBool():
-            echo "<this video is currently live>"
+            consoleLog.log(lvlFatal, "this video is currently live")
           else:
-            echo "<this video is currently premiering>"
+            consoleLog.log(lvlFatal, "this video is currently premiering")
           return
         elif playerResponse["playabilityStatus"]["status"].getStr() != "OK":
           walkErrorMessage(playerResponse["playabilityStatus"])
@@ -1072,18 +1068,18 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
           dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
         let video = newVideo(standardYoutubeUrl, dashManifestUrl, thumbnailUrl, title, videoId, duration,
                              playerResponse["streamingData"], aItag, vItag)
-        echo "[info] title: ", video.title
+        consoleLog.log(lvlInfo, "title: ", video.title)
 
         if includeThumb:
           if not grab(video.thumbnail, fullFilename.changeFileExt("jpeg"), forceDl=true).is2xx:
-            echo "<failed to download thumbnail>"
+            consoleLog.log(lvlError, "failed to download thumbnail")
 
         if includeSubtitles:
           if playerResponse.hasKey("captions"):
             generateSubtitles(playerResponse["captions"])
           else:
             includeSubtitles = false
-            echo "<video does not contain subtitles>"
+            consoleLog.log(lvlError, "video does not contain subtitles")
 
         var attempt: HttpCode
         if includeVideo:
@@ -1093,7 +1089,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
           else:
             attempt = grab(video.videoStream.url, video.videoStream.filename, forceDl=true)
           if not attempt.is2xx:
-            echo "<failed to download video stream>"
+            consoleLog.log(lvlError, "failed to download video stream")
             includeVideo = false
             # NOTE: remove empty file
             discard tryRemoveFile(video.videoStream.filename)
@@ -1105,7 +1101,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
           else:
             attempt = grab(video.audioStream.url, video.audioStream.filename, forceDl=true)
           if not attempt.is2xx:
-            echo "<failed to download audio stream>"
+            consoleLog.log(lvlError, "failed to download audio stream")
             includeAudio = false
             # NOTE: remove empty file
             discard tryRemoveFile(video.audioStream.filename)
@@ -1119,40 +1115,42 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
           convertAudio(video.audioStream.filename, safeTitle & " [" & videoId & ']', audioFormat)
         elif includeVideo:
           moveFile(video.videoStream.filename, fullFilename.changeFileExt(video.videoStream.ext))
-          echo "[complete] ", addFileExt(safeTitle, video.videoStream.ext)
+          consoleLog.log(lvlInfo, "complete: ", addFileExt(safeTitle, video.videoStream.ext))
         else:
-          echo "<no streams were downloaded>"
+          consoleLog.log(lvlError, "no streams were downloaded")
     else:
-      echo '<', code, '>', '\n', videoMetadataFailureMessage
+      consoleLog.log(lvlError, code)
+      consoleLog.log(lvlFatal, videoMetadataFailureMessage)
   else:
-    echo '<', code, '>', '\n', videoMetadataFailureMessage
+    consoleLog.log(lvlError, code)
+    consoleLog.log(lvlFatal, videoMetadataFailureMessage)
 
 
 proc getPlaylist(youtubeUrl: string) =
   var ids: seq[string]
   let playlistId = isolatePlaylist(youtubeUrl)
 
-  if debug:
-    echo "[debug] playlist id: ", playlistId
+  consoleLog.log(lvlDebug, "playlist id: ", playlistId)
 
   let (code, response) = doPost(nextUrl, playlistContext % [playlistId, date])
   if code.is2xx:
     let
       playlistResponse = parseJson(response)
       title = playlistResponse["contents"]["twoColumnWatchNextResults"]["playlist"]["playlist"]["title"].getStr()
-    echo "[collecting videos] ", title
+    consoleLog.log(lvlInfo, "collecting videos: ", title)
 
     if playlistResponse["contents"]["twoColumnWatchNextResults"]["playlist"]["playlist"]["isInfinite"].getBool():
-      echo "<infinite playlist...aborting>"
+      consoleLog.log(lvlFatal, "infinite playlist...aborting")
     else:
       for item in playlistResponse["contents"]["twoColumnWatchNextResults"]["playlist"]["playlist"]["contents"]:
         ids.add(item["playlistPanelVideoRenderer"]["videoId"].getStr())
 
-      echo '[', ids.len, " videos queued]"
+      consoleLog.log(lvlInfo, ids.len, " videos queued")
       for id in ids:
         getVideo(watchUrl & id)
   else:
-    echo '<', code, '>', '\n', playlistMetadataFailureMessage
+    consoleLog.log(lvlError, code)
+    consoleLog.log(lvlFatal, playlistMetadataFailureMessage)
 
 
 proc getChannel(youtubeUrl: string) =
@@ -1166,14 +1164,13 @@ proc getChannel(youtubeUrl: string) =
     playlistIds: seq[string]
     tabIdx = 1
 
-  if debug:
-    echo "[debug] channel: ", channel
+  consoleLog.log(lvlDebug, "channel: ", channel)
 
   iterator gridRendererExtractor(renderer: string): string =
     let capRenderer = capitalizeAscii(renderer)
     for section in channelResponse["contents"]["twoColumnBrowseResultsRenderer"]["tabs"][tabIdx]["tabRenderer"]["content"]["sectionListRenderer"]["contents"]:
       if section["itemSectionRenderer"]["contents"][0].hasKey("messageRenderer"):
-        echo '<', section["itemSectionRenderer"]["contents"][0]["messageRenderer"]["text"]["simpleText"].getStr(), '>'
+        consoleLog.log(lvlError, section["itemSectionRenderer"]["contents"][0]["messageRenderer"]["text"]["simpleText"].getStr())
       else:
         for item in section["itemSectionRenderer"]["contents"][0]["gridRenderer"]["items"]:
           if item.hasKey("continuationItemRenderer"):
@@ -1194,13 +1191,13 @@ proc getChannel(youtubeUrl: string) =
                 else:
                   lastToken = thisToken
               else:
-                echo channelMetadataFailureMessage
+                consoleLog.log(lvlError, channelMetadataFailureMessage)
           else:
             yield item["grid" & capRenderer & "Renderer"][renderer & "Id"].getStr()
 
   (code, response) = doPost(browseUrl, browseContext % [channel, date, videosTab])
   if code.is2xx:
-    echo "[collecting videos]"
+    consoleLog.log(lvlInfo, "collecting videos")
     channelResponse = parseJson(response)
     let title = channelResponse["metadata"]["channelMetadataRenderer"]["title"].getStr()
     if channelResponse["contents"]["twoColumnBrowseResultsRenderer"]["tabs"][tabIdx]["tabRenderer"]["title"].getStr() == "Videos":
@@ -1212,12 +1209,12 @@ proc getChannel(youtubeUrl: string) =
       # NOTE: for now only get playlists for topic channels (youtube music)
       (code, response) = doPost(browseUrl, browseContext % [channel, date, playlistsTab])
       if code.is2xx:
-        echo "[collecting playlists]"
+        consoleLog.log(lvlInfo, "collecting playlists")
         channelResponse = parseJson(response)
         if channelResponse["contents"]["twoColumnBrowseResultsRenderer"]["tabs"][tabIdx]["tabRenderer"]["title"].getStr() == "Playlists":
           for section in channelResponse["contents"]["twoColumnBrowseResultsRenderer"]["tabs"][tabIdx]["tabRenderer"]["content"]["sectionListRenderer"]["contents"]:
             if section["itemSectionRenderer"]["contents"][0].hasKey("messageRenderer"):
-              echo '<', section["itemSectionRenderer"]["contents"][0]["messageRenderer"]["text"]["simpleText"].getStr(), '>'
+              consoleLog.log(lvlError, section["itemSectionRenderer"]["contents"][0]["messageRenderer"]["text"]["simpleText"].getStr())
             else:
               if section["itemSectionRenderer"]["contents"][0].hasKey("gridRenderer"):
                 # NOTE: gridRenderer
@@ -1233,17 +1230,20 @@ proc getChannel(youtubeUrl: string) =
                   for item in section["itemSectionRenderer"]["contents"][0]["shelfRenderer"]["content"]["horizontalListRenderer"]["items"]:
                     playlistIds.add(item["gridPlaylistRenderer"]["playlistId"].getStr())
                 else:
-                  echo channelMetadataFailureMessage
+                  consoleLog.log(lvlError, channelMetadataFailureMessage)
               else:
-                echo channelMetadataFailureMessage
+                consoleLog.log(lvlError, channelMetadataFailureMessage)
         else:
-          echo channelMetadataFailureMessage
+          consoleLog.log(lvlError, channelMetadataFailureMessage)
       else:
-        echo '<', code, '>', '\n', channelMetadataFailureMessage
+        consoleLog.log(lvlError, code)
+        consoleLog.log(lvlFatal, channelMetadataFailureMessage)
   else:
-    echo '<', code, '>', '\n', channelMetadataFailureMessage
+    consoleLog.log(lvlError, code)
+    consoleLog.log(lvlFatal, channelMetadataFailureMessage)
 
-  echo '[', videoIds.len, " videos queued]", '\n', '[', playlistIds.len, " playlists queued]"
+  consoleLog.log(lvlInfo, videoIds.len, " videos queued")
+  consoleLog.log(lvlInfo, playlistIds.len, " playlists queued")
   for id in videoIds:
     getVideo(watchUrl & id)
   for id in playlistIds:
@@ -1251,7 +1251,7 @@ proc getChannel(youtubeUrl: string) =
 
 
 proc youtubeDownload*(youtubeUrl, aFormat, aItag, vItag, sLang: string,
-                      iAudio, iVideo, iThumb, iSubtitles, sStreams, debugMode: bool) =
+                      iAudio, iVideo, iThumb, iSubtitles, sStreams, debug: bool) =
   includeAudio = iAudio
   includeVideo = iVideo
   includeThumb = iThumb
@@ -1259,7 +1259,8 @@ proc youtubeDownload*(youtubeUrl, aFormat, aItag, vItag, sLang: string,
   subtitlesLanguage = sLang
   audioFormat = aFormat
   showStreams = sStreams
-  debug = debugMode
+
+  setupLogger(debug)
 
   if "/channel/" in youtubeUrl or "/c/" in youtubeUrl:
     getChannel(youtubeUrl)

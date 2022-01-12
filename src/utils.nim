@@ -1,4 +1,4 @@
-import std/[asyncdispatch, asyncfile, httpclient, os, re,
+import std/[asyncdispatch, asyncfile, httpclient, logging, os, re,
             sets, strformat, strutils, tables, terminal, times]
 from math import floor
 
@@ -14,6 +14,7 @@ const
   codecOptions = {"aac": "-f adts", "flac": "", "m4a": "-bsf:a aac_adtstoasc",
                   "mp3": "-qscale:a 0", "ogg": "", "wav": ""}.toTable
 var
+  consoleLog: ConsoleLogger
   currentSegment, totalSegments: int
   # HACK: a not ideal solution to erroneosly clearing terminal when no progress was made (e.g. 403 forbidden)
   madeProgress: bool
@@ -30,6 +31,13 @@ func makeSafe*(title: string): string =
   ## make video titles more suitable for filenames
   # NOTE: subjective
   title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"), ("#", ""), ("\\", "-"))
+
+
+proc setupLogger(debug: bool):
+  if debug:
+    consoleLog = newConsoleLogger(levelThreshold=lvlDebug, fmtStr="[$levelname] ")
+  else:
+    consoleLog = newConsoleLogger(levelThreshold=lvlInfo, fmtStr="[$levelname] ")
 
 
 proc zFill*(this: string, width: int, fill = '0'): string =
