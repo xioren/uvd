@@ -164,7 +164,7 @@ const
   # contextUrl = "https://www.youtube.com/sw.js_data"
   videosTab = "EgZ2aWRlb3M%3D"
   playlistsTab = "EglwbGF5bGlzdHM%3D"
-  # TODO: generate programatically
+  # TODO: generate programmatically
   forwardH = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
               'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
               'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd',
@@ -344,7 +344,7 @@ proc throttleCipher(d: var string, e: var string, f: array[64, char]) {.inline.}
 
     non-generative: function(d,e,f){var h=f.length;d.forEach(function(l,m,n){this.push(n[m]=f[(f.indexOf(l)-f.indexOf(this[m])+m+h--)%f.length])},e.split(""))};
 
-    +m-32+f-- == +m+h-- == +64 == +f.len
+    +m-32+f-- == +m+h-- == +f.len == +64
   ]#
   var
     c: char
