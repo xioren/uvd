@@ -45,8 +45,8 @@ proc formatLogMessage(level: string, messageParts: varargs[string]): string =
     result.add(m)
 
 
-proc logGeneric*(context: string, messageParts: varargs[string, `$`]) =
-  if globalLogLevel < lvlNone:
+proc logGeneric*(level: Level, context: string, messageParts: varargs[string, `$`]) =
+  if globalLogLevel < level:
     let fullMessage = formatLogMessage("[" & context & "] ", messageParts)
     stdout.writeLine(fullMessage)
 
@@ -136,7 +136,7 @@ proc joinStreams*(videoStream, audioStream, filename, subtitlesLanguage: string,
     removeFile(audioStream)
     if includeCaptions:
       removeFile(addFileExt(subtitlesLanguage, "srt"))
-    logGeneric("complete", filename)
+    logGeneric(lvlInfo, "complete", filename)
   else:
     logError("failed to join streams")
 
@@ -157,7 +157,7 @@ proc convertAudio*(audioStream, filename, format: string) =
 
   if returnCode == 0:
     removeFile(audioStream)
-    logGeneric("complete", fullFilename)
+    logGeneric(lvlInfo, "complete", fullFilename)
   else:
     logError("error converting stream")
 
@@ -288,6 +288,6 @@ proc grab*(url: string | seq[string], filename: string, saveLocation=getCurrentD
   else:
     result = waitFor download(url, filepath)
     if result.is2xx:
-      logGeneric("complete", filename)
+      logGeneric(lvlInfo, "complete", filename)
     else:
       logError(result)

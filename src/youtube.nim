@@ -1007,7 +1007,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
     dashManifestUrl: string
     captions: string
 
-  logGeneric("youtube", videoId)
+  logGeneric(lvlInfo, "youtube", videoId)
 
   # NOTE: make initial request to get base.js version, timestamp, and api locale
   (code, response) = doGet(standardYoutubeUrl)
@@ -1051,9 +1051,9 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
               break
         elif playerResponse["videoDetails"].hasKey("isLive") and playerResponse["videoDetails"]["isLive"].getBool():
           if playerResponse["videoDetails"]["isLiveContent"].getBool():
-            logFatal("this video is currently live")
+            logError("this video is currently live")
           else:
-            logFatal("this video is currently premiering")
+            logError("this video is currently premiering")
           return
         elif playerResponse["playabilityStatus"]["status"].getStr() != "OK":
           walkErrorMessage(playerResponse["playabilityStatus"])
@@ -1115,15 +1115,15 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
           convertAudio(video.audioStream.filename, safeTitle & " [" & videoId & ']', audioFormat)
         elif includeVideo:
           moveFile(video.videoStream.filename, fullFilename.changeFileExt(video.videoStream.ext))
-          logGeneric("complete", addFileExt(safeTitle, video.videoStream.ext))
+          logGeneric(lvlInfo, "complete", addFileExt(safeTitle, video.videoStream.ext))
         else:
           logError("no streams were downloaded")
     else:
       logError(code)
-      logFatal(videoMetadataFailureMessage)
+      logError(videoMetadataFailureMessage)
   else:
     logError(code)
-    logFatal(videoMetadataFailureMessage)
+    logError(videoMetadataFailureMessage)
 
 
 proc getPlaylist(youtubeUrl: string) =
@@ -1140,7 +1140,7 @@ proc getPlaylist(youtubeUrl: string) =
     logInfo("collecting videos: ", title)
 
     if playlistResponse["contents"]["twoColumnWatchNextResults"]["playlist"]["playlist"]["isInfinite"].getBool():
-      logFatal("infinite playlist...aborting")
+      logError("infinite playlist...aborting")
     else:
       for item in playlistResponse["contents"]["twoColumnWatchNextResults"]["playlist"]["playlist"]["contents"]:
         ids.add(item["playlistPanelVideoRenderer"]["videoId"].getStr())
@@ -1150,7 +1150,7 @@ proc getPlaylist(youtubeUrl: string) =
         getVideo(watchUrl & id)
   else:
     logError(code)
-    logFatal(playlistMetadataFailureMessage)
+    logError(playlistMetadataFailureMessage)
 
 
 proc getChannel(youtubeUrl: string) =
@@ -1237,10 +1237,10 @@ proc getChannel(youtubeUrl: string) =
           logError(channelMetadataFailureMessage)
       else:
         logError(code)
-        logFatal(channelMetadataFailureMessage)
+        logError(channelMetadataFailureMessage)
   else:
     logError(code)
-    logFatal(channelMetadataFailureMessage)
+    logError(channelMetadataFailureMessage)
 
   logInfo(videoIds.len, " videos queued")
   logInfo(playlistIds.len, " playlists queued")

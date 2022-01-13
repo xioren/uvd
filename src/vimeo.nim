@@ -335,7 +335,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
   let videoId = extractId(vimeoUrl)
   var standardVimeoUrl = baseUrl & '/' & videoId
 
-  echo "[vimeo] video id: ", videoId
+  logGeneric(lvlInfo, "vimeo" , "video id: ", videoId)
 
   if vimeoUrl.contains("/config?"):
     # NOTE: config url already obtained (calls from getProfile)
@@ -366,19 +366,19 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
         if embedResponse.contains("cdn_url"):
           response = embedResponse
         else:
-          logFatal("failed to obtain video metadata")
+          logError("failed to obtain video metadata")
           return
       else:
         (code, response) = doGet(signedConfigUrl.replace("\\"))
     elif not code.is2xx:
       configResponse = parseJson(response)
       logError(configResponse["message"].getStr().strip(chars={'"'}))
-      logFatal("failed to obtain video metadata")
+      logError("failed to obtain video metadata")
       return
 
   configResponse = parseJson(response)
   if not configResponse["video"].hasKey("owner"):
-    logFatal("video does not exist or is hidden")
+    logError("video does not exist or is hidden")
   else:
     let
       title = configResponse["video"]["title"].getStr()
@@ -387,7 +387,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
       thumbnailUrl = getBestThumb(configResponse["video"]["thumbs"])
 
     if fileExists(fullFilename) and not showStreams:
-      logFatal("file exists: ", safeTitle)
+      logError("file exists: ", safeTitle)
     else:
       let
         defaultCDN = configResponse["request"]["files"]["dash"]["default_cdn"].getStr()
@@ -468,7 +468,7 @@ proc getProfile(vimeoUrl: string) =
         urls.add(video["clip"]["config_url"].getStr())
       nextUrl = apiUrl & profileResponse["paging"]["next"].getStr()
     else:
-      logFatal("failed to obtain profile metadata")
+      logError("failed to obtain profile metadata")
       return
 
   logInfo(urls.len, " videos queued")
