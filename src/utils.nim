@@ -5,6 +5,16 @@ from math import floor
 export asyncdispatch, httpclient, os, re, strutils, tables, times
 
 
+type
+  Level* = enum
+    lvlDebug,
+    lvlInfo,
+    lvlNotice,
+    lvlWarn,
+    lvlError,
+    lvlFatal,
+    lvlNone
+
 const
   extensions* = {"video/mp4": ".m4v", "video/webm": ".webm",
                  "audio/mp4": ".m4a", "audio/webm": ".weba",
@@ -14,12 +24,67 @@ const
   codecOptions = {"aac": "-f adts", "flac": "", "m4a": "-bsf:a aac_adtstoasc",
                   "mp3": "-qscale:a 0", "ogg": "", "wav": ""}.toTable
 var
-  consoleLog: ConsoleLogger
+  globalLogLevel* = lvlInfo
   currentSegment, totalSegments: int
   # HACK: a not ideal solution to erroneosly clearing terminal when no progress was made (e.g. 403 forbidden)
   madeProgress: bool
   headers* = @[("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.45 Safari/537.36"),
                ("accept", "*/*")]
+
+
+# NOTE: basic logger implementation
+proc formatLogMessage(level: string, messageParts: varargs[string]): string =
+  var msgLen = 0
+  for m in messageParts:
+    msgLen.inc(m.len)
+
+  result = newStringOfCap(msgLen)
+  result.add(level)
+
+  for m in messageParts:
+    result.add(m)
+
+
+proc logGeneric*(context: string, messageParts: varargs[string, `$`]) =
+  if globalLogLevel < lvlNone:
+    let fullMessage = formatLogMessage("[" & context & "] ", messageParts)
+    stdout.writeLine(fullMessage)
+
+
+proc logDebug*(messageParts: varargs[string, `$`]) =
+  if globalLogLevel < lvlInfo:
+    let fullMessage = formatLogMessage("[debug] ", messageParts)
+    stdout.writeLine(fullMessage)
+
+
+proc logInfo*(messageParts: varargs[string, `$`]) =
+  if globalLogLevel < lvlNotice:
+    let fullMessage = formatLogMessage("[info] ", messageParts)
+    stdout.writeLine(fullMessage)
+
+
+proc logNotice*(messageParts: varargs[string, `$`]) =
+  if globalLogLevel < lvlWarn:
+    let fullMessage = formatLogMessage("[notice] ", messageParts)
+    stdout.writeLine(fullMessage)
+
+
+proc logWarning*(messageParts: varargs[string, `$`]) =
+  if globalLogLevel < lvlError:
+    let fullMessage = formatLogMessage("<warning> ", messageParts)
+    stdout.writeLine(fullMessage)
+
+
+proc logError*(messageParts: varargs[string, `$`]) =
+  if globalLogLevel < lvlFatal:
+    let fullMessage = formatLogMessage("<error> ", messageParts)
+    stdout.writeLine(fullMessage)
+
+
+proc logFatal*(messageParts: varargs[string, `$`]) =
+  if globalLogLevel < lvlNone:
+    let fullMessage = formatLogMessage("<fatal> ", messageParts)
+    stdout.writeLine(fullMessage)
 
 
 func dequery*(url: string): string =
@@ -31,13 +96,6 @@ func makeSafe*(title: string): string =
   ## make video titles more suitable for filenames
   # NOTE: subjective
   title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"), ("#", ""), ("\\", "-"))
-
-
-proc setupLogger(debug: bool):
-  if debug:
-    consoleLog = newConsoleLogger(levelThreshold=lvlDebug, fmtStr="[$levelname] ")
-  else:
-    consoleLog = newConsoleLogger(levelThreshold=lvlInfo, fmtStr="[$levelname] ")
 
 
 proc zFill*(this: string, width: int, fill = '0'): string =
@@ -65,11 +123,11 @@ proc easyFind*(this: string, that: Regex): string =
 
 proc joinStreams*(videoStream, audioStream, filename, subtitlesLanguage: string, includeCaptions: bool) =
   ## join audio and video streams using ffmpeg
-  echo "[joining streams] ", videoStream, " + ", audioStream
+  logInfo("joining streams ", videoStream, " + ", audioStream)
   var command: string
 
   if includeCaptions:
-    command = fmt"ffmpeg -y -i {videoStream} -i {audioStream} -i subtitles.srt -metadata:s:s:0 language={subtitlesLanguage} -c copy {quoteShell(filename)} > /dev/null 2>&1"
+    command = fmt"ffmpeg -y -i {videoStream} -i {audioStream} -i subtitles.srt -metadata:s:s:0 language={quoteShell(subtitlesLanguage)} -c copy {quoteShell(filename)} > /dev/null 2>&1"
   else:
     command = fmt"ffmpeg -y -i {videoStream} -i {audioStream} -c copy {quoteShell(filename)} > /dev/null 2>&1"
 
@@ -78,9 +136,9 @@ proc joinStreams*(videoStream, audioStream, filename, subtitlesLanguage: string,
     removeFile(audioStream)
     if includeCaptions:
       removeFile(addFileExt(subtitlesLanguage, "srt"))
-    echo "[complete] ", filename
+    logGeneric("complete", filename)
   else:
-    echo "<error joining streams>"
+    logError("failed to join streams")
 
 
 proc convertAudio*(audioStream, filename, format: string) =
@@ -89,7 +147,7 @@ proc convertAudio*(audioStream, filename, format: string) =
   let fullFilename = addFileExt(filename, format)
 
   if not audioStream.endsWith(format):
-    echo "[converting stream] ", audioStream
+    logInfo("converting stream ", audioStream)
     if format == "ogg" and audioStream.endsWith(".weba"):
       returnCode = execShellCmd(fmt"ffmpeg -y -i {audioStream} -codec:a copy {quoteShell(fullFilename)} > /dev/null 2>&1")
     else:
@@ -99,9 +157,9 @@ proc convertAudio*(audioStream, filename, format: string) =
 
   if returnCode == 0:
     removeFile(audioStream)
-    echo "[complete] ", fullFilename
+    logGeneric("complete", fullFilename)
   else:
-    echo "<error converting stream>"
+    logError("error converting stream")
 
 
 proc clearProgress() =
@@ -151,7 +209,7 @@ proc doPost*(url, body: string): tuple[httpcode: HttpCode, body: string] =
     result.httpcode = response.code
     result.body = response.body
   except Exception as e:
-    echo '<', e.msg, '>'
+    logError(e.msg)
   finally:
     client.close()
 
@@ -163,7 +221,7 @@ proc doGet*(url: string): tuple[httpcode: HttpCode, body: string] =
     result.httpcode = response.code
     result.body = response.body
   except Exception as e:
-    echo '<', e.msg, '>'
+    logError(e.msg)
   finally:
     client.close()
 
@@ -179,7 +237,7 @@ proc download(url, filepath: string): Future[HttpCode] {.async.} =
     await file.writeFromStream(resp.bodyStream)
     result = resp.code
   except Exception as e:
-    echo '<', e.msg, '>'
+    logError(e.msg)
   finally:
     file.close()
     client.close()
@@ -201,7 +259,7 @@ proc download(parts: seq[string], filepath: string): Future[HttpCode] {.async.} 
       result = resp.code
       inc currentSegment
   except Exception as e:
-    echo '<', e.msg, '>'
+    logError(e.msg)
   finally:
     file.close()
     client.close()
@@ -217,7 +275,7 @@ proc save*(content, filepath: string): bool =
     file.write(content)
     result = true
   except Exception as e:
-    echo '<', e.msg, '>'
+    logError(e.msg)
   finally:
     file.close()
 
@@ -226,10 +284,10 @@ proc grab*(url: string | seq[string], filename: string, saveLocation=getCurrentD
   ## download front end
   let filepath = joinPath(saveLocation, filename)
   if not forceDl and fileExists(filepath):
-    echo "<file exists> ", filename
+    logError("file exists: ", filename)
   else:
     result = waitFor download(url, filepath)
     if result.is2xx:
-      echo "[complete] ", filename
+      logGeneric("complete", filename)
     else:
-      echo '<', result, '>'
+      logError(result)
