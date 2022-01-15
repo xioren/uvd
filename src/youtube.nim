@@ -234,6 +234,7 @@ proc formatTime(time: string): string =
 
 
 proc asrToSrt(xml: string): string =
+  ## convert youtube native asr captions to srt format
   let
     startTimes = xml.findAll(re"""(?<=start=")[^"]+""")
     durations = xml.findAll(re"""(?<=dur=")[^"]+""")
@@ -248,8 +249,8 @@ proc asrToSrt(xml: string): string =
       endPoint = $(parseFloat(startPoint) + parseFloat(duration))
 
     if idx < startTimes.high:
-      # NOTE: choose min between enpoint of current text and startpoint of next text to eliminate crowding
-      # i.e. only one subtitle entry on screen at a time
+      #[ NOTE: choose min between enpoint of current text and startpoint of next text to eliminate crowding
+        i.e. only one subtitle entry on screen at a time ]#
       result.add(formatTime(startPoint) & " --> " & formatTime($min(parseFloat(endPoint), parseFloat(startTimes[idx.succ]))) & '\n')
       result.add(text[idx].replace("&amp;#39;", "'") & "\n\n")
     else:
@@ -270,7 +271,7 @@ proc generateSubtitles(captions: JsonNode) =
         captionTrack = track
         break
     if captionTrack.kind == JNull:
-      logNotice("subtitles not available natively in desired language...falling back to translation")
+      logNotice("subtitles not available natively in desired language...falling back to direct translation")
 
   if captionTrack.kind == JNull:
     defaultAudioTrackIndex = captions["playerCaptionsTracklistRenderer"]["defaultAudioTrackIndex"].getInt()

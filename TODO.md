@@ -3,4 +3,3 @@
 + view available subtitle languages with --show? other flag?
 + solution to bitrate/average bitrate comparations
 + windows support
-+ silent
