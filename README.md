@@ -26,6 +26,7 @@ options:
   -f, --format <format>             audio output format
   -s, --show                        show available streams
   -t, --thumb                       download thumbnail
+  --silent                          suppress output
   -S, --subtitles                   download subtitles
   -l, --language <iso code>         desired subtitle language
   --audio-id, --audio-itag <itag>   audio stream id/itag

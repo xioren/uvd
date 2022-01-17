@@ -186,7 +186,6 @@ const
 let date = now().format("yyyyMMdd")
 
 var
-  debug: bool
   apiLocale: string
   includeAudio, includeVideo, includeThumb, includeSubtitles: bool
   subtitlesLanguage: string
@@ -930,7 +929,8 @@ proc reportStreams(playerResponse: JsonNode, duration: int) =
 
 
 proc parseBaseJS() =
-  logDebug("baseJS version: ", globalBaseJsVersion, " api locale: ", apiLocale)
+  logDebug("baseJS version: ", globalBaseJsVersion)
+  logDebug("api locale: ", apiLocale)
   let (code, response) = doGet(baseJsUrl % [globalBaseJsVersion, apiLocale])
   if code.is2xx:
     # NOTE: signature code
