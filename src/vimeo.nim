@@ -110,6 +110,7 @@ proc isVerticle(stream: JsonNode): bool =
 
 
 proc selectVideoStream(streams: JsonNode, id: string): JsonNode =
+  ## select video by id or resolution
   if id == "0":
     var
       thisDimension, maxDimension: int
@@ -133,6 +134,7 @@ proc selectVideoStream(streams: JsonNode, id: string): JsonNode =
 
 
 proc selectAudioStream(streams: JsonNode, id: string): JsonNode =
+  ## select video by id or bitrate
   if streams.kind == JNull:
     result = streams
   elif id == "0":
@@ -150,6 +152,7 @@ proc selectAudioStream(streams: JsonNode, id: string): JsonNode =
 
 
 proc getVideoStreamInfo(stream: JsonNode): tuple[id, mime, ext, size, qlt, bitrate: string] =
+  ## compile all relevent video stream metadata
   result.id = stream["id"].getStr()
   result.mime = stream["mime_type"].getStr()
   result.ext = extensions[result.mime]
@@ -167,6 +170,7 @@ proc getVideoStreamInfo(stream: JsonNode): tuple[id, mime, ext, size, qlt, bitra
 
 
 proc getAudioStreamInfo(stream: JsonNode): tuple[id, mime, ext, size, qlt, bitrate: string] =
+  ## compile all relevent audio stream metadata
   result.id = stream["id"].getStr()
   result.mime = stream["mime_type"].getStr()
   result.ext = extensions[result.mime]

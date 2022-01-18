@@ -401,17 +401,21 @@ proc extractThrottleCode(mainFunc, js: string): string =
 iterator splitThrottleArray(js: string): string =
   ## split c array into individual elements
   var
-    step = newString(1)
+    step: string
     scope: int
 
   let found = js.easyFind(re("(?<=,c=\\[)(.+)(?=\\];\n?c)", flags={reDotAll}))
 
   for idx, c in found:
+    #[ NOTE: commas separate function arguments and functions themselves.
+      only yield if the comma is separating two functions in the base scope
+      and not function arguments or child functions.
+    ]#
     if (c == ',' and scope == 0 and '{' notin found[idx..min(idx + 5, found.high)]) or idx == found.high:
       if idx == found.high:
         step.add(c)
       yield step.multiReplace(("\x00", ""), ("\n", ""))
-      step = newString(1)
+      step = ""
       continue
     elif c == '{':
       inc scope
@@ -480,6 +484,7 @@ proc transformN(initialN: string): string =
 
     # TODO: im sure there is a clever way to compact this
     if firstArg == "null":
+      # NOTE: modifying entire array
       case currFunc
       of "throttleUnshift", "throttlePrepend":
         throttleUnshift(tempArray, parseInt(secondArg))
@@ -494,6 +499,7 @@ proc transformN(initialN: string): string =
       else:
         doAssert false
     else:
+      # NOTE: modifying n value
       case currFunc
       of "throttleUnshift", "throttlePrepend":
         throttleUnshift(n, parseInt(secondArg))
@@ -550,7 +556,7 @@ proc extractParentFunctionName(jsFunction: string): string =
 
 
 proc parseChildFunction(function: string): tuple[name: string, argument: int] =
-  ## returns function name and int argument
+  ## returns child function name and second argument
   ## ix.ai(a,5) --> (ai, 5)
   result.name = function.captureBetween('.', '(')
   result.argument = parseInt(function.captureBetween(',', ')'))
@@ -607,6 +613,16 @@ proc getSigCipherUrl(signatureCipher: string): string =
 ########################################################
 
 
+proc hasItag(streams: JsonNode, itag: int): bool =
+  ## check if set of streams contains given itag
+  if itag == 0:
+    result = true
+  else:
+    for stream in streams:
+      if stream["itag"].getInt() == itag:
+        return true
+
+
 proc urlOrCipher(stream: JsonNode): string =
   ## produce stream url, deciphering if necessary and tranform n throttle string
   if stream.hasKey("url"):
@@ -627,13 +643,15 @@ proc urlOrCipher(stream: JsonNode): string =
   logDebug("download url: ", result)
 
 
-proc produceUrlSegments(baseUrl, segmentList: string): seq[string] =
+proc produceDashSegments(baseUrl, segmentList: string): seq[string] =
+  ## extract individual from dash entry
   let base = parseUri(baseUrl)
   for segment in segmentList.findAll(re("""(?<=\")([a-z\d/\.-]+)(?=\")""")):
     result.add($(base / segment))
 
 
 proc extractDashInfo(dashManifestUrl, itag: string): tuple[baseUrl, segmentList: string] =
+  ## parse itag's dash entry from xml
   let (_, xml) = doGet(dashManifestUrl)
   let found = xml.easyFind(re("""(?<=<Representation\s)(id="$1".+?)(?=</Representation>)""" % itag))
   result.baseUrl = found.captureBetween('>', '<', found.find("<BaseURL>") + 8)
@@ -641,6 +659,7 @@ proc extractDashInfo(dashManifestUrl, itag: string): tuple[baseUrl, segmentList:
 
 
 proc getBitrate(stream: JsonNode): int =
+  ## extract bitrate value from json. prefers averageBitrate.
   # NOTE: this is done enough that it warrents its own proc
   if stream.kind == JNull:
     result = 0
@@ -652,6 +671,7 @@ proc getBitrate(stream: JsonNode): int =
 
 
 proc selectVideoByBitrate(streams: JsonNode, codec: string): JsonNode =
+  ## select $codec video stream with highest bitrate (and resolution)
   var
     thisBitrate, maxBitrate, idx, thisSemiperimeter, maxSemiperimeter: int
     select = -1
@@ -675,6 +695,7 @@ proc selectVideoByBitrate(streams: JsonNode, codec: string): JsonNode =
 
 
 proc selectAudioByBitrate(streams: JsonNode, codec: string): JsonNode =
+  ## select $codec audo stream with highest bitrate
   var
     thisBitrate, maxBitrate, idx: int
     select = -1
@@ -701,7 +722,9 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
   result = newJNull()
 
   if itag == 0:
-    #[ NOTE: av1, vp9 and avc1 are not directly comparable. avc1 requires higher
+    #[ NOTE: auto stream selection
+
+       av1, vp9 and avc1 are not directly comparable. avc1 requires higher
        bitrate / larger filesize to obtain comparable quality to vp9/av1. scenarios
        can occur where lower resolution avc1 streams are selected because they have
        higher bitrate but are not necessarily the most desireable stream.
@@ -719,6 +742,7 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
     if bestAV1.kind != JNull:
       av1Semiperimeter = bestAV1["width"].getInt() + bestAV1["height"].getInt()
 
+    # NOTE: if any codec has a higher resolution than the others, select it.
     if (avc1Semiperimeter > vp9Semiperimeter and avc1Semiperimeter > av1Semiperimeter) or
        (bestVP9.kind == JNull and bestAV1.kind == JNull):
       result = bestAVC1
@@ -729,18 +753,20 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
          (bestAVC1.kind == JNull and bestVP9.kind == JNull):
       result = bestAV1
     else:
+      # NOTE: no resolution > others condidate --> compare by bitrates
       let
         avc1Bitrate = getBitrate(bestAVC1)
         vp9Bitrate = getBitrate(bestVP9)
         av1Bitrate = getBitrate(bestAV1)
-
-      if av1Bitrate >= vp9Bitrate and av1Bitrate >= avc1Bitrate:
+      # QUESTION: should av1 just be defaulted to if it exists and is the same resolution as others?
+      if av1Bitrate >= vp9Bitrate and av1Bitrate >= av1Bitrate / avc1Bitrate >= threshold:
         result = bestAV1
       elif vp9Bitrate / avc1Bitrate >= threshold:
         result = bestVP9
       else:
         result = bestAVC1
   else:
+    # NOTE: select by itag
     for stream in streams:
       if stream["itag"].getInt() == itag:
         return stream
@@ -754,7 +780,7 @@ proc selectAudioStream(streams: JsonNode, itag: int): JsonNode =
     streams still have non trivial bitrate and filesizes.
   + "audio-less" video: https://www.youtube.com/watch?v=fW2e0CZjnFM
   + prefer opus
-  + the majority of the time there are 4 audio streams:
+  + the majority of (all?) the time there are 4 audio streams:
     - itag 140 --> m4a
     - itag 251 --> opus
     + two low quality options (1 m4a and 1 opus) ]#
@@ -772,6 +798,7 @@ proc selectAudioStream(streams: JsonNode, itag: int): JsonNode =
 
 
 proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime, codec, ext, size, qlt, resolution, bitrate: string] =
+  ## compile all relevent video stream metadata
   result.itag = stream["itag"].getInt()
   let mimeAndCodec = stream["mimeType"].getStr().split("; codecs=\"")
   result.mime = mimeAndCodec[0]
@@ -792,6 +819,7 @@ proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime,
 
 
 proc getAudioStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime, codec, ext, size, qlt, bitrate: string] =
+  ## compile all relevent audio stream metadata
   result.itag = stream["itag"].getInt()
   let mimeAndCodec = stream["mimeType"].getStr().split("; codecs=\"")
   result.mime = mimeAndCodec[0]
@@ -822,7 +850,7 @@ proc newVideoStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
       result.isDash = true
       logDebug("DASH manifest: ", dashManifestUrl)
       (result.baseUrl, segmentList) = extractDashInfo(dashManifestUrl, $result.itag)
-      result.urlSegments = produceUrlSegments(result.baseUrl, segmentList)
+      result.urlSegments = produceDashSegments(result.baseUrl, segmentList)
       # TODO: add len check here and fallback to stream[0] or similar if needed.
       # IDEA: consider taking all streams as argument which will allow redoing of selectVideoStream as needed.
     else:
@@ -841,20 +869,10 @@ proc newAudioStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
       var segmentList: string
       result.isDash = true
       (result.baseUrl, segmentList) = extractDashInfo(dashManifestUrl, $result.itag)
-      result.urlSegments = produceUrlSegments(result.baseUrl, segmentList)
+      result.urlSegments = produceDashSegments(result.baseUrl, segmentList)
     else:
       result.url = urlOrCipher(stream)
     result.exists = true
-
-
-proc inStreams(itag: int, streams:JsonNode): bool =
-  ## check if set of streams contains given itag
-  if itag == 0:
-    result = true
-  else:
-    for stream in streams:
-      if stream["itag"].getInt() == itag:
-        return true
 
 
 proc newVideo(youtubeUrl, dashManifestUrl, thumbnailUrl, title, videoId: string, duration: int,
@@ -863,7 +881,7 @@ proc newVideo(youtubeUrl, dashManifestUrl, thumbnailUrl, title, videoId: string,
   result.url = youtubeUrl
   result.videoId = videoId
   result.thumbnail = thumbnailUrl
-  if streamingData.hasKey("adaptiveFormats") and vItag.inStreams(streamingData["adaptiveFormats"]):
+  if streamingData.hasKey("adaptiveFormats") and streamingData["adaptiveFormats"].hasItag(vItag):
     result.videoStream = newVideoStream(youtubeUrl, dashManifestUrl, videoId, duration,
                                         selectVideoStream(streamingData["adaptiveFormats"], vItag))
     result.audioStream = newAudioStream(youtubeUrl, dashManifestUrl, videoId, duration,
@@ -885,6 +903,7 @@ proc reportStreamInfo(stream: Stream) =
 
 
 proc reportStreams(playerResponse: JsonNode, duration: int) =
+  ## echo stream metadata
   var
     itag: int
     mime, codec, ext, size, quality, resolution, bitrate: string
@@ -929,6 +948,7 @@ proc reportStreams(playerResponse: JsonNode, duration: int) =
 
 
 proc parseBaseJS() =
+  ## extract signature and throttle javascript code from youtube base.js file
   logDebug("baseJS version: ", globalBaseJsVersion)
   logDebug("api locale: ", apiLocale)
   let (code, response) = doGet(baseJsUrl % [globalBaseJsVersion, apiLocale])
@@ -967,6 +987,7 @@ proc isolatePlaylist(youtubeUrl: string): string =
 
 
 proc giveReasons(reason: JsonNode) =
+  ## iterate over and echo youtube reason
   if reason.hasKey("runs"):
     stdout.write("<error> ")
     for run in reason["runs"]:
