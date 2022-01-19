@@ -546,8 +546,8 @@ proc extractFunctionPlan(js: string): seq[string] =
 
   #[ NOTE: matches vy=function(a){a=a.split("");uy.bH(a,3);uy.Fg(a,7);uy.Fg(a,50);
     uy.S6(a,71);uy.bH(a,2);uy.S6(a,80);uy.Fg(a,38);return a.join("")}; ]#
-  let found = js.easyFind(re"""([a-zA-Z]{1,3}=function\(a\){a=a\.split\(""\)[^}]+)""")
-  result = found.split(';')[1..^3]
+  let found = js.easyFind(re"""([a-zA-Z]{1,3}=function\(a\){a=a\.split\(""\)[^}]+(?=;return))""")
+  result = found.split(';')[1..^1]
 
 
 proc extractParentFunctionName(jsFunction: string): string =
