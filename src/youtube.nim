@@ -1,4 +1,5 @@
 import std/[json, uri, algorithm, sequtils, parseutils]
+from re import escapeRe
 # import std/[sha1]
 
 import utils
@@ -545,20 +546,20 @@ proc extractFunctionPlan(js: string): seq[string] =
 
   #[ NOTE: matches vy=function(a){a=a.split("");uy.bH(a,3);uy.Fg(a,7);uy.Fg(a,50);
     uy.S6(a,71);uy.bH(a,2);uy.S6(a,80);uy.Fg(a,38);return a.join("")}; ]#
-  let found = js.easyFind(re"([a-zA-Z]{2}\=function\(a\)\{a\=a\.split\([^\(]+\);[a-zA-Z]{2}\.[^\n]+)")
+  let found = js.easyFind(re"""([a-zA-Z]{1,3}=function\(a\){a=a\.split\(""\)[^}]+)""")
   result = found.split(';')[1..^3]
 
 
 proc extractParentFunctionName(jsFunction: string): string =
   ## get the name of the function containing the scramble functions
   ## ix.Nh(a,2) --> ix
-  jsFunction.parseIdent()
+  escapeRe(jsFunction.split('.')[0])
 
 
 proc parseChildFunction(function: string): tuple[name: string, argument: int] =
   ## returns child function name and second argument
   ## ix.ai(a,5) --> (ai, 5)
-  result.name = function.captureBetween('.', '(')
+  result.name = escapeRe(function.captureBetween('.', '('))
   result.argument = parseInt(function.captureBetween(',', ')'))
 
 
@@ -759,7 +760,7 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
         vp9Bitrate = getBitrate(bestVP9)
         av1Bitrate = getBitrate(bestAV1)
       # QUESTION: should av1 just be defaulted to if it exists and is the same resolution as others?
-      if av1Bitrate >= vp9Bitrate and av1Bitrate >= av1Bitrate / avc1Bitrate >= threshold:
+      if (av1Bitrate >= vp9Bitrate) and (av1Bitrate / avc1Bitrate >= threshold):
         result = bestAV1
       elif vp9Bitrate / avc1Bitrate >= threshold:
         result = bestVP9
