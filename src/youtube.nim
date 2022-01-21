@@ -660,8 +660,7 @@ proc extractDashInfo(dashManifestUrl, itag: string): tuple[baseUrl, segmentList:
 
 
 proc getBitrate(stream: JsonNode): int =
-  ## extract bitrate value from json. prefers averageBitrate.
-  # NOTE: this is done enough that it warrents its own proc
+  ## extract bitrate value from json. prefers average bitrate.
   if stream.kind == JNull:
     result = 0
   elif stream.hasKey("averageBitrate"):
@@ -714,7 +713,7 @@ proc selectAudioByBitrate(streams: JsonNode, codec: string): JsonNode =
     result = streams[select]
 
 
-proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
+proc selectVideoStream(streams: JsonNode, itag: int, codec: string): JsonNode =
   #[ NOTE: in adding up all samples where (subjectively) vp9 looked better, the average
     weight (vp9 bitrate/avc1 bitrate) was 0.92; this is fine in most cases. however a strong vp9 bias is preferential so
     a value of 0.8 is used. ]#
@@ -722,7 +721,16 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
   var vp9Semiperimeter, avc1Semiperimeter, av1Semiperimeter: int
   result = newJNull()
 
-  if itag == 0:
+  if itag != 0:
+    # NOTE: select by itag
+    for stream in streams:
+      if stream["itag"].getInt() == itag:
+        result = stream
+        break
+  elif codec != "":
+    # NOTE: select by codec
+    result = selectVideoByBitrate(streams, codec)
+  else:
     #[ NOTE: auto stream selection
 
        av1, vp9 and avc1 are not directly comparable. avc1 requires higher
@@ -766,16 +774,13 @@ proc selectVideoStream(streams: JsonNode, itag: int): JsonNode =
         result = bestVP9
       else:
         result = bestAVC1
-  else:
-    # NOTE: select by itag
-    for stream in streams:
-      if stream["itag"].getInt() == itag:
-        return stream
-    # NOTE: the itag does not exist
-    result = selectVideoStream(streams, 0)
+
+  if result.kind == JNull:
+    # NOTE: the itag/codec does not exist
+    result = streams[0]
 
 
-proc selectAudioStream(streams: JsonNode, itag: int): JsonNode =
+proc selectAudioStream(streams: JsonNode, itag: int, codec: string): JsonNode =
   #[ NOTE: in tests, it seems youtube videos "without audio" still contain empty
     audio streams; furthermore aac streams seem to have a minimum bitrate as "empty"
     streams still have non trivial bitrate and filesizes.
@@ -786,15 +791,20 @@ proc selectAudioStream(streams: JsonNode, itag: int): JsonNode =
     - itag 251 --> opus
     + two low quality options (1 m4a and 1 opus) ]#
   result = newJNull()
-  if itag == 0:
-    result = selectAudioByBitrate(streams, "opus")
-  else:
+  if itag != 0:
+    # NOTE: select by itag
     for stream in streams:
       if stream["itag"].getInt() == itag:
         return stream
+  elif codec != "":
+    # NOTE: select by codec
+    result = selectAudioByBitrate(streams, codec)
+  else:
+    # NOTE: fallback selection with
+    result = selectAudioByBitrate(streams, "opus")
 
   if result.kind == JNull:
-    # NOTE: there were no opus streams or the itag does not exist
+    # NOTE: the itag/codec does not exist or there were no opus streams to fall back to.
     result = selectAudioByBitrate(streams, "mp4a")
 
 
@@ -877,19 +887,19 @@ proc newAudioStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
 
 
 proc newVideo(youtubeUrl, dashManifestUrl, thumbnailUrl, title, videoId: string, duration: int,
-              streamingData: JsonNode, aItag, vItag: int): Video =
+              streamingData: JsonNode, aItag, vItag: int, aCodec, vCodec: string): Video =
   result.title = title
   result.url = youtubeUrl
   result.videoId = videoId
   result.thumbnail = thumbnailUrl
   if streamingData.hasKey("adaptiveFormats") and streamingData["adaptiveFormats"].hasItag(vItag):
     result.videoStream = newVideoStream(youtubeUrl, dashManifestUrl, videoId, duration,
-                                        selectVideoStream(streamingData["adaptiveFormats"], vItag))
+                                        selectVideoStream(streamingData["adaptiveFormats"], vItag, vCodec))
     result.audioStream = newAudioStream(youtubeUrl, dashManifestUrl, videoId, duration,
-                                        selectAudioStream(streamingData["adaptiveFormats"], aItag))
+                                        selectAudioStream(streamingData["adaptiveFormats"], aItag, aCodec))
   else:
     result.videoStream = newVideoStream(youtubeUrl, dashManifestUrl, videoId, duration,
-                                        selectVideoStream(streamingData["formats"], vItag))
+                                        selectVideoStream(streamingData["formats"], vItag, vCodec))
 
 
 proc reportStreamInfo(stream: Stream) =
@@ -1019,7 +1029,7 @@ proc walkErrorMessage(playabilityStatus: JsonNode) =
 ########################################################
 
 
-proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
+proc getVideo(youtubeUrl: string, aItag, vItag: int, aCodec, vCodec: string) =
   let
     videoId = isolateVideoId(youtubeUrl)
     standardYoutubeUrl = watchUrl & videoId
@@ -1090,7 +1100,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
         if playerResponse["streamingData"].hasKey("dashManifestUrl"):
           dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
         let video = newVideo(standardYoutubeUrl, dashManifestUrl, thumbnailUrl, title, videoId, duration,
-                             playerResponse["streamingData"], aItag, vItag)
+                             playerResponse["streamingData"], aItag, vItag, aCodec, vCodec)
         logInfo("title: ", video.title)
 
         if includeThumb:
@@ -1149,7 +1159,7 @@ proc getVideo(youtubeUrl: string, aItag=0, vItag=0) =
     logError(videoMetadataFailureMessage)
 
 
-proc getPlaylist(youtubeUrl: string) =
+proc getPlaylist(youtubeUrl: string, aItag, vItag: int, aCodec, vCodec: string) =
   var ids: seq[string]
   let playlistId = isolatePlaylist(youtubeUrl)
 
@@ -1170,13 +1180,13 @@ proc getPlaylist(youtubeUrl: string) =
 
       logInfo(ids.len, " videos queued")
       for id in ids:
-        getVideo(watchUrl & id)
+        getVideo(watchUrl & id, aItag, vItag, aCodec, vCodec)
   else:
     logError(code)
     logError(playlistMetadataFailureMessage)
 
 
-proc getChannel(youtubeUrl: string) =
+proc getChannel(youtubeUrl: string, aItag, vItag: int, aCodec, vCodec: string) =
   let channel = isolateChannel(youtubeUrl)
   var
     channelResponse: JsonNode
@@ -1268,12 +1278,12 @@ proc getChannel(youtubeUrl: string) =
   logInfo(videoIds.len, " videos queued")
   logInfo(playlistIds.len, " playlists queued")
   for id in videoIds:
-    getVideo(watchUrl & id)
+    getVideo(watchUrl & id, aItag, vItag, aCodec, vCodec)
   for id in playlistIds:
-    getPlaylist(playlistUrl & id)
+    getPlaylist(playlistUrl & id, aItag, vItag, aCodec, vCodec)
 
 
-proc youtubeDownload*(youtubeUrl, aFormat, aItag, vItag, sLang: string,
+proc youtubeDownload*(youtubeUrl, aFormat, aItag, vItag, aCodec, vCodec, sLang: string,
                       iAudio, iVideo, iThumb, iSubtitles, sStreams, debug, silent: bool) =
   includeAudio = iAudio
   includeVideo = iVideo
@@ -1289,8 +1299,8 @@ proc youtubeDownload*(youtubeUrl, aFormat, aItag, vItag, sLang: string,
     globalLogLevel = lvlNone
 
   if "/channel/" in youtubeUrl or "/c/" in youtubeUrl:
-    getChannel(youtubeUrl)
+    getChannel(youtubeUrl, parseInt(aItag), parseInt(vItag), aCodec, vCodec)
   elif "/playlist?" in youtubeUrl:
-    getPlaylist(youtubeUrl)
+    getPlaylist(youtubeUrl, parseInt(aItag), parseInt(vItag), aCodec, vCodec)
   else:
-    getVideo(youtubeUrl, parseInt(aItag), parseInt(vItag))
+    getVideo(youtubeUrl, parseInt(aItag), parseInt(vItag), aCodec, vCodec)

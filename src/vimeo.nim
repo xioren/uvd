@@ -16,6 +16,7 @@ type
     id: string
     mime: string
     ext: string
+    codec: string
     size: string
     quality: string
     bitrate: string
@@ -109,78 +110,91 @@ proc isVerticle(stream: JsonNode): bool =
   stream["height"].getInt() > stream["width"].getInt()
 
 
-proc selectVideoStream(streams: JsonNode, id: string): JsonNode =
-  ## select video by id or resolution
-  if id == "0":
-    var
-      thisDimension, maxDimension: int
-      dimension: string
-
-    if isVerticle(streams[0]):
-      dimension = "width"
-    else:
-      dimension = "height"
-
-    for stream in streams:
-      thisDimension = stream[dimension].getInt()
-      if thisDimension > maxDimension:
-        maxDimension = thisDimension
-        result = stream
+proc getBitrate(stream: JsonNode): int =
+  ## extract bitrate value from json. prefers average bitrate.
+  if stream.kind == JNull:
+    result = 0
+  elif stream.hasKey("avg_bitrate"):
+    result = stream["avg_bitrate"].getInt()
   else:
+    result = stream["bitrate"].getInt()
+
+
+proc selectVideoByBitrate(streams: JsonNode, codec: string): JsonNode =
+  ## select $codec video stream with highest bitrate (and resolution)
+  var
+    thisBitrate, maxBitrate, idx, thisSemiperimeter, maxSemiperimeter: int
+    select = -1
+  result = newJNull()
+
+  for stream in streams:
+    if stream["codecs"].getStr().contains(codec):
+      thisSemiperimeter = stream["width"].getInt() + stream["height"].getInt()
+      if thisSemiperimeter >= maxSemiperimeter:
+        if thisSemiperimeter > maxSemiperimeter:
+          maxSemiperimeter = thisSemiperimeter
+
+        thisBitrate = getBitrate(stream)
+        if thisBitrate > maxBitrate:
+          maxBitrate = thisBitrate
+          select = idx
+    inc idx
+
+  if select > -1:
+    result = streams[select]
+
+
+proc selectAudioByBitrate(streams: JsonNode, codec: string): JsonNode =
+  ## select $codec audo stream with highest bitrate
+  var
+    thisBitrate, maxBitrate, idx: int
+    select = -1
+  result = newJNull()
+
+  for stream in streams:
+    if stream["codecs"].getStr().contains(codec):
+      thisBitrate = getBitrate(stream)
+      if thisBitrate > maxBitrate:
+        maxBitrate = thisBitrate
+        select = idx
+    inc idx
+
+  if select > -1:
+    result = streams[select]
+
+
+proc selectVideoStream(streams: JsonNode, id, codec: string): JsonNode =
+  ## select video by id or resolution
+  if id != "0":
+    # NOTE: select stream by id
     for stream in streams:
       if stream["id"].getStr() == id:
         result = stream
         break
+  elif codec != "":
+    # NOTE: select stream by codec
+    result = selectVideoByBitrate(streams, codec)
+  else:
+    # NOTE: auto select stream
+    result = selectVideoByBitrate(streams, "avc1")
 
 
-proc selectAudioStream(streams: JsonNode, id: string): JsonNode =
+proc selectAudioStream(streams: JsonNode, id, codec: string): JsonNode =
   ## select video by id or bitrate
   if streams.kind == JNull:
     result = streams
-  elif id == "0":
-    var thisBitrate, maxBitrate: int
-    for stream in streams:
-      thisBitrate = stream["bitrate"].getInt()
-      if thisBitrate > maxBitrate:
-        maxBitrate = thisBitrate
-        result = stream
-  else:
+  elif id != "0":
+    # NOTE: select stream by id
     for stream in streams:
       if stream["id"].getStr() == id:
         result = stream
         break
-
-
-proc getVideoStreamInfo(stream: JsonNode): tuple[id, mime, ext, size, qlt, bitrate: string] =
-  ## compile all relevent video stream metadata
-  result.id = stream["id"].getStr()
-  result.mime = stream["mime_type"].getStr()
-  result.ext = extensions[result.mime]
-  result.bitrate = formatSize(stream["avg_bitrate"].getInt(), includeSpace=true) & "/s"
-
-  if isVerticle(stream):
-    result.qlt = $stream["width"].getInt() & 'p'
+  elif codec != "":
+    # NOTE: select stream by codec
+    result = selectAudioByBitrate(streams, codec)
   else:
-    result.qlt = $stream["height"].getInt() & 'p'
-
-  var size: int
-  for segment in stream["segments"]:
-    size.inc(segment["size"].getInt())
-  result.size = formatSize(size, includeSpace=true)
-
-
-proc getAudioStreamInfo(stream: JsonNode): tuple[id, mime, ext, size, qlt, bitrate: string] =
-  ## compile all relevent audio stream metadata
-  result.id = stream["id"].getStr()
-  result.mime = stream["mime_type"].getStr()
-  result.ext = extensions[result.mime]
-  result.qlt = formatSize(stream["avg_bitrate"].getInt(), includeSpace=true) & "/s"
-  result.bitrate = formatSize(stream["avg_bitrate"].getInt(), includeSpace=true) & "/s"
-
-  var size: int
-  for segment in stream["segments"]:
-    size.inc(segment["size"].getInt())
-  result.size = formatSize(size, includeSpace=true)
+    # NOTE: auto select stream
+    result = selectAudioByBitrate(streams, "mp4a")
 
 
 proc produceUrlSegments(cdnUrl, baseUrl, initUrl, streamId: string, stream: JsonNode, audio: bool): seq[string] =
@@ -209,10 +223,44 @@ proc produceUrlSegments(cdnUrl, baseUrl, initUrl, streamId: string, stream: Json
         result.add($(cdn / sep / baseUrl) & segment["url"].getStr())
 
 
+proc getVideoStreamInfo(stream: JsonNode): tuple[id, mime, codec, ext, size, qlt, bitrate: string] =
+  ## compile all relevent video stream metadata
+  result.id = stream["id"].getStr()
+  result.mime = stream["mime_type"].getStr()
+  result.codec = stream["codecs"].getStr()
+  result.ext = extensions[result.mime]
+  result.bitrate = formatSize(stream["avg_bitrate"].getInt(), includeSpace=true) & "/s"
+
+  if isVerticle(stream):
+    result.qlt = $stream["width"].getInt() & 'p'
+  else:
+    result.qlt = $stream["height"].getInt() & 'p'
+
+  var size: int
+  for segment in stream["segments"]:
+    size.inc(segment["size"].getInt())
+  result.size = formatSize(size, includeSpace=true)
+
+
+proc getAudioStreamInfo(stream: JsonNode): tuple[id, mime, codec, ext, size, qlt, bitrate: string] =
+  ## compile all relevent audio stream metadata
+  result.id = stream["id"].getStr()
+  result.mime = stream["mime_type"].getStr()
+  result.codec = stream["codecs"].getStr()
+  result.ext = extensions[result.mime]
+  result.qlt = formatSize(stream["avg_bitrate"].getInt(), includeSpace=true) & "/s"
+  result.bitrate = formatSize(stream["avg_bitrate"].getInt(), includeSpace=true) & "/s"
+
+  var size: int
+  for segment in stream["segments"]:
+    size.inc(segment["size"].getInt())
+  result.size = formatSize(size, includeSpace=true)
+
+
 proc newVideoStream(cdnUrl, videoId: string, stream: JsonNode): Stream =
   if stream.kind != JNull:
     # NOTE: should NEVER be JNull but go through the motions anyway for parity with newAudioStream
-    (result.id, result.mime, result.ext, result.size, result.quality, result.bitrate) = getVideoStreamInfo(stream)
+    (result.id, result.mime, result.codec, result.ext, result.size, result.quality, result.bitrate) = getVideoStreamInfo(stream)
     result.filename = addFileExt(videoId, result.ext)
     result.baseUrl = stream["base_url"].getStr().replace("../")
     result.initUrl = stream["init_segment"].getStr()
@@ -223,7 +271,7 @@ proc newVideoStream(cdnUrl, videoId: string, stream: JsonNode): Stream =
 
 proc newAudioStream(cdnUrl, videoId: string, stream: JsonNode): Stream =
   if stream.kind != JNull:
-    (result.id, result.mime, result.ext, result.size, result.quality, result.bitrate) = getAudioStreamInfo(stream)
+    (result.id, result.mime, result.codec, result.ext, result.size, result.quality, result.bitrate) = getAudioStreamInfo(stream)
     result.filename = addFileExt(videoId, result.ext)
     result.baseUrl = stream["base_url"].getStr().replace("../")
     result.initUrl = stream["init_segment"].getStr()
@@ -232,13 +280,13 @@ proc newAudioStream(cdnUrl, videoId: string, stream: JsonNode): Stream =
     result.exists = true
 
 
-proc newVideo(vimeoUrl, cdnUrl, thumbnailUrl, title, videoId: string, cdnResponse: JsonNode, aId, vId: string): Video =
+proc newVideo(vimeoUrl, cdnUrl, thumbnailUrl, title, videoId: string, cdnResponse: JsonNode, aId, vId, aCodec, vCodec: string): Video =
   result.title = title
   result.url = vimeoUrl
   result.videoId = videoId
   result.thumbnail = thumbnailUrl
-  result.videoStream = newVideoStream(cdnUrl, videoId, selectVideoStream(cdnResponse["video"], vId))
-  result.audioStream = newAudioStream(cdnUrl, videoId, selectAudioStream(cdnResponse["audio"], aId))
+  result.videoStream = newVideoStream(cdnUrl, videoId, selectVideoStream(cdnResponse["video"], vId, vCodec))
+  result.audioStream = newAudioStream(cdnUrl, videoId, selectAudioStream(cdnResponse["audio"], aId, aCodec))
 
 
 proc reportStreamInfo(stream: Stream) =
@@ -248,29 +296,32 @@ proc reportStreamInfo(stream: Stream) =
   if not (stream.quality == ""):
     logInfo("quality: ", stream.quality)
   logInfo("mime: ", stream.mime)
+  logInfo("codec: ", stream.codec)
   logInfo("segments: ", stream.urlSegments.len)
 
 
 proc reportStreams(cdnResponse: JsonNode) =
   # TODO: sort streams by quality
-  var id, mime, ext, size, quality, dimensions, bitrate: string
+  var id, mime, codec, ext, size, quality, dimensions, bitrate: string
 
   for item in cdnResponse["video"]:
     dimensions = $item["width"].getInt() & "x" & $item["height"].getInt()
-    (id, mime, ext, size, quality, bitrate) = getVideoStreamInfo(item)
+    (id, mime, codec, ext, size, quality, bitrate) = getVideoStreamInfo(item)
     echo "[video]", " id: ", id,
          " quality: ", quality,
          " resolution: ", dimensions,
          " bitrate: ", bitrate,
          " mime: ", mime,
+         " codec: ", codec,
          " size: ", size
 
   if cdnResponse["audio"].kind != JNull:
     for item in cdnResponse["audio"]:
-      (id, mime, ext, size, quality, bitrate) = getAudioStreamInfo(item)
+      (id, mime, codec, ext, size, quality, bitrate) = getAudioStreamInfo(item)
       echo "[audio]", " id: ", id,
            " bitrate: ", bitrate,
            " mime: ", mime,
+           " codec: ", codec,
            " size: ", size
 
 
@@ -330,7 +381,7 @@ proc getBestThumb(thumbs: JsonNode): string =
 ########################################################
 
 
-proc getVideo(vimeoUrl: string, aId="0", vId="0") =
+proc getVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
   var
     configResponse: JsonNode
     response: string
@@ -407,7 +458,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
         reportStreams(cdnResponse)
         return
 
-      let video = newVideo(standardVimeoUrl, cdnUrl, thumbnailUrl, title, videoId, cdnResponse, aId, vId)
+      let video = newVideo(standardVimeoUrl, cdnUrl, thumbnailUrl, title, videoId, cdnResponse, aId, vId, aCodec, vCodec)
       logInfo("title: ", video.title)
 
       if includeThumb and thumbnailUrl != "":
@@ -448,7 +499,7 @@ proc getVideo(vimeoUrl: string, aId="0", vId="0") =
         logError("no streams were downloaded")
 
 
-proc getProfile(vimeoUrl: string) =
+proc getProfile(vimeoUrl, aId, vId, aCodec, vCodec: string) =
   var
     profileResponse: JsonNode
     response: string
@@ -477,10 +528,10 @@ proc getProfile(vimeoUrl: string) =
 
   logInfo(urls.len, " videos queued")
   for url in urls:
-    getVideo(url)
+    getVideo(url, aId, vId, aCodec, vCodec)
 
 
-proc vimeoDownload*(vimeoUrl, aFormat, aId, vId, sLang: string,
+proc vimeoDownload*(vimeoUrl, aFormat, aId, vId, aCodec, vCodec, sLang: string,
                     iAudio, iVideo, iThumb, iSubtitles, sStreams, debug, silent: bool) =
   includeAudio = iAudio
   includeVideo = iVideo
@@ -496,6 +547,6 @@ proc vimeoDownload*(vimeoUrl, aFormat, aId, vId, sLang: string,
     globalLogLevel = lvlNone
 
   if extractId(vimeoUrl).all(isDigit):
-    getVideo(vimeoUrl, aId, vId)
+    getVideo(vimeoUrl, aId, vId, aCodec, vCodec)
   else:
-    getProfile(vimeoUrl)
+    getProfile(vimeoUrl, aId, vId, aCodec, vCodec)

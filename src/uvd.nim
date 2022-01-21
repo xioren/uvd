@@ -11,18 +11,20 @@ proc main() =
       usage: uvd [options] url
 
       options:
-        -a, --audio-only                  audio only
-        -v, --video-only                  video only
-        -f, --format <format>             audio output format
-        -s, --show                        show available streams
-        -t, --thumb                       download thumbnail
-        --silent                          suppress output
-        -S, --subtitles                   download subtitles
-        -l, --language <iso code>         desired subtitle language
-        --audio-id, --audio-itag <itag>   audio stream id/itag
-        --video-id, --video-itag <itag>   video stream id/itag
-        -h, --help                        print this help
-        -V, --version                     print version
+        -a, --audio-only                    audio only
+        -v, --video-only                    video only
+        --audio-id, --audio-itag <id/itag>  audio stream id/itag
+        --video-id, --video-itag <id/itag>  video stream id/itag
+        -f, --format <format>               audio output format
+        -h, --help                          print this help
+        -l, --language <iso code>           desired subtitle language
+        --prefer-acodec <acodec>            audio codec to prefer when available
+        --prefer-vcodec <vcodec>            video codec to prefer when available
+        -s, --show                          show available streams
+        --silent                            suppress output
+        -S, --subtitles                     download subtitles
+        -t, --thumb                         download thumbnail
+        -V, --version                       print version
       """
 
   var
@@ -36,6 +38,8 @@ proc main() =
     silent: bool
     aItag = "0"
     vItag = "0"
+    aCodec: string
+    vCodec: string
     format = "ogg"
     desiredLanguage: string
     unknownUrl: string
@@ -73,6 +77,10 @@ proc main() =
           return
         of "l", "language":
           desiredLanguage = val
+        of "prefer-acodec":
+          aCodec = val
+        of "prefer-vcodec":
+          vCodec = val
         of "s", "show":
           streams = true
         of "silent":
@@ -93,10 +101,10 @@ proc main() =
           return
 
     if unknownUrl.contains("vimeo"):
-      vimeoDownload(unknownUrl, format, aItag, vItag, desiredLanguage,
+      vimeoDownload(unknownUrl, format, aItag, vItag, aCodec, vCodec, desiredLanguage,
                     iAudio, iVideo, iThumb, iSubtitles, streams, debug, silent)
     elif unknownUrl.contains("youtu"):
-      youtubeDownload(unknownUrl, format, aItag, vItag, desiredLanguage,
+      youtubeDownload(unknownUrl, format, aItag, vItag, aCodec, vCodec, desiredLanguage,
                       iAudio, iVideo, iThumb, iSubtitles, streams, debug, silent)
     else:
       echo "<invalid url>"

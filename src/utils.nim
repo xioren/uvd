@@ -46,7 +46,7 @@ proc formatLogMessage(level: string, messageParts: varargs[string]): string =
 
 
 proc logGeneric*(level: Level, context: string, messageParts: varargs[string, `$`]) =
-  if globalLogLevel < level:
+  if globalLogLevel <= level:
     let fullMessage = formatLogMessage("[" & context & "] ", messageParts)
     stdout.writeLine(fullMessage)
 
