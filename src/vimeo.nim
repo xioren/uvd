@@ -166,16 +166,16 @@ proc selectAudioByBitrate(streams: JsonNode, codec: string): JsonNode =
 proc selectVideoStream(streams: JsonNode, id, codec: string): JsonNode =
   ## select video by id or resolution
   if id != "0":
-    # NOTE: select stream by id
+    # NOTE: select by user itag choice
     for stream in streams:
       if stream["id"].getStr() == id:
         result = stream
         break
   elif codec != "":
-    # NOTE: select stream by codec
+    # NOTE: select by user codec preference
     result = selectVideoByBitrate(streams, codec)
   else:
-    # NOTE: auto select stream
+    # NOTE: fallback selection
     result = selectVideoByBitrate(streams, "avc1")
 
 
@@ -184,16 +184,16 @@ proc selectAudioStream(streams: JsonNode, id, codec: string): JsonNode =
   if streams.kind == JNull:
     result = streams
   elif id != "0":
-    # NOTE: select stream by id
+    # NOTE: select by user itag choice
     for stream in streams:
       if stream["id"].getStr() == id:
         result = stream
         break
   elif codec != "":
-    # NOTE: select stream by codec
+    # NOTE: select by user codec preference
     result = selectAudioByBitrate(streams, codec)
   else:
-    # NOTE: auto select stream
+    # NOTE: fallback selection
     result = selectAudioByBitrate(streams, "mp4a")
 
 
@@ -290,6 +290,7 @@ proc newVideo(vimeoUrl, cdnUrl, thumbnailUrl, title, videoId: string, cdnRespons
 
 
 proc reportStreamInfo(stream: Stream) =
+  ## echo metadata for single stream
   logInfo("stream: ", stream.filename)
   logInfo("id: ", stream.id)
   logInfo("size: ", stream.size)
@@ -301,6 +302,7 @@ proc reportStreamInfo(stream: Stream) =
 
 
 proc reportStreams(cdnResponse: JsonNode) =
+  ## echo metadata for all streams
   # TODO: sort streams by quality
   var id, mime, codec, ext, size, quality, dimensions, bitrate: string
 
@@ -326,6 +328,7 @@ proc reportStreams(cdnResponse: JsonNode) =
 
 
 proc getProfileIds(vimeoUrl: string): tuple[profileId, sectionId: string] =
+  ## obtain userId and sectionId from profiles
   var
     profileResponse: JsonNode
     response: string
@@ -341,6 +344,7 @@ proc getProfileIds(vimeoUrl: string): tuple[profileId, sectionId: string] =
 
 
 proc extractId(vimeoUrl: string): string =
+  ## extract video/profile id from url
   if vimeoUrl.contains("/config"):
     result = vimeoUrl.captureBetween('/', '/', vimeoUrl.find("video/"))
   elif vimeoUrl.contains("/video/"):
@@ -350,6 +354,7 @@ proc extractId(vimeoUrl: string): string =
 
 
 proc extractHash(vimeoUrl: string): string =
+  ## extract unlinsted hash from url
   result = vimeoUrl.dequery().split('/')[^1]
 
 

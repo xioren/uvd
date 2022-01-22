@@ -219,12 +219,14 @@ var
 
 
 proc formatTime(time: string): string =
+  ## convert timestamps to SubRip format
   var parts: seq[string]
   if time.contains('.'):
     parts = time.split('.')
   else:
     parts = @[time, "000"]
 
+  # IDEA: the strformat module can probably do this better
   if parts[1].len > 3:
     # HACK: for floating point rounding errors
     parts[1] = parts[1][0..2]
@@ -234,7 +236,7 @@ proc formatTime(time: string): string =
 
 
 proc asrToSrt(xml: string): string =
-  ## convert youtube native asr captions to srt format
+  ## convert youtube native asr captions to SubRip format
   let
     startTimes = xml.findAll(re"""(?<=start=")[^"]+""")
     durations = xml.findAll(re"""(?<=dur=")[^"]+""")
@@ -714,7 +716,7 @@ proc selectAudioByBitrate(streams: JsonNode, codec: string): JsonNode =
 
 
 proc selectVideoStream(streams: JsonNode, itag: int, codec: string): JsonNode =
-  #[ NOTE: in adding up all samples where (subjectively) vp9 looked better, the average
+  #[ NOTE: in tests, when adding up all samples where (subjectively) vp9 looked better, the average
     weight (vp9 bitrate/avc1 bitrate) was 0.92; this is fine in most cases. however a strong vp9 bias is preferential so
     a value of 0.8 is used. ]#
   const threshold = 0.8
@@ -722,13 +724,13 @@ proc selectVideoStream(streams: JsonNode, itag: int, codec: string): JsonNode =
   result = newJNull()
 
   if itag != 0:
-    # NOTE: select by itag
+    # NOTE: select by user itag choice
     for stream in streams:
       if stream["itag"].getInt() == itag:
         result = stream
         break
   elif codec != "":
-    # NOTE: select by codec
+    # NOTE: select by user codec preference
     result = selectVideoByBitrate(streams, codec)
   else:
     #[ NOTE: auto stream selection
@@ -739,11 +741,12 @@ proc selectVideoStream(streams: JsonNode, itag: int, codec: string): JsonNode =
        higher bitrate but are not necessarily the most desireable stream.
        order of selection: highest resolution stream (any codec) --> av1 if bitrate >= others --> vp9 if vp9/avc1 >= 0.8 --> avc1
       ]#
+    # NOTE: first select best stream from each codec
     let
       bestVP9 = selectVideoByBitrate(streams, "vp9")
       bestAVC1 = selectVideoByBitrate(streams, "avc1")
       bestAV1 = selectVideoByBitrate(streams, "av01")
-
+    # NOTE: caclulate semiperimeter for each
     if bestVP9.kind != JNull:
       vp9Semiperimeter = bestVP9["width"].getInt() + bestVP9["height"].getInt()
     if bestAVC1.kind != JNull:
@@ -751,18 +754,18 @@ proc selectVideoStream(streams: JsonNode, itag: int, codec: string): JsonNode =
     if bestAV1.kind != JNull:
       av1Semiperimeter = bestAV1["width"].getInt() + bestAV1["height"].getInt()
 
-    # NOTE: if any codec has a higher resolution than the others, select it.
-    if (avc1Semiperimeter > vp9Semiperimeter and avc1Semiperimeter > av1Semiperimeter) or
-       (bestVP9.kind == JNull and bestAV1.kind == JNull):
-      result = bestAVC1
-    elif (vp9Semiperimeter > avc1Semiperimeter and vp9Semiperimeter > av1Semiperimeter) or
-         (bestAVC1.kind == JNull and bestAV1.kind == JNull):
+    # NOTE: if any codec has a larger semiperimeter than the others, select it.
+    if (vp9Semiperimeter > avc1Semiperimeter and vp9Semiperimeter > av1Semiperimeter) or
+       (bestAVC1.kind == JNull and bestAV1.kind == JNull):
       result = bestVP9
+    elif (avc1Semiperimeter > vp9Semiperimeter and avc1Semiperimeter > av1Semiperimeter) or
+         (bestVP9.kind == JNull and bestAV1.kind == JNull):
+      result = bestAVC1
     elif (av1Semiperimeter > avc1Semiperimeter and av1Semiperimeter > vp9Semiperimeter) or
          (bestAVC1.kind == JNull and bestVP9.kind == JNull):
       result = bestAV1
     else:
-      # NOTE: no resolution > others condidate --> compare by bitrates
+      # NOTE: no semiperimeter > others condidate --> compare by bitrates
       let
         avc1Bitrate = getBitrate(bestAVC1)
         vp9Bitrate = getBitrate(bestVP9)
@@ -776,7 +779,7 @@ proc selectVideoStream(streams: JsonNode, itag: int, codec: string): JsonNode =
         result = bestAVC1
 
   if result.kind == JNull:
-    # NOTE: the itag/codec does not exist
+    # NOTE: the itag/codec does not exist --> select zoroth stream
     result = streams[0]
 
 
@@ -792,19 +795,19 @@ proc selectAudioStream(streams: JsonNode, itag: int, codec: string): JsonNode =
     + two low quality options (1 m4a and 1 opus) ]#
   result = newJNull()
   if itag != 0:
-    # NOTE: select by itag
+    # NOTE: select by user itag choice
     for stream in streams:
       if stream["itag"].getInt() == itag:
         return stream
   elif codec != "":
-    # NOTE: select by codec
+    # NOTE: select by user codec preference
     result = selectAudioByBitrate(streams, codec)
   else:
-    # NOTE: fallback selection with
+    # NOTE: fallback selection
     result = selectAudioByBitrate(streams, "opus")
 
   if result.kind == JNull:
-    # NOTE: the itag/codec does not exist or there were no opus streams to fall back to.
+    # NOTE: the itag/codec do not exist or there were no opus streams to fall back to.
     result = selectAudioByBitrate(streams, "mp4a")
 
 
@@ -903,6 +906,7 @@ proc newVideo(youtubeUrl, dashManifestUrl, thumbnailUrl, title, videoId: string,
 
 
 proc reportStreamInfo(stream: Stream) =
+  ## echo metadata for single stream
   logInfo("stream: ", stream.filename)
   logInfo("itag: ", stream.itag)
   logInfo("size: ", stream.size)
@@ -914,7 +918,7 @@ proc reportStreamInfo(stream: Stream) =
 
 
 proc reportStreams(playerResponse: JsonNode, duration: int) =
-  ## echo stream metadata
+  ## echo metadata for all streams
   var
     itag: int
     mime, codec, ext, size, quality, resolution, bitrate: string
@@ -959,12 +963,12 @@ proc reportStreams(playerResponse: JsonNode, duration: int) =
 
 
 proc parseBaseJS() =
-  ## extract signature and throttle javascript code from youtube base.js file
+  ## extract cipher and throttle javascript code from youtube base.js
   logDebug("baseJS version: ", globalBaseJsVersion)
   logDebug("api locale: ", apiLocale)
   let (code, response) = doGet(baseJsUrl % [globalBaseJsVersion, apiLocale])
   if code.is2xx:
-    # NOTE: signature code
+    # NOTE: cipher code
     cipherPlan = extractFunctionPlan(response)
     cipherFunctionMap = createFunctionMap(response, extractParentFunctionName(cipherPlan[0]))
     # NOTE: throttle code
@@ -1298,6 +1302,7 @@ proc youtubeDownload*(youtubeUrl, aFormat, aItag, vItag, aCodec, vCodec, sLang: 
   elif silent:
     globalLogLevel = lvlNone
 
+  # QUESTION: make codecs and itags global?
   if "/channel/" in youtubeUrl or "/c/" in youtubeUrl:
     getChannel(youtubeUrl, parseInt(aItag), parseInt(vItag), aCodec, vCodec)
   elif "/playlist?" in youtubeUrl:
