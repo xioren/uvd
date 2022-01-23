@@ -60,37 +60,37 @@ proc logGeneric*(level: Level, context: string, messageParts: varargs[string, `$
 
 proc logDebug*(messageParts: varargs[string, `$`]) =
   if globalLogLevel < lvlInfo:
-    let fullMessage = formatLogMessage("[debug] ", messageParts)
+    let fullMessage = formatLogMessage("debug", messageParts)
     stdout.writeLine(fullMessage)
 
 
 proc logInfo*(messageParts: varargs[string, `$`]) =
   if globalLogLevel < lvlNotice:
-    let fullMessage = formatLogMessage("[info] ", messageParts)
+    let fullMessage = formatLogMessage("info", messageParts)
     stdout.writeLine(fullMessage)
 
 
 proc logNotice*(messageParts: varargs[string, `$`]) =
   if globalLogLevel < lvlWarn:
-    let fullMessage = formatLogMessage("[notice] ", messageParts)
+    let fullMessage = formatLogMessage("notice", messageParts)
     stdout.writeLine(fullMessage)
 
 
 proc logWarning*(messageParts: varargs[string, `$`]) =
   if globalLogLevel < lvlError:
-    let fullMessage = formatLogMessage("<warning> ", messageParts)
+    let fullMessage = formatLogMessage("warning", messageParts)
     stdout.writeLine(fullMessage)
 
 
 proc logError*(messageParts: varargs[string, `$`]) =
   if globalLogLevel < lvlFatal:
-    let fullMessage = formatLogMessage("<error> ", messageParts)
+    let fullMessage = formatLogMessage("error", messageParts)
     stdout.writeLine(fullMessage)
 
 
 proc logFatal*(messageParts: varargs[string, `$`]) =
   if globalLogLevel < lvlNone:
-    let fullMessage = formatLogMessage("<fatal> ", messageParts)
+    let fullMessage = formatLogMessage("fatal", messageParts)
     stdout.writeLine(fullMessage)
 
 
