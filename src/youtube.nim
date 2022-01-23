@@ -11,6 +11,30 @@ import utils
   age gate tier 4: https://www.youtube.com/watch?v=Cr381pDsSsA
 ]#
 
+type
+  Stream = object
+    itag: int
+    mime: string
+    ext: string
+    codec: string
+    size: string
+    quality: string
+    resolution: string
+    bitrate: string
+    url: string
+    baseUrl: string
+    urlSegments: seq[string]
+    filename: string
+    isDash: bool
+    exists: bool
+
+  Video = object
+    title: string
+    videoId: string
+    url: string
+    thumbnailUrl: string
+    audioStream: Stream
+    videoStream: Stream
 
 # NOTE: clientVersion can be found in contextUrl response (along with api key)
 # QUESTION: can language (hl) be set programatically? should it be?
@@ -125,33 +149,6 @@ const
     },
     "playlistId": "$1"
   }"""
-
-type
-  Stream = object
-    itag: int
-    mime: string
-    ext: string
-    codec: string
-    size: string
-    quality: string
-    resolution: string
-    bitrate: string
-    url: string
-    baseUrl: string
-    urlSegments: seq[string]
-    filename: string
-    isDash: bool
-    exists: bool
-
-  Video = object
-    title: string
-    videoId: string
-    url: string
-    thumbnail: string
-    audioStream: Stream
-    videoStream: Stream
-
-const
   apiKey = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
   baseUrl = "https://www.youtube.com"
   watchUrl = "https://www.youtube.com/watch?v="
@@ -286,9 +283,9 @@ proc generateSubtitles(captions: JsonNode) =
       subtitlesLanguage = captionTrack["languageCode"].getStr()
     else:
       # NOTE: check if desired language can be translated to
-      for language in captions["playerCaptionsTracklistRenderer"]["translationLanguages"]:
-        if language["languageCode"].getStr() == subtitlesLanguage:
-          if captions["playerCaptionsTracklistRenderer"]["captionTracks"][defaultCaptionTrackIndex]["isTranslatable"].getBool():
+      if captions["playerCaptionsTracklistRenderer"]["captionTracks"][defaultCaptionTrackIndex]["isTranslatable"].getBool():
+        for language in captions["playerCaptionsTracklistRenderer"]["translationLanguages"]:
+          if language["languageCode"].getStr() == subtitlesLanguage:
             captionTrack = captions["playerCaptionsTracklistRenderer"]["captionTracks"][defaultCaptionTrackIndex]
             doTranslate = true
             break
@@ -296,16 +293,15 @@ proc generateSubtitles(captions: JsonNode) =
         logError("subtitles not available for translation to desired language")
 
   if captionTrack.kind != JNull:
-    var captionTrackUrl: string
+    var captionTrackUrl = captionTrack["baseUrl"].getStr()
     if doTranslate:
-      captionTrackUrl = captionTrack["baseUrl"].getStr() & "&tlang=" & subtitlesLanguage
-    else:
-      captionTrackUrl = captionTrack["baseUrl"].getStr()
+      captionTrackUrl.add("&tlang=" & subtitlesLanguage)
 
     let (code, response) = doGet(captionTrackUrl)
     if code.is2xx:
       includeSubtitles = save(asrToSrt(response), addFileExt(subtitlesLanguage, "srt"))
     else:
+      includeSubtitles = false
       logError("error downloading subtitles")
   else:
     includeSubtitles = false
@@ -894,7 +890,7 @@ proc newVideo(youtubeUrl, dashManifestUrl, thumbnailUrl, title, videoId: string,
   result.title = title
   result.url = youtubeUrl
   result.videoId = videoId
-  result.thumbnail = thumbnailUrl
+  result.thumbnailUrl = thumbnailUrl
   if streamingData.hasKey("adaptiveFormats") and streamingData["adaptiveFormats"].hasItag(vItag):
     result.videoStream = newVideoStream(youtubeUrl, dashManifestUrl, videoId, duration,
                                         selectVideoStream(streamingData["adaptiveFormats"], vItag, vCodec))
@@ -1108,7 +1104,7 @@ proc getVideo(youtubeUrl: string, aItag, vItag: int, aCodec, vCodec: string) =
         logInfo("title: ", video.title)
 
         if includeThumb:
-          if not grab(video.thumbnail, fullFilename.changeFileExt("jpeg"), forceDl=true).is2xx:
+          if not grab(video.thumbnailUrl, fullFilename.changeFileExt("jpeg"), forceDl=true).is2xx:
             logError("failed to download thumbnail")
 
         if includeSubtitles:

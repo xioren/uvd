@@ -19,6 +19,7 @@ type
     codec: string
     size: string
     quality: string
+    resolution: string
     bitrate: string
     initUrl: string
     baseUrl: string
@@ -30,7 +31,7 @@ type
     title: string
     videoId: string
     url: string
-    thumbnail: string
+    thumbnailUrl: string
     audioStream: Stream
     videoStream: Stream
 
@@ -223,13 +224,14 @@ proc produceUrlSegments(cdnUrl, baseUrl, initUrl, streamId: string, stream: Json
         result.add($(cdn / sep / baseUrl) & segment["url"].getStr())
 
 
-proc getVideoStreamInfo(stream: JsonNode): tuple[id, mime, codec, ext, size, qlt, bitrate: string] =
+proc getVideoStreamInfo(stream: JsonNode): tuple[id, mime, codec, ext, size, qlt, resolution, bitrate: string] =
   ## compile all relevent video stream metadata
   result.id = stream["id"].getStr()
   result.mime = stream["mime_type"].getStr()
   result.codec = stream["codecs"].getStr()
   result.ext = extensions[result.mime]
   result.bitrate = formatSize(stream["avg_bitrate"].getInt(), includeSpace=true) & "/s"
+  result.resolution = $stream["width"].getInt() & "x" & $stream["height"].getInt()
 
   if isVerticle(stream):
     result.qlt = $stream["width"].getInt() & 'p'
@@ -260,7 +262,7 @@ proc getAudioStreamInfo(stream: JsonNode): tuple[id, mime, codec, ext, size, qlt
 proc newVideoStream(cdnUrl, videoId: string, stream: JsonNode): Stream =
   if stream.kind != JNull:
     # NOTE: should NEVER be JNull but go through the motions anyway for parity with newAudioStream
-    (result.id, result.mime, result.codec, result.ext, result.size, result.quality, result.bitrate) = getVideoStreamInfo(stream)
+    (result.id, result.mime, result.codec, result.ext, result.size, result.quality, result.resolution, result.bitrate) = getVideoStreamInfo(stream)
     result.filename = addFileExt(videoId, result.ext)
     result.baseUrl = stream["base_url"].getStr().replace("../")
     result.initUrl = stream["init_segment"].getStr()
@@ -284,7 +286,7 @@ proc newVideo(vimeoUrl, cdnUrl, thumbnailUrl, title, videoId: string, cdnRespons
   result.title = title
   result.url = vimeoUrl
   result.videoId = videoId
-  result.thumbnail = thumbnailUrl
+  result.thumbnailUrl = thumbnailUrl
   result.videoStream = newVideoStream(cdnUrl, videoId, selectVideoStream(cdnResponse["video"], vId, vCodec))
   result.audioStream = newAudioStream(cdnUrl, videoId, selectAudioStream(cdnResponse["audio"], aId, aCodec))
 
@@ -304,14 +306,13 @@ proc reportStreamInfo(stream: Stream) =
 proc reportStreams(cdnResponse: JsonNode) =
   ## echo metadata for all streams
   # TODO: sort streams by quality
-  var id, mime, codec, ext, size, quality, dimensions, bitrate: string
+  var id, mime, codec, ext, size, quality, resolution, bitrate: string
 
   for item in cdnResponse["video"]:
-    dimensions = $item["width"].getInt() & "x" & $item["height"].getInt()
-    (id, mime, codec, ext, size, quality, bitrate) = getVideoStreamInfo(item)
+    (id, mime, codec, ext, size, quality, resolution, bitrate) = getVideoStreamInfo(item)
     echo "[video]", " id: ", id,
          " quality: ", quality,
-         " resolution: ", dimensions,
+         " resolution: ", resolution,
          " bitrate: ", bitrate,
          " mime: ", mime,
          " codec: ", codec,
@@ -467,7 +468,7 @@ proc getVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
       logInfo("title: ", video.title)
 
       if includeThumb and thumbnailUrl != "":
-        if not grab(video.thumbnail, fullFilename.changeFileExt("jpeg"), forceDl=true).is2xx:
+        if not grab(video.thumbnailUrl, fullFilename.changeFileExt("jpeg"), forceDl=true).is2xx:
           logError("failed to download thumbnail")
 
       if includeSubtitles:
