@@ -397,6 +397,7 @@ proc getVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
   let videoId = extractId(vimeoUrl)
   var standardVimeoUrl = baseUrl & '/' & videoId
 
+  logGeneric(lvlInfo, "", ">")
   logGeneric(lvlInfo, "vimeo" , "video id: ", videoId)
 
   if vimeoUrl.contains("/config?"):

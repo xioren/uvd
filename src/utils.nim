@@ -33,13 +33,20 @@ var
 
 
 # NOTE: basic logger implementation
-proc formatLogMessage(level: string, messageParts: varargs[string]): string =
+proc formatLogMessage(context: string, messageParts: varargs[string]): string =
   var msgLen = 0
+  if context != "":
+    msgLen.inc(context.len)
+    msgLen.inc(3)
   for m in messageParts:
     msgLen.inc(m.len)
 
   result = newStringOfCap(msgLen)
-  result.add(level)
+  if context != "":
+    result.add('[')
+    result.add(context)
+    result.add(']')
+    result.add(' ')
 
   for m in messageParts:
     result.add(m)
@@ -47,7 +54,7 @@ proc formatLogMessage(level: string, messageParts: varargs[string]): string =
 
 proc logGeneric*(level: Level, context: string, messageParts: varargs[string, `$`]) =
   if globalLogLevel <= level:
-    let fullMessage = formatLogMessage("[" & context & "] ", messageParts)
+    let fullMessage = formatLogMessage(context, messageParts)
     stdout.writeLine(fullMessage)
 
 
