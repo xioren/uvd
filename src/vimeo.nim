@@ -199,6 +199,7 @@ proc selectAudioStream(streams: JsonNode, id, codec: string): JsonNode =
 
 
 proc produceUrlSegments(cdnUrl, baseUrl, initUrl, streamId: string, stream: JsonNode, audio: bool): seq[string] =
+  # TODO: this needs commenting
   let cdn = parseUri(cdnUrl)
   var sep: string
 

@@ -1,5 +1,4 @@
 import std/[json, uri, algorithm, sequtils, parseutils]
-from re import escapeRe
 # import std/[sha1]
 
 import utils
