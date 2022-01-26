@@ -18,8 +18,8 @@ proc main() =
         -f, --format <format>               audio output format
         -h, --help                          print this help
         -l, --language <iso code>           desired subtitle language
-        --prefer-acodec <acodec>            audio codec to prefer when available
-        --prefer-vcodec <vcodec>            video codec to prefer when available
+        --prefer-acodec <acodec>            audio codec to prefer
+        --prefer-vcodec <vcodec>            video codec to prefer
         -s, --show                          show available streams
         --silent                            suppress output
         -S, --subtitles                     download subtitles

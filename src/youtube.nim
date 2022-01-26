@@ -1039,7 +1039,6 @@ proc getVideo(youtubeUrl: string, aItag, vItag: int, aCodec, vCodec: string) =
     dashManifestUrl: string
     captions: string
 
-  logGeneric(lvlInfo, "", ">")
   logGeneric(lvlInfo, "youtube", videoId)
 
   # NOTE: make initial request to get base.js version, timestamp, and api locale
