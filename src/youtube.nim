@@ -1178,7 +1178,8 @@ proc getPlaylist(youtubeUrl: string, aItag, vItag: int, aCodec, vCodec: string) 
         ids.add(item["playlistPanelVideoRenderer"]["videoId"].getStr())
 
       logInfo(ids.len, " videos queued")
-      for id in ids:
+      for idx, id in ids:
+        logInfo(idx.succ, " of ", ids.len)
         getVideo(watchUrl & id, aItag, vItag, aCodec, vCodec)
   else:
     logError(code)
@@ -1276,7 +1277,8 @@ proc getChannel(youtubeUrl: string, aItag, vItag: int, aCodec, vCodec: string) =
 
   logInfo(videoIds.len, " videos queued")
   logInfo(playlistIds.len, " playlists queued")
-  for id in videoIds:
+  for idx, id in videoIds:
+    logInfo(idx.succ, " of ", videoIds.len)
     getVideo(watchUrl & id, aItag, vItag, aCodec, vCodec)
   for id in playlistIds:
     getPlaylist(playlistUrl & id, aItag, vItag, aCodec, vCodec)
