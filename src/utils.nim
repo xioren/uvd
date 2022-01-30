@@ -128,12 +128,12 @@ proc easyFind*(this: string, that: Regex): string =
   result = putHere[0]
 
 
-proc joinStreams*(videoStream, audioStream, filename, subtitlesLanguage: string, includeCaptions: bool) =
+proc joinStreams*(videoStream, audioStream, filename, subtitlesLanguage: string, includeSubtitles: bool) =
   ## join audio and video streams using ffmpeg
   logInfo("joining streams ", videoStream, " + ", audioStream)
   var command: string
 
-  if includeCaptions:
+  if includeSubtitles:
     command = fmt"ffmpeg -y -i {videoStream} -i {audioStream} -i subtitles.srt -metadata:s:s:0 language={quoteShell(subtitlesLanguage)} -c copy {quoteShell(filename)} > /dev/null 2>&1"
   else:
     command = fmt"ffmpeg -y -i {videoStream} -i {audioStream} -c copy {quoteShell(filename)} > /dev/null 2>&1"
@@ -141,7 +141,7 @@ proc joinStreams*(videoStream, audioStream, filename, subtitlesLanguage: string,
   if execShellCmd(command) == 0:
     removeFile(videoStream)
     removeFile(audioStream)
-    if includeCaptions:
+    if includeSubtitles:
       removeFile(addFileExt(subtitlesLanguage, "srt"))
     logGeneric(lvlInfo, "complete", filename)
   else:
@@ -186,7 +186,7 @@ proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
     eta = initDuration(seconds=((total - progress).int / speed.int).int)
 
   stdout.eraseLine()
-  stdout.writeLine("size: ", formatSize(total.int, includeSpace=true),
+  stdout.writeLine("> size: ", formatSize(total.int, includeSpace=true),
                    " speed: ", formatSize(speed.int, includeSpace=true), "/s",
                    " eta: ", $eta)
   stdout.eraseLine()
@@ -201,7 +201,7 @@ proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
 proc onProgressChangedMulti(total, progress, speed: BiggestInt) {.async.} =
   ## for segmented streams (e.g. DASH)
   stdout.eraseLine()
-  stdout.write("size: ", formatSize(total.int, includeSpace=true),
+  stdout.write("> size: ", formatSize(total.int, includeSpace=true),
                " segment: ", currentSegment, " of ", totalSegments)
   stdout.setCursorXPos(0)
   stdout.flushFile()
