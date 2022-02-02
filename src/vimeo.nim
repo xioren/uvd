@@ -21,8 +21,6 @@ type
     quality: string
     resolution: string
     bitrate: string
-    initUrl: string
-    baseUrl: string
     urlSegments: seq[string]
     filename: string
     exists: bool
@@ -265,10 +263,8 @@ proc newVideoStream(cdnUrl, videoId: string, stream: JsonNode): Stream =
     # NOTE: should NEVER be JNull but go through the motions anyway for parity with newAudioStream
     (result.id, result.mime, result.codec, result.ext, result.size, result.quality, result.resolution, result.bitrate) = getVideoStreamInfo(stream)
     result.filename = addFileExt(videoId, result.ext)
-    result.baseUrl = stream["base_url"].getStr().replace("../")
-    result.initUrl = stream["init_segment"].getStr()
-    result.urlSegments = produceUrlSegments(cdnUrl.split("sep/")[0], result.baseUrl,
-                                            result.initUrl, stream["id"].getStr(), stream, false)
+    result.urlSegments = produceUrlSegments(cdnUrl.split("sep/")[0], stream["base_url"].getStr().replace("../"),
+                                            stream["init_segment"].getStr(), stream["id"].getStr(), stream, false)
     result.exists = true
 
 
@@ -276,10 +272,8 @@ proc newAudioStream(cdnUrl, videoId: string, stream: JsonNode): Stream =
   if stream.kind != JNull:
     (result.id, result.mime, result.codec, result.ext, result.size, result.quality, result.bitrate) = getAudioStreamInfo(stream)
     result.filename = addFileExt(videoId, result.ext)
-    result.baseUrl = stream["base_url"].getStr().replace("../")
-    result.initUrl = stream["init_segment"].getStr()
-    result.urlSegments = produceUrlSegments(cdnUrl.split("sep/")[0], result.baseUrl,
-                                            result.initUrl, stream["id"].getStr(), stream, true)
+    result.urlSegments = produceUrlSegments(cdnUrl.split("sep/")[0], stream["base_url"].getStr().replace("../"),
+                                            stream["init_segment"].getStr(), stream["id"].getStr(), stream, true)
     result.exists = true
 
 
@@ -397,7 +391,7 @@ proc getVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
   let videoId = extractId(vimeoUrl)
   var standardVimeoUrl = baseUrl & '/' & videoId
 
-  logGeneric(lvlInfo, "vimeo" , "video id: ", videoId)
+  logInfo("id: ", videoId)
 
   if vimeoUrl.contains("/config?"):
     # NOTE: config url already obtained (calls from getProfile)
@@ -535,7 +529,7 @@ proc getProfile(vimeoUrl, aId, vId, aCodec, vCodec: string) =
 
   logInfo(urls.len, " videos queued")
   for idx, url in urls:
-    logInfo(idx.succ, " of ", urls.len)
+    logInfo("download: ", idx.succ, " of ", urls.len)
     getVideo(url, aId, vId, aCodec, vCodec)
 
 
@@ -554,6 +548,7 @@ proc vimeoDownload*(vimeoUrl, aFormat, aId, vId, aCodec, vCodec, sLang: string,
   elif silent:
     globalLogLevel = lvlNone
 
+  logGeneric(lvlInfo, "uvd", "vimeo")
   if extractId(vimeoUrl).all(isDigit):
     getVideo(vimeoUrl, aId, vId, aCodec, vCodec)
   else:

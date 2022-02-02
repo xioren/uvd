@@ -21,7 +21,6 @@ type
     resolution: string
     bitrate: string
     url: string
-    baseUrl: string
     urlSegments: seq[string]
     filename: string
     isDash: bool
@@ -385,31 +384,32 @@ proc throttleSwap(d: var (string | seq[string]), e: int) {.inline.} =
 
 proc extractThrottleFunctionName(js: string): string =
   ## extract main throttle function
-  # NOTE: iha=function(a){var b=a.split(""),c=[ --> iha
-  result = js.easyFind(re"""([a-z]+)=function\x28a\x29{var b=a\.split\x28""\x29,""")
+  # NOTE: iha=function(a){var b=a.split("") --> iha
+  discard js.parseUntil(result, "=", js.find("""a.split(""),c=[""") - 22)
 
 
 proc extractThrottleCode(mainFunc, js: string): string =
   ## extract throttle code block from base.js
-  # NOTE: mainThrottleFunction=function(a){.....}
-  result = js.easyFind(re("""($1=function\x28\w\x29{.+?});""" % mainFunc, flags={reDotAll}))
+  # NOTE: iha=function(a){var b=a.split("").....a.join("")}
+  discard js.parseUntil(result, "catch(d)", js.find("\n" & mainFunc) + 1)
 
 
 iterator splitThrottleArray(js: string): string =
   ## split c array into individual elements
   var
+    code: string
     step: string
     scope: int
 
-  let found = js.easyFind(re("""(?<=,c=\[)(.+)(?=\];\n?c)""", flags={reDotAll}))
+  discard js.parseUntil(code, "];\nc[", js.find(",c=[") + 4)
 
-  for idx, c in found:
+  for idx, c in code:
     #[ NOTE: commas separate function arguments and functions themselves.
       only yield if the comma is separating two functions in the base scope
       and not function arguments or child functions.
     ]#
-    if (c == ',' and scope == 0 and '{' notin found[idx..min(idx + 5, found.high)]) or idx == found.high:
-      if idx == found.high:
+    if (c == ',' and scope == 0 and '{' notin found[idx..min(idx + 5, code.high)]) or idx == code.high:
+      if idx == code.high:
         step.add(c)
       yield step.multiReplace(("\x00", ""), ("\n", ""))
       step = ""
@@ -454,9 +454,18 @@ proc parseThrottleArray(js: string): seq[string] =
 proc parseThrottlePlan(js: string): seq[seq[string]] =
   ## parse steps and indexes of throttle plan
   # NOTE: (c[4](c[52])...) --> @[@[4, 52],...]
-  let parts = js.captureBetween('{', '}', js.find("try"))
-  for part in parts.split("),"):
-    result.add(part.findAll(re"(?<=\[)(\d+)(?=\])"))
+  let plan = js.captureBetween('{', '}', js.find("try"))
+  var step: seq[string]
+  var last: char
+  for idx, c in plan:
+    if c == 'c':
+      step.add(plan.captureBetween('[', ']', idx))
+    elif c == ',' and last == ')':
+      result.add(step)
+      step = @[]
+    elif idx == plan.high:
+      result.add(step)
+    last = c
 
 
 proc transformN(initialN: string): string =
@@ -542,14 +551,15 @@ proc extractFunctionPlan(js: string): seq[string] =
 
   #[ NOTE: matches vy=function(a){a=a.split("");uy.bH(a,3);uy.Fg(a,7);uy.Fg(a,50);
     uy.S6(a,71);uy.bH(a,2);uy.S6(a,80);uy.Fg(a,38);return a.join("")}; ]#
-  let found = js.easyFind(re"""[a-zA-Z]{1,3}=function\(a\){a=a\.split\(""\);([^}]+);return""")
-  result = found.split(';')
+  var functions: string
+  discard js.parseUntil(functions, ";return", js.find("""=function(a){a=a.split("");""") + 27)
+  result = functions.split(';')
 
 
 proc extractParentFunctionName(jsFunction: string): string =
   ## get the name of the function containing the scramble functions
   ## ix.Nh(a,2) --> ix
-  escapeRe(jsFunction.split('.')[0])
+  discard jsFunction.parseUntil(result, '.')
 
 
 proc parseChildFunction(function: string): tuple[name: string, argument: int] =
@@ -571,8 +581,9 @@ proc extractIndex(jsFunction: string): int =
 proc createFunctionMap(js, mainFunc: string): Table[string, string] =
   ## map functions to corresponding function names
   ## {"wW": "function(a){a.reverse()}", "Nh": "function(a,b){a.splice(0,b)}"...}
-  let found = js.easyFind(re("(?<=var $1={)(.+?)(?=};)" % mainFunc, flags={reDotAll}))
-  for item in found.split(",\n"):
+  var code: string
+  discard js.parseUntil(code, "};", js.find("""var $1={""" % mainFunc) + 7)
+  for item in code[1..^1].split(",\n"):
     let parts = item.split(':')
     result[parts[0]] = parts[1]
 
@@ -652,7 +663,7 @@ proc extractDashInfo(dashManifestUrl, itag: string): tuple[baseUrl, segmentList:
   let (_, xml) = doGet(dashManifestUrl)
   let found = xml.easyFind(re("""(?<=<Representation\s)(id="$1".+?)(?=</Representation>)""" % itag))
   result.baseUrl = found.captureBetween('>', '<', found.find("<BaseURL>") + 8)
-  result.segmentList = found.easyFind(re("(?<=<SegmentList>)(.+)(?=</SegmentList>)"))
+  result.segmentList = found.easyFind(re("""(?<=<SegmentList>)(.+)(?=</SegmentList>)"""))
 
 
 proc getBitrate(stream: JsonNode): int =
@@ -728,7 +739,6 @@ proc selectVideoStream(streams: JsonNode, itag: int, codec: string): JsonNode =
     result = selectVideoByBitrate(streams, codec)
   else:
     #[ NOTE: auto stream selection
-
        av1, vp9 and avc1 are not directly comparable. avc1 requires higher
        bitrate / larger filesize to obtain comparable quality to vp9/av1. scenarios
        can occur where lower resolution avc1 streams are selected because they have
@@ -854,12 +864,14 @@ proc newVideoStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
     # QUESTION: are all DASH segment streams denoted with "FORMAT_STREAM_TYPE_OTF"?
     if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
       # QUESTION: are DASH urls or manifest urls ever ciphered?
-      var segmentList: string
+      var
+        baseUrl: string
+        segmentList: string
       result.isDash = true
       logDebug("DASH manifest: ", dashManifestUrl)
-      (result.baseUrl, segmentList) = extractDashInfo(dashManifestUrl, $result.itag)
-      result.urlSegments = produceDashSegments(result.baseUrl, segmentList)
-      # TODO: add len check here and fallback to stream[0] or similar if needed.
+      (baseUrl, segmentList) = extractDashInfo(dashManifestUrl, $result.itag)
+      result.urlSegments = produceDashSegments(baseUrl, segmentList)
+      # TODO: add len check here and fallback to stream[0] or similar if len == 0.
       # IDEA: consider taking all streams as argument which will allow redoing of selectVideoStream as needed.
     else:
       result.url = urlOrCipher(stream)
@@ -874,10 +886,12 @@ proc newAudioStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
     if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
       # QUESTION: are dash urls or manifest urls ever ciphered?
       # QUESTION: are audio streams ever FORMAT_STREAM_TYPE_OTF?
-      var segmentList: string
+      var
+        baseUrl: string
+        segmentList: string
       result.isDash = true
-      (result.baseUrl, segmentList) = extractDashInfo(dashManifestUrl, $result.itag)
-      result.urlSegments = produceDashSegments(result.baseUrl, segmentList)
+      (baseUrl, segmentList) = extractDashInfo(dashManifestUrl, $result.itag)
+      result.urlSegments = produceDashSegments(baseUrl, segmentList)
     else:
       result.url = urlOrCipher(stream)
     result.exists = true
@@ -1038,7 +1052,7 @@ proc getVideo(youtubeUrl: string, aItag, vItag: int, aCodec, vCodec: string) =
     dashManifestUrl: string
     captions: string
 
-  logGeneric(lvlInfo, "youtube", videoId)
+  logInfo("id: ", videoId)
 
   # NOTE: make initial request to get base.js version, timestamp, and api locale
   (code, response) = doGet(standardYoutubeUrl)
@@ -1178,7 +1192,7 @@ proc getPlaylist(youtubeUrl: string, aItag, vItag: int, aCodec, vCodec: string) 
 
       logInfo(ids.len, " videos queued")
       for idx, id in ids:
-        logInfo(idx.succ, " of ", ids.len)
+        logInfo("download: ", idx.succ, " of ", ids.len)
         getVideo(watchUrl & id, aItag, vItag, aCodec, vCodec)
   else:
     logError(code)
@@ -1277,7 +1291,7 @@ proc getChannel(youtubeUrl: string, aItag, vItag: int, aCodec, vCodec: string) =
   logInfo(videoIds.len, " videos queued")
   logInfo(playlistIds.len, " playlists queued")
   for idx, id in videoIds:
-    logInfo(idx.succ, " of ", videoIds.len)
+    logInfo("download: ", idx.succ, " of ", videoIds.len)
     getVideo(watchUrl & id, aItag, vItag, aCodec, vCodec)
   for id in playlistIds:
     getPlaylist(playlistUrl & id, aItag, vItag, aCodec, vCodec)
@@ -1297,6 +1311,8 @@ proc youtubeDownload*(youtubeUrl, aFormat, aItag, vItag, aCodec, vCodec, sLang: 
     globalLogLevel = lvlDebug
   elif silent:
     globalLogLevel = lvlNone
+
+  logGeneric(lvlInfo, "uvd", "youtube")
 
   # QUESTION: make codecs and itags global?
   if "/channel/" in youtubeUrl or "/c/" in youtubeUrl:
