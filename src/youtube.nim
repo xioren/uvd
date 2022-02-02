@@ -385,15 +385,14 @@ proc throttleSwap(d: var (string | seq[string]), e: int) {.inline.} =
 
 proc extractThrottleFunctionName(js: string): string =
   ## extract main throttle function
-  # NOTE: a.C&&(b=a.get("n"))&&(b=kha(b),a.set("n",b)) --> kha
-  let found = js.easyFind(re"(a\.[A-Z]&&\(b=a.[sg]et[^}]+)")
-  result = found.captureBetween('=', '(', found.find("a.set") - 10)
+  # NOTE: iha=function(a){var b=a.split(""),c=[ --> iha
+  result = js.easyFind(re"""([a-z]+)=function\x28a\x29{var b=a\.split\x28""\x29,""")
 
 
 proc extractThrottleCode(mainFunc, js: string): string =
   ## extract throttle code block from base.js
   # NOTE: mainThrottleFunction=function(a){.....}
-  result = js.easyFind(re("($1=function\\(\\w\\){.+?})(?=;)" % mainFunc, flags={reDotAll}))
+  result = js.easyFind(re("""($1=function\x28\w\x29{.+?});""" % mainFunc, flags={reDotAll}))
 
 
 iterator splitThrottleArray(js: string): string =
@@ -402,7 +401,7 @@ iterator splitThrottleArray(js: string): string =
     step: string
     scope: int
 
-  let found = js.easyFind(re("(?<=,c=\\[)(.+)(?=\\];\n?c)", flags={reDotAll}))
+  let found = js.easyFind(re("""(?<=,c=\[)(.+)(?=\];\n?c)""", flags={reDotAll}))
 
   for idx, c in found:
     #[ NOTE: commas separate function arguments and functions themselves.
