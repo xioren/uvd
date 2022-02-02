@@ -641,7 +641,7 @@ proc urlOrCipher(stream: JsonNode): string =
 
 
 proc produceDashSegments(baseUrl, segmentList: string): seq[string] =
-  ## extract individual from dash entry
+  ## extract individual segment urls from dash entry
   let base = parseUri(baseUrl)
   for segment in segmentList.findAll(re("""(?<=\")([a-z\d/\.-]+)(?=\")""")):
     result.add($(base / segment))
