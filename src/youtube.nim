@@ -232,27 +232,37 @@ proc formatTime(time: string): string =
 
 proc asrToSrt(xml: string): string =
   ## convert youtube native asr captions to SubRip format
-  let
-    startTimes = xml.findAll(re"""(?<=start=")[^"]+""")
-    durations = xml.findAll(re"""(?<=dur=")[^"]+""")
-    text = xml.findAll(re"""(?<=>)[^<>]+(?=</text>)""")
+  #[ IDEA: this can be done without splitting. consider parsing each entry out entirely
+    and then parsing meta data from that entry. ]#
+  var entries: string
+  discard xml.parseUntil(entries, "</transcript>", xml.find("<transcript>"))
+  let splitEntries = entries.split("/text>")
+  var
+    startPoint: string
+    nextStartPoint: string
+    endPoint: string
+    duration: string
+    text: string
+    parseIdx: int
 
-
-  for idx in 0..startTimes.high:
+  for idx, entry in splitEntries[0..^2]:
     result.add($idx.succ & '\n')
-    let
-      startPoint = startTimes[idx]
-      duration = durations[idx]
-      endPoint = $(parseFloat(startPoint) + parseFloat(duration))
+    parseIdx = entry.skipUntil('"')
+    parseIdx.inc(entry.parseUntil(startPoint, '"', parseIdx.succ))
+    parseIdx.inc(entry.skipUntil('"', parseIdx + 2))
+    parseIdx.inc(entry.parseUntil(duration, '"', parseIdx + 3))
+    text = entry.captureBetween('>', '<', parseIdx)
+    endPoint = $(parseFloat(startPoint) + parseFloat(duration))
 
-    if idx < startTimes.high:
+    if idx < splitEntries.high.pred:
       #[ NOTE: choose min between enpoint of current text and startpoint of next text to eliminate crowding
         i.e. only one subtitle entry on screen at a time ]#
-      result.add(formatTime(startPoint) & " --> " & formatTime($min(parseFloat(endPoint), parseFloat(startTimes[idx.succ]))) & '\n')
-      result.add(text[idx].replace("&amp;#39;", "'") & "\n\n")
+      nextStartPoint = splitEntries[idx.succ].captureBetween('"', '"')
+      result.add(formatTime(startPoint) & " --> " & formatTime($min(parseFloat(endPoint), parseFloat(nextStartPoint))) & '\n')
+      result.add(text.replace("&amp;#39;", "'") & "\n\n")
     else:
       result.add(formatTime(startPoint) & " --> " & formatTime(endPoint) & '\n')
-      result.add(text[idx].replace("&amp;#39;", "'"))
+      result.add(text.replace("&amp;#39;", "'"))
 
 
 proc generateSubtitles(captions: JsonNode) =
@@ -654,16 +664,26 @@ proc urlOrCipher(stream: JsonNode): string =
 proc produceDashSegments(baseUrl, segmentList: string): seq[string] =
   ## extract individual segment urls from dash entry
   let base = parseUri(baseUrl)
-  for segment in segmentList.findAll(re("""(?<=\")([a-z\d/\.-]+)(?=\")""")):
-    result.add($(base / segment))
+  var
+    capture: bool
+    segment: string
+  for c in segmentList:
+    if c == '"':
+      if capture:
+        result.add($(base / segment))
+        segment = ""
+      capture = not capture
+    elif capture:
+      segment.add(c)
 
 
 proc extractDashInfo(dashManifestUrl, itag: string): tuple[baseUrl, segmentList: string] =
   ## parse itag's dash entry from xml
+  var respresentation: string
   let (_, xml) = doGet(dashManifestUrl)
-  let found = xml.easyFind(re("""(?<=<Representation\s)(id="$1".+?)(?=</Representation>)""" % itag))
-  result.baseUrl = found.captureBetween('>', '<', found.find("<BaseURL>") + 8)
-  result.segmentList = found.easyFind(re("""(?<=<SegmentList>)(.+)(?=</SegmentList>)"""))
+  discard xml.parseUntil(respresentation, """</Representation>""", xml.find("""<Representation id="$1""" % itag))
+  result.baseUrl = respresentation.captureBetween('>', '<', respresentation.find("<BaseURL>") + 8)
+  discard respresentation.parseUntil(result.segmentList, """</SegmentList>""" % itag, respresentation.find("""<SegmentList>""" % itag))
 
 
 proc getBitrate(stream: JsonNode): int =
