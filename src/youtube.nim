@@ -1211,7 +1211,7 @@ proc getPlaylist(youtubeUrl: string, aItag, vItag: int, aCodec, vCodec: string) 
 
       logInfo(ids.len, " videos queued")
       for idx, id in ids:
-        logInfo("download: ", idx.succ, " of ", ids.len)
+        logGeneric(lvlInfo, "download", idx.succ, " of ", videoIds.len)
         getVideo(watchUrl & id, aItag, vItag, aCodec, vCodec)
   else:
     logError(code)
@@ -1310,7 +1310,7 @@ proc getChannel(youtubeUrl: string, aItag, vItag: int, aCodec, vCodec: string) =
   logInfo(videoIds.len, " videos queued")
   logInfo(playlistIds.len, " playlists queued")
   for idx, id in videoIds:
-    logInfo("download: ", idx.succ, " of ", videoIds.len)
+    logGeneric(lvlInfo, "download", idx.succ, " of ", videoIds.len)
     getVideo(watchUrl & id, aItag, vItag, aCodec, vCodec)
   for id in playlistIds:
     getPlaylist(playlistUrl & id, aItag, vItag, aCodec, vCodec)
