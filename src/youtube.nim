@@ -1191,7 +1191,7 @@ proc getVideo(youtubeUrl: string, aItag, vItag: int, aCodec, vCodec: string) =
 
 
 proc getPlaylist(youtubeUrl: string, aItag, vItag: int, aCodec, vCodec: string) =
-  var ids: seq[string]
+  var videoIds: seq[string]
   let playlistId = isolatePlaylist(youtubeUrl)
 
   logDebug("playlist id: ", playlistId)
@@ -1207,10 +1207,10 @@ proc getPlaylist(youtubeUrl: string, aItag, vItag: int, aCodec, vCodec: string) 
       logError("infinite playlist...aborting")
     else:
       for item in playlistResponse["contents"]["twoColumnWatchNextResults"]["playlist"]["playlist"]["contents"]:
-        ids.add(item["playlistPanelVideoRenderer"]["videoId"].getStr())
+        videoIds.add(item["playlistPanelVideoRenderer"]["videoId"].getStr())
 
-      logInfo(ids.len, " videos queued")
-      for idx, id in ids:
+      logInfo(videoIds.len, " videos queued")
+      for idx, id in videoIds:
         logGeneric(lvlInfo, "download", idx.succ, " of ", videoIds.len)
         getVideo(watchUrl & id, aItag, vItag, aCodec, vCodec)
   else:

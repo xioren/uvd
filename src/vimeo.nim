@@ -529,7 +529,7 @@ proc getProfile(vimeoUrl, aId, vId, aCodec, vCodec: string) =
 
   logInfo(urls.len, " videos queued")
   for idx, url in urls:
-    logGeneric(lvlInfo, "download", idx.succ, " of ", videoIds.len)
+    logGeneric(lvlInfo, "download", idx.succ, " of ", urls.len)
     getVideo(url, aId, vId, aCodec, vCodec)
 
 
