@@ -19,6 +19,7 @@ type
     size: string
     quality: string
     resolution: string
+    fps: string
     bitrate: string
     url: string
     urlSegments: seq[string]
@@ -835,7 +836,7 @@ proc selectAudioStream(streams: JsonNode, itag: int, codec: string): JsonNode =
     result = selectAudioByBitrate(streams, "mp4a")
 
 
-proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime, codec, ext, size, qlt, resolution, bitrate: string] =
+proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime, codec, ext, size, qlt, resolution, fps, bitrate: string] =
   ## compile all relevent video stream metadata
   result.itag = stream["itag"].getInt()
   let mimeAndCodec = stream["mimeType"].getStr().split("; codecs=\"")
@@ -844,6 +845,7 @@ proc getVideoStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime,
   result.ext = extensions[result.mime]
   result.qlt = stream["qualityLabel"].getStr()
   result.resolution = $stream["width"].getInt() & 'x' & $stream["height"].getInt()
+  result.fps = $stream["fps"].getInt()
 
   let rawBitrate = getBitrate(stream)
   result.bitrate = formatSize(rawBitrate, includeSpace=true) & "/s"
@@ -879,11 +881,10 @@ proc getAudioStreamInfo(stream: JsonNode, duration: int): tuple[itag: int, mime,
 proc newVideoStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int, stream: JsonNode): Stream =
   if stream.kind != JNull:
     # NOTE: should NEVER be JNull but go through the motions anyway for parity with newAudioStream
-    (result.itag, result.mime, result.codec, result.ext, result.size, result.quality, result.resolution, result.bitrate) = getVideoStreamInfo(stream, duration)
+    (result.itag, result.mime, result.codec, result.ext, result.size, result.quality, result.resolution, result.fps, result.bitrate) = getVideoStreamInfo(stream, duration)
     result.filename = addFileExt(videoId, result.ext)
-    # QUESTION: are all DASH segment streams denoted with "FORMAT_STREAM_TYPE_OTF"?
-    if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
-      # QUESTION: are DASH urls or manifest urls ever ciphered?
+    if not stream.hasKey("averageBitrate"):
+      # NOTE: dash stream
       var
         baseUrl: string
         segmentList: string
@@ -902,10 +903,8 @@ proc newAudioStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
   if stream.kind != JNull:
     (result.itag, result.mime, result.codec, result.ext, result.size, result.quality, result.bitrate) = getAudioStreamInfo(stream, duration)
     result.filename = addFileExt(videoId, result.ext)
-    # QUESTION: are all dash segment stream denoted with "FORMAT_STREAM_TYPE_OTF"?
-    if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
-      # QUESTION: are dash urls or manifest urls ever ciphered?
-      # QUESTION: are audio streams ever FORMAT_STREAM_TYPE_OTF?
+    if not stream.hasKey("averageBitrate"):
+      # NOTE: dash stream
       var
         baseUrl: string
         segmentList: string
@@ -949,7 +948,7 @@ proc reportStreams(playerResponse: JsonNode, duration: int) =
   ## echo metadata for all streams
   var
     itag: int
-    mime, codec, ext, size, quality, resolution, bitrate: string
+    mime, codec, ext, size, quality, resolution, fps, bitrate: string
 
   if playerResponse["streamingData"].hasKey("adaptiveFormats"):
     # NOTE: streaming formats
@@ -963,10 +962,11 @@ proc reportStreams(playerResponse: JsonNode, duration: int) =
              " codec: ", codec,
              " size: ", size
       else:
-        (itag, mime, codec, ext, size, quality, resolution, bitrate) = getVideoStreamInfo(item, duration)
+        (itag, mime, codec, ext, size, quality, resolution, fps, bitrate) = getVideoStreamInfo(item, duration)
         echo "[video]", " itag: ", itag,
              " quality: ", quality,
              " resolution: ", resolution,
+             " fps: ", fps,
              " bitrate: ", bitrate,
              " mime: ", mime,
              " codec: ", codec,
@@ -1128,7 +1128,6 @@ proc getVideo(youtubeUrl: string, aItag, vItag: int, aCodec, vCodec: string) =
           reportStreams(playerResponse, duration)
           return
 
-        # QUESTION: hlsManifestUrl seems to be for live streamed videos but is it ever needed?
         if playerResponse["streamingData"].hasKey("dashManifestUrl"):
           dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
         let video = newVideo(standardYoutubeUrl, dashManifestUrl, thumbnailUrl, title, videoId, duration,

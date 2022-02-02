@@ -102,7 +102,8 @@ func dequery*(url: string): string =
 func makeSafe*(title: string): string =
   ## make video titles more suitable for filenames
   # NOTE: subjective
-  title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"), ("#", ""), ("\\", "-"))
+  title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"), ("#", ""),
+                     ("\\", "-"), ("|", "-"))
 
 
 proc zFill*(this: string, width: int, fill = '0'): string =
@@ -296,5 +297,5 @@ proc grab*(url: string | seq[string], filename: string, saveLocation=getCurrentD
     result = waitFor download(url, filepath)
     if result.is2xx:
       logGeneric(lvlInfo, "complete", filename)
-    else:
+    elif result != HttpCode(0):
       logError(result)
