@@ -418,7 +418,7 @@ iterator splitThrottleArray(js: string): string =
       only yield if the comma is separating two functions in the base scope
       and not function arguments or child functions.
     ]#
-    if (c == ',' and scope == 0 and '{' notin found[idx..min(idx + 5, code.high)]) or idx == code.high:
+    if (c == ',' and scope == 0 and '{' notin code[idx..min(idx + 5, code.high)]) or idx == code.high:
       if idx == code.high:
         step.add(c)
       yield step.multiReplace(("\x00", ""), ("\n", ""))
@@ -575,7 +575,7 @@ proc extractParentFunctionName(jsFunction: string): string =
 proc parseChildFunction(function: string): tuple[name: string, argument: int] =
   ## returns child function name and second argument
   ## ix.ai(a,5) --> (ai, 5)
-  result.name = escapeRe(function.captureBetween('.', '('))
+  result.name = function.captureBetween('.', '(')
   result.argument = parseInt(function.captureBetween(',', ')'))
 
 
