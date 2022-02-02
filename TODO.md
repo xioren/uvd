@@ -5,3 +5,7 @@
 + windows support
 + consider rewrite around a queue
 + find a way to get rid of regex
++ handle 429 errors
+[error] 0eceived length doesn't match expected length. Wanted 344325615 got: 95632688
+[error] failed to download video stream
+[error] no streams were downloaded
