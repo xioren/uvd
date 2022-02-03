@@ -9,3 +9,4 @@
   [error] failed to download video stream
   [error] no streams were downloaded
 + fix segment content lengths reporting as 0
++ structure output of --show

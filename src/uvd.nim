@@ -90,7 +90,7 @@ proc main() =
         of "t", "thumb":
           iThumb = true
         of "V", "version":
-          echo version
+          echo "uvd ", version
           return
         of "video-id", "video-itag":
           vItag = val
