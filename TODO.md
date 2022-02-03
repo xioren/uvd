@@ -10,4 +10,5 @@
   [error] no streams were downloaded
 + hls manifest parsing
  hls is for combined audio + videos streams (youtube premium downloads) while dash manifest
- if for single audio or videos streams.
+ is for single audio or videos streams.
++ fix segment content lengths reporting as 0

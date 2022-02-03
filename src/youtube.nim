@@ -412,7 +412,10 @@ iterator splitThrottleArray(js: string): string =
     step: string
     scope: int
 
-  discard js.parseUntil(code, "];\nc[", js.find(",c=[") + 4)
+  if js.contains("];\nc["):
+    discard js.parseUntil(code, "];\nc[", js.find(",c=[") + 4)
+  else:
+    discard js.parseUntil(code, "];c[", js.find(",c=[") + 4)
 
   for idx, c in code:
     #[ NOTE: commas separate function arguments and functions themselves.
@@ -662,8 +665,53 @@ proc urlOrCipher(stream: JsonNode): string =
   logDebug("download url: ", result)
 
 
-proc produceDashSegments(baseUrl, segmentList: string): seq[string] =
-  ## extract individual segment urls from dash entry
+proc extractHlsStreams(hlsStreamsUrl: string): seq[tuple[itag, resolution, fps, codecs, hlsUrl: string]] =
+  ## extract hls stream data from hls xml
+  let (_, xml) = doGet(hlsStreamsUrl)
+  var
+    itag: string
+    resolution: string
+    fps: string
+    codecs: string
+    hlsUrl: string
+    stream: string
+    idx: int
+
+  while idx < xml.high:
+    idx.inc(xml.skipUntil(':', idx))
+    idx.inc(xml.parseUntil(stream, '#', idx))
+    itag = stream.captureBetween('/', '/', stream.find("itag"))
+    resolution = stream.captureBetween('=', ',', stream.find("RESOLUTION"))
+    fps = stream.captureBetween('=', ',', stream.find("FRAME-RATE"))
+    codecs = stream.captureBetween('"', '"', stream.find("CODECS"))
+    hlsUrl = stream.captureBetween('\n', '\n')
+    result.add((itag, resolution, fps, codecs, hlsUrl))
+    inc idx
+
+proc extractHlsSegments(hlsSegmentsUrl: string): seq[string] =
+  ## extract individual hls segment urls from hls xml
+  let (_, xml) = doGet(hlsSegmentsUrl)
+  var
+    idx = xml.find("#EXTINF:")
+    url: string
+
+  while true:
+    url = xml.captureBetween('\n', '\n', idx)
+    if url == "#EXT-X-ENDLIST":
+      break
+    result.add(url)
+    idx.inc(xml.skipUntil(':', idx.succ))
+    inc idx
+
+
+# proc extractDashStreams(dashManifestUrl: string): string =
+  ## extract dash stream data from dash xml
+  # TODO
+  # discard
+
+
+proc extractDashSegments(baseUrl, segmentList: string): seq[string] =
+  ## extract individual dash segment urls from dash xml
   let base = parseUri(baseUrl)
   var
     capture: bool
@@ -679,7 +727,7 @@ proc produceDashSegments(baseUrl, segmentList: string): seq[string] =
 
 
 proc extractDashInfo(dashManifestUrl, itag: string): tuple[baseUrl, segmentList: string] =
-  ## parse itag's dash entry from xml
+  ## parse specific itag's dash entry from xml
   var respresentation: string
   let (_, xml) = doGet(dashManifestUrl)
   discard xml.parseUntil(respresentation, """</Representation>""", xml.find("""<Representation id="$1""" % itag))
@@ -891,7 +939,7 @@ proc newVideoStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
       result.isDash = true
       logDebug("DASH manifest: ", dashManifestUrl)
       (baseUrl, segmentList) = extractDashInfo(dashManifestUrl, $result.itag)
-      result.urlSegments = produceDashSegments(baseUrl, segmentList)
+      result.urlSegments = extractDashSegments(baseUrl, segmentList)
       # TODO: add len check here and fallback to stream[0] or similar if len == 0.
       # IDEA: consider taking all streams as argument which will allow redoing of selectVideoStream as needed.
     else:
@@ -910,7 +958,7 @@ proc newAudioStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
         segmentList: string
       result.isDash = true
       (baseUrl, segmentList) = extractDashInfo(dashManifestUrl, $result.itag)
-      result.urlSegments = produceDashSegments(baseUrl, segmentList)
+      result.urlSegments = extractDashSegments(baseUrl, segmentList)
     else:
       result.url = urlOrCipher(stream)
     result.exists = true
@@ -983,6 +1031,7 @@ proc reportStreams(playerResponse: JsonNode, duration: int) =
            " mime: ", mime,
            " codec: ", codec,
            " size: ", size
+
 
 
 ########################################################
