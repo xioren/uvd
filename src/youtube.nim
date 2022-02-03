@@ -318,6 +318,101 @@ proc generateSubtitles(captions: JsonNode) =
 
 
 ########################################################
+# hls / dash manifest parsing
+########################################################
+
+
+proc extractHlsStreams(hlsStreamsUrl: string): seq[string] =
+  ## extract hls stream data from hls xml
+  let (_, xml) = doGet(hlsStreamsUrl)
+  var
+    idx: int
+    hlsEntry: string
+
+  while idx < xml.high:
+    idx.inc(xml.skipUntil(':', idx))
+    inc idx
+    idx.inc(xml.parseUntil(hlsEntry, '#', idx))
+    result.add(hlsEntry)
+
+
+proc extractHlsSegments(hlsSegmentsUrl: string): seq[string] =
+  ## extract individual hls segment urls from hls xml
+  let (_, xml) = doGet(hlsSegmentsUrl)
+  var
+    idx = xml.find("#EXTINF:")
+    url: string
+
+  while true:
+    url = xml.captureBetween('\n', '\n', idx)
+    if url == "#EXT-X-ENDLIST":
+      break
+    result.add(url)
+    idx.inc(xml.skipUntil(':', idx.succ))
+    inc idx
+
+
+proc extractHlsInfo(hlsEntry: string): tuple[itag, resolution, fps, codecs, hlsUrl: string] =
+  ## parse meta data for given hls entry
+  result.itag = hlsEntry.captureBetween('/', '/', hlsEntry.find("itag"))
+  result.resolution = hlsEntry.captureBetween('=', ',', hlsEntry.find("RESOLUTION"))
+  result.fps = hlsEntry.captureBetween('=', ',', hlsEntry.find("FRAME-RATE"))
+  result.codecs = hlsEntry.captureBetween('"', '"', hlsEntry.find("CODECS"))
+  result.hlsUrl = hlsEntry.captureBetween('\n', '\n')
+
+
+proc extractDashStreams(dashManifestUrl: string): seq[string] =
+  ## extract dash stream data from dash xml
+  let (_, xml) = doGet(dashManifestUrl)
+  var
+    dashEntry: string
+    idx = xml.find("<Representation")
+
+  while idx < xml.high:
+    idx.inc(xml.parseUntil(dashEntry, "</Representation>", idx))
+    if not dashEntry.contains("/MPD"):
+      result.add(dashEntry)
+    inc idx
+
+
+proc extractDashSegments(dashEntry: string): seq[string] =
+  ## extract individual segment urls from dash entry
+  var
+    segments: string
+    capture: bool
+    segment: string
+
+  let baseUrl = parseUri(dashEntry.captureBetween('>', '<', dashEntry.find("<BaseURL>") + 8))
+  discard dashEntry.parseUntil(segments, """</SegmentList>""", dashEntry.find("""<SegmentList>"""))
+
+  for c in segments:
+    if c == '"':
+      if capture:
+        result.add($(baseUrl / segment))
+        segment = ""
+      capture = not capture
+    elif capture:
+      segment.add(c)
+
+
+proc extractDashInfo(dashEntry: string): tuple[itag, resolution, fps, codecs: string] =
+  ## parse meta data for given dash entry
+  let
+    width = dashEntry.captureBetween('"', '"', dashEntry.find("width="))
+    height = dashEntry.captureBetween('"', '"', dashEntry.find("height="))
+  result.itag = dashEntry.captureBetween('"', '"', dashEntry.find("id="))
+  result.resolution = width & 'x' & height
+  result.fps = dashEntry.captureBetween('"', '"', dashEntry.find("frameRate="))
+  result.codecs = dashEntry.captureBetween('"', '"', dashEntry.find("codecs="))
+
+
+proc extractDashEntry(dashManifestUrl, itag: string): string =
+  ## parse specific itag's dash entry from xml
+  let (_, xml) = doGet(dashManifestUrl)
+  discard xml.parseUntil(result, "</Representation>", xml.find("""<Representation id="$1""" % itag))
+
+
+########################################################
 # throttle logic
 ########################################################
 #[ NOTE: thanks to https://github.com/pytube/pytube/blob/master/pytube/cipher.py
@@ -663,96 +758,6 @@ proc urlOrCipher(stream: JsonNode): string =
     logDebug("initial n: ", n)
     logDebug("transformed n: ", transformedN)
   logDebug("download url: ", result)
-
-
-proc extractHlsStreams(hlsStreamsUrl: string): seq[string] =
-  ## extract hls stream data from hls xml
-  let (_, xml) = doGet(hlsStreamsUrl)
-  var
-    idx: int
-    hlsEntry: string
-
-  while idx < xml.high:
-    idx.inc(xml.skipUntil(':', idx))
-    inc idx
-    idx.inc(xml.parseUntil(hlsEntry, '#', idx))
-    result.add(hlsEntry)
-
-
-proc extractHlsSegments(hlsSegmentsUrl: string): seq[string] =
-  ## extract individual hls segment urls from hls xml
-  let (_, xml) = doGet(hlsSegmentsUrl)
-  var
-    idx = xml.find("#EXTINF:")
-    url: string
-
-  while true:
-    url = xml.captureBetween('\n', '\n', idx)
-    if url == "#EXT-X-ENDLIST":
-      break
-    result.add(url)
-    idx.inc(xml.skipUntil(':', idx.succ))
-    inc idx
-
-
-proc extractHlsInfo(hlsEntry: string): tuple[itag, resolution, fps, codecs, hlsUrl: string] =
-  ## parse meta data for given hls entry
-  result.itag = hlsEntry.captureBetween('/', '/', hlsEntry.find("itag"))
-  result.resolution = hlsEntry.captureBetween('=', ',', hlsEntry.find("RESOLUTION"))
-  result.fps = hlsEntry.captureBetween('=', ',', hlsEntry.find("FRAME-RATE"))
-  result.codecs = hlsEntry.captureBetween('"', '"', hlsEntry.find("CODECS"))
-  result.hlsUrl = hlsEntry.captureBetween('\n', '\n')
-
-
-proc extractDashStreams(dashManifestUrl: string): seq[string] =
-  ## extract dash stream data from dash xml
-  let (_, xml) = doGet(dashManifestUrl)
-  var
-    dashEntry: string
-    idx = xml.find("<Representation")
-
-  while idx < xml.high:
-    idx.inc(xml.parseUntil(dashEntry, "</Representation>", idx))
-    if not dashEntry.contains("/MPD"):
-      result.add(dashEntry)
-    inc idx
-
-
-proc extractDashSegments(dashEntry: string): seq[string] =
-  ## extract individual segment urls from dash entry
-  var
-    segments: string
-    capture: bool
-    segment: string
-
-  let baseUrl = parseUri(dashEntry.captureBetween('>', '<', dashEntry.find("<BaseURL>") + 8))
-  discard dashEntry.parseUntil(segments, """</SegmentList>""", dashEntry.find("""<SegmentList>"""))
-
-  for c in segments:
-    if c == '"':
-      if capture:
-        result.add($(baseUrl / segment))
-        segment = ""
-      capture = not capture
-    elif capture:
-      segment.add(c)
-
-
-proc extractDashInfo(dashEntry: string): tuple[itag, resolution, fps, codecs: string] =
-  ## parse meta data for given dash entry
-  let
-    width = dashEntry.captureBetween('"', '"', dashEntry.find("width="))
-    height = dashEntry.captureBetween('"', '"', dashEntry.find("height="))
-  result.itag = dashEntry.captureBetween('"', '"', dashEntry.find("id="))
-  result.resolution = width & 'x' & height
-  result.fps = dashEntry.captureBetween('"', '"', dashEntry.find("frameRate="))
-  result.codecs = dashEntry.captureBetween('"', '"', dashEntry.find("codecs="))
-
-
-proc extractDashEntry(dashManifestUrl, itag: string): string =
-  ## parse specific itag's dash entry from xml
-  let (_, xml) = doGet(dashManifestUrl)
-  discard xml.parseUntil(result, "</Representation>", xml.find("""<Representation id="$1""" % itag))
 
 
 proc getBitrate(stream: JsonNode): int =
