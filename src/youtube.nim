@@ -665,28 +665,19 @@ proc urlOrCipher(stream: JsonNode): string =
   logDebug("download url: ", result)
 
 
-proc extractHlsStreams(hlsStreamsUrl: string): seq[tuple[itag, resolution, fps, codecs, hlsUrl: string]] =
+proc extractHlsStreams(hlsStreamsUrl: string): seq[string] =
   ## extract hls stream data from hls xml
   let (_, xml) = doGet(hlsStreamsUrl)
   var
-    itag: string
-    resolution: string
-    fps: string
-    codecs: string
-    hlsUrl: string
-    stream: string
     idx: int
+    hlsEntry: string
 
   while idx < xml.high:
     idx.inc(xml.skipUntil(':', idx))
-    idx.inc(xml.parseUntil(stream, '#', idx))
-    itag = stream.captureBetween('/', '/', stream.find("itag"))
-    resolution = stream.captureBetween('=', ',', stream.find("RESOLUTION"))
-    fps = stream.captureBetween('=', ',', stream.find("FRAME-RATE"))
-    codecs = stream.captureBetween('"', '"', stream.find("CODECS"))
-    hlsUrl = stream.captureBetween('\n', '\n')
-    result.add((itag, resolution, fps, codecs, hlsUrl))
     inc idx
+    idx.inc(xml.parseUntil(hlsEntry, '#', idx))
+    result.add(hlsEntry)
+
 
 proc extractHlsSegments(hlsSegmentsUrl: string): seq[string] =
   ## extract individual hls segment urls from hls xml
@@ -704,35 +695,64 @@ proc extractHlsSegments(hlsSegmentsUrl: string): seq[string] =
     inc idx
 
 
-# proc extractDashStreams(dashManifestUrl: string): string =
+proc extractHlsInfo(hlsEntry: string): tuple[itag, resolution, fps, codecs, hlsUrl: string] =
+  ## parse meta data for given hls entry
+  result.itag = hlsEntry.captureBetween('/', '/', hlsEntry.find("itag"))
+  result.resolution = hlsEntry.captureBetween('=', ',', hlsEntry.find("RESOLUTION"))
+  result.fps = hlsEntry.captureBetween('=', ',', hlsEntry.find("FRAME-RATE"))
+  result.codecs = hlsEntry.captureBetween('"', '"', hlsEntry.find("CODECS"))
+  result.hlsUrl = hlsEntry.captureBetween('\n', '\n')
+
+
+proc extractDashStreams(dashManifestUrl: string): seq[string] =
   ## extract dash stream data from dash xml
-  # TODO
-  # discard
-
-
-proc extractDashSegments(baseUrl, segmentList: string): seq[string] =
-  ## extract individual dash segment urls from dash xml
-  let base = parseUri(baseUrl)
+  let (_, xml) = doGet(dashManifestUrl)
   var
+    dashEntry: string
+    idx = xml.find("<Representation")
+
+  while idx < xml.high:
+    idx.inc(xml.parseUntil(dashEntry, "</Representation>", idx))
+    if not dashEntry.contains("/MPD"):
+      result.add(dashEntry)
+    inc idx
+
+
+proc extractDashSegments(dashEntry: string): seq[string] =
+  ## extract individual segment urls from dash entry
+  var
+    segments: string
     capture: bool
     segment: string
-  for c in segmentList:
+
+  let baseUrl = parseUri(dashEntry.captureBetween('>', '<', dashEntry.find("<BaseURL>") + 8))
+  discard dashEntry.parseUntil(segments, """</SegmentList>""", dashEntry.find("""<SegmentList>"""))
+
+  for c in segments:
     if c == '"':
       if capture:
-        result.add($(base / segment))
+        result.add($(baseUrl / segment))
         segment = ""
       capture = not capture
     elif capture:
       segment.add(c)
 
 
-proc extractDashInfo(dashManifestUrl, itag: string): tuple[baseUrl, segmentList: string] =
+proc extractDashInfo(dashEntry: string): tuple[itag, resolution, fps, codecs: string] =
+  ## parse meta data for given dash entry
+  let
+    width = dashEntry.captureBetween('"', '"', dashEntry.find("width="))
+    height = dashEntry.captureBetween('"', '"', dashEntry.find("height="))
+  result.itag = dashEntry.captureBetween('"', '"', dashEntry.find("id="))
+  result.resolution = width & 'x' & height
+  result.fps = dashEntry.captureBetween('"', '"', dashEntry.find("frameRate="))
+  result.codecs = dashEntry.captureBetween('"', '"', dashEntry.find("codecs="))
+
+
+proc extractDashEntry(dashManifestUrl, itag: string): string =
   ## parse specific itag's dash entry from xml
-  var respresentation: string
   let (_, xml) = doGet(dashManifestUrl)
-  discard xml.parseUntil(respresentation, """</Representation>""", xml.find("""<Representation id="$1""" % itag))
-  result.baseUrl = respresentation.captureBetween('>', '<', respresentation.find("<BaseURL>") + 8)
-  discard respresentation.parseUntil(result.segmentList, """</SegmentList>""" % itag, respresentation.find("""<SegmentList>""" % itag))
+  discard xml.parseUntil(result, "</Representation>", xml.find("""<Representation id="$1""" % itag))
 
 
 proc getBitrate(stream: JsonNode): int =
@@ -938,8 +958,7 @@ proc newVideoStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
         segmentList: string
       result.isDash = true
       logDebug("DASH manifest: ", dashManifestUrl)
-      (baseUrl, segmentList) = extractDashInfo(dashManifestUrl, $result.itag)
-      result.urlSegments = extractDashSegments(baseUrl, segmentList)
+      result.urlSegments = extractDashSegments(extractDashEntry(dashManifestUrl, $result.itag))
       # TODO: add len check here and fallback to stream[0] or similar if len == 0.
       # IDEA: consider taking all streams as argument which will allow redoing of selectVideoStream as needed.
     else:
@@ -957,8 +976,7 @@ proc newAudioStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
         baseUrl: string
         segmentList: string
       result.isDash = true
-      (baseUrl, segmentList) = extractDashInfo(dashManifestUrl, $result.itag)
-      result.urlSegments = extractDashSegments(baseUrl, segmentList)
+      result.urlSegments = extractDashSegments(extractDashEntry(dashManifestUrl, $result.itag))
     else:
       result.url = urlOrCipher(stream)
     result.exists = true
@@ -996,7 +1014,7 @@ proc reportStreams(playerResponse: JsonNode, duration: int) =
   ## echo metadata for all streams
   var
     itag: int
-    mime, codec, ext, size, quality, resolution, fps, bitrate: string
+    hlsItag, mime, codec, ext, size, quality, resolution, fps, bitrate, url: string
 
   if playerResponse["streamingData"].hasKey("adaptiveFormats"):
     # NOTE: streaming formats
@@ -1019,11 +1037,10 @@ proc reportStreams(playerResponse: JsonNode, duration: int) =
              " mime: ", mime,
              " codec: ", codec,
              " size: ", size
-
   if playerResponse["streamingData"].hasKey("formats"):
     # NOTE: youtube premium download formats
-    for n in countdown(playerResponse["streamingData"]["formats"].len.pred, 0):
-      (itag, mime, codec, ext, size, quality, resolution, bitrate) = getVideoStreamInfo(playerResponse["streamingData"]["formats"][n], duration)
+    for idx in countdown(playerResponse["streamingData"]["formats"].len.pred, 0):
+      (itag, mime, codec, ext, size, quality, resolution, bitrate) = getVideoStreamInfo(playerResponse["streamingData"]["formats"][idx], duration)
       echo "[combined]", " itag: ", itag,
            " quality: ", quality,
            " resolution: ", resolution,
@@ -1031,6 +1048,15 @@ proc reportStreams(playerResponse: JsonNode, duration: int) =
            " mime: ", mime,
            " codec: ", codec,
            " size: ", size
+  # if playerResponse["streamingData"].hasKey("hlsManifestUrl"):
+  #   # QUESTION: should this be if or elif? does it overlap with format?
+  #   let hlsStreams = extractHlsStreams(playerResponse["streamingData"]["hlsManifestUrl"].getStr())
+  #   for idx in countdown(hlsStreams.high, 0):
+  #     (hlsItag, resolution, fps, codec, url) = hlsStreams[idx]
+  #     echo "[combined]", " itag: ", hlsItag,
+  #          " resolution: ", resolution,
+  #          " codec: ", codec,
+  #          " fps: ", fps
 
 
 
@@ -1118,7 +1144,7 @@ proc getVideo(youtubeUrl: string, aItag, vItag: int, aCodec, vCodec: string) =
     code: HttpCode
     response: string
     playerResponse: JsonNode
-    dashManifestUrl: string
+    dashManifestUrl, hlsManifestUrl: string
     captions: string
 
   logInfo("id: ", videoId)
@@ -1177,8 +1203,12 @@ proc getVideo(youtubeUrl: string, aItag, vItag: int, aCodec, vCodec: string) =
           reportStreams(playerResponse, duration)
           return
 
+        #[ NOTE: hls is for combined audio + videos streams (youtube premium downloads) while dash manifest
+          is for single audio or videos streams. hls also seems to be specific to live streams. ]#
         if playerResponse["streamingData"].hasKey("dashManifestUrl"):
           dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
+        if playerResponse["streamingData"].hasKey("hlsManifestUrl"):
+          hlsManifestUrl = playerResponse["streamingData"]["hlsManifestUrl"].getStr()
         let video = newVideo(standardYoutubeUrl, dashManifestUrl, thumbnailUrl, title, videoId, duration,
                              playerResponse["streamingData"], aItag, vItag, aCodec, vCodec)
         logInfo("title: ", video.title)

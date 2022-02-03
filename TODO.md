@@ -8,7 +8,4 @@
   [error] 0eceived length doesn't match expected length. Wanted 344325615 got: 95632688
   [error] failed to download video stream
   [error] no streams were downloaded
-+ hls manifest parsing
- hls is for combined audio + videos streams (youtube premium downloads) while dash manifest
- is for single audio or videos streams.
 + fix segment content lengths reporting as 0
