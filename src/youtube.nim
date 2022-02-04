@@ -427,13 +427,13 @@ proc throttleModFunction(d: string | seq[string], e: int): int {.inline.} =
 proc throttleUnshift(d: var (string | seq[string]), e: int) {.inline.} =
   ## handles prepend also
   #[ NOTE:
-    function(d,e){e=(e%d.length+d.length)%d.length;d.splice(-e).reverse().forEach(function(f){d.unshift(f)})};
-    function(d,e){for(e=(e%d.length+d.length)%d.length;e--;)d.unshift(d.pop())};
+    unshift: function(d,e){for(e=(e%d.length+d.length)%d.length;e--;)d.unshift(d.pop())};
+    prepend: function(d,e){e=(e%d.length+d.length)%d.length;d.splice(-e).reverse().forEach(function(f){d.unshift(f)})};
   ]#
   d.rotateLeft(d.len - throttleModFunction(d, e))
 
 
-proc throttleCipher(d: var string, e: var string, f: array[64, char]) {.inline.} =
+proc throttleCipher(d, e: var string, f: array[64, char]) {.inline.} =
   #[ NOTE:
     generative forward h: function(d,e){for(var f=64,h=[];++f-h.length-32;){switch(f)
     {case 58:f-=14;case 91:case 92:case 93:continue;case 123:f=47;case 94:case 95:
@@ -468,6 +468,7 @@ proc throttleReverse(d: var (string | seq[string])) {.inline.} =
 
 
 proc throttlePush(d: var (string | seq[string]), e: string) {.inline.} =
+  # NOTE: function(d,e){d.push(e)}
   d.add(e)
 
 
@@ -1046,10 +1047,11 @@ proc reportStreams(playerResponse: JsonNode, duration: int) =
   if playerResponse["streamingData"].hasKey("formats"):
     # NOTE: youtube premium download formats
     for idx in countdown(playerResponse["streamingData"]["formats"].len.pred, 0):
-      (itag, mime, codec, ext, size, quality, resolution, bitrate) = getVideoStreamInfo(playerResponse["streamingData"]["formats"][idx], duration)
+      (itag, mime, codec, ext, size, quality, resolution, fps, bitrate) = getVideoStreamInfo(playerResponse["streamingData"]["formats"][idx], duration)
       echo "[combined]", " itag: ", itag,
            " quality: ", quality,
            " resolution: ", resolution,
+           " fps: ", fps,
            " bitrate: ", bitrate,
            " mime: ", mime,
            " codec: ", codec,
