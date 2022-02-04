@@ -2,7 +2,7 @@ import std/[asyncdispatch, asyncfile, httpclient, logging, os,
             sets, strformat, strutils, tables, terminal, times]
 from math import floor
 
-export asyncdispatch, httpclient, os, strutils, tables, times
+export asyncdispatch, httpclient, os, strformat, strutils, tables, times
 
 
 type
@@ -104,14 +104,6 @@ func makeSafe*(title: string): string =
   # NOTE: subjective
   title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"), ("#", ""),
                      ("\\", "-"), ("|", "-"))
-
-
-proc zFill*(this: string, width: int, fill = '0'): string =
-  if this.len >= width:
-    result = this
-  else:
-    let distance = width - this.len
-    result = fill.repeat(distance) & this
 
 
 proc indexOf*[T](that: openarray[T], this: T): int =

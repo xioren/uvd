@@ -191,6 +191,7 @@ var
   globalBaseJsVersion: string
   cipherPlan: seq[string]
   cipherFunctionMap: Table[string, string]
+  # QUESTION: should this table be cleared if the js version is changed while running?
   nTransforms: Table[string, string]
   throttleArray: seq[string]
   throttlePlan: seq[seq[string]]
@@ -222,13 +223,9 @@ proc formatTime(time: string): string =
   else:
     parts = @[time, "000"]
 
-  # IDEA: the strformat module can probably do this better
-  if parts[1].len > 3:
-    # HACK: for floating point rounding errors
-    parts[1] = parts[1][0..2]
 
-  let td = initDuration(seconds=parseInt(parts[0]), milliseconds=parseInt(parts[1])).toParts()
-  result = ($td[Hours]).zFill(2) & ':' & ($td[Minutes]).zFill(2) & ':' & ($td[Seconds]).zFill(2) & ',' & ($td[Milliseconds]).zFill(3)
+  let td = initDuration(seconds=parseInt(parts[0]), milliseconds=parseInt(&"""{parts[1]:.3}""")).toParts()
+  result = ($td[Hours]).align(2, '0') & ':' & ($td[Minutes]).align(2, '0') & ':' & ($td[Seconds]).align(2, '0') & ',' & ($td[Milliseconds]).align(3, '0')
 
 
 proc asrToSrt(xml: string): string =
@@ -249,9 +246,9 @@ proc asrToSrt(xml: string): string =
   for idx, entry in splitEntries[0..^2]:
     result.add($idx.succ & '\n')
     parseIdx = entry.skipUntil('"')
-    parseIdx.inc(entry.parseUntil(startPoint, '"', parseIdx.succ))
-    parseIdx.inc(entry.skipUntil('"', parseIdx + 2))
-    parseIdx.inc(entry.parseUntil(duration, '"', parseIdx + 3))
+    parseIdx.inc(entry.parseUntil(startPoint, '"', parseIdx.succ) + 2)
+    parseIdx.inc(entry.skipUntil('"', parseIdx) + 1)
+    parseIdx.inc(entry.parseUntil(duration, '"', parseIdx))
     text = entry.captureBetween('>', '<', parseIdx)
     endPoint = $(parseFloat(startPoint) + parseFloat(duration))
 
@@ -523,12 +520,12 @@ iterator splitThrottleArray(js: string): string =
         step.add(c)
       yield step.multiReplace(("\x00", ""), ("\n", ""))
       step = ""
-      continue
-    elif c == '{':
-      inc scope
-    elif c == '}':
-      dec scope
-    step.add(c)
+    else:
+      if c == '{':
+        inc scope
+      elif c == '}':
+        dec scope
+      step.add(c)
 
 
 proc parseThrottleArray(js: string): seq[string] =
