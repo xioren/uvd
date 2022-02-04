@@ -10,6 +10,19 @@ import utils
   timestamp most likely used in hash as salt ]#
 # QUESTIONS: SAPISIDHASH?
 
+#[ NOTE: profiles:
+    172 = 2160p
+    170 = 1440p
+    175 = 1080p
+    119 = 1080p
+    174 = 720p
+    113 = 720p
+    165 = 540p
+    164 = 360p
+    112 = 360p
+    116 = 240p
+]#
+
 
 type
   Stream = object
@@ -202,7 +215,7 @@ proc produceUrlSegments(stream: JsonNode, cdnUrl: string): seq[string] =
   ## produce dash segments
   let
     baseUrl = stream["base_url"].getStr().replace("../")
-    initUrl = stream["init_segment"].getStr()
+    initSegment = stream["init_segment"].getStr()
     streamId = stream["id"].getStr()
     cdnUri = parseUri(cdnUrl)
   var sep: string
@@ -216,14 +229,16 @@ proc produceUrlSegments(stream: JsonNode, cdnUrl: string): seq[string] =
     sep.add("/" & streamId)
 
   if baseUrl.contains("parcel"):
-    #[ NOTE: dash
-      this completes with only init url even though there are index url and segment urls too ]#
-    result.add($(cdnUri / baseUrl) & initUrl)
+    # NOTE: dash
+    #[ NOTE: this completes with only init url even though there are index url and segment urls as well.
+      this may be a server side bug as the init is requested with a content range query string which
+      doesn't seem to be honored ]#
+    result.add($(cdnUri / baseUrl / initSegment))
   else:
     # NOTE: mp42
-    result.add($(cdnUri / sep / baseUrl) & initUrl)
+    result.add($(cdnUri / sep / baseUrl / initSegment))
     for segment in stream["segments"]:
-      result.add($(cdnUri / sep / baseUrl) & segment["url"].getStr())
+      result.add($(cdnUri / sep / baseUrl / segment["url"].getStr()))
 
 
 proc getVideoStreamInfo(stream: JsonNode): tuple[id, mime, codec, ext, size, qlt, resolution, fps, bitrate, format: string] =
@@ -304,7 +319,6 @@ proc reportStreamInfo(stream: Stream) =
 
 proc reportStreams(cdnResponse: JsonNode) =
   ## echo metadata for all streams
-  # TODO: sort streams by quality
   var id, mime, codec, ext, size, quality, resolution, fps, bitrate, format: string
 
   for item in cdnResponse["video"]:

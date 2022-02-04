@@ -10,3 +10,6 @@
   [error] no streams were downloaded
 + fix segment content lengths reporting as 0
 + structure output of --show
++ sort vimeo streams by quality
++ external vimeo https://vimeo.com/videoId
+ --> https://player.vimeo.com/external/videoId.hd.mp4?s=44a9bc0663a3f0cd99fbee1877cc245f2d5878b5&profile_id=175

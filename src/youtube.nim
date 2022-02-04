@@ -956,7 +956,7 @@ proc newVideoStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
     # NOTE: should NEVER be JNull but go through the motions anyway for parity with newAudioStream
     (result.itag, result.mime, result.codec, result.ext, result.size, result.quality, result.resolution, result.fps, result.bitrate) = getVideoStreamInfo(stream, duration)
     result.filename = addFileExt(videoId, result.ext)
-    if not stream.hasKey("averageBitrate"):
+    if not stream.hasKey("averageBitrate") and dashManifestUrl != "":
       # NOTE: dash stream
       var
         baseUrl: string
@@ -975,8 +975,9 @@ proc newAudioStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int,
   if stream.kind != JNull:
     (result.itag, result.mime, result.codec, result.ext, result.size, result.quality, result.bitrate) = getAudioStreamInfo(stream, duration)
     result.filename = addFileExt(videoId, result.ext)
-    if not stream.hasKey("averageBitrate"):
+    if not stream.hasKey("averageBitrate") and dashManifestUrl != "":
       # NOTE: dash stream
+      # NOTE: have seen audio streams that are not dash and do not have average bitrate field
       var
         baseUrl: string
         segmentList: string
