@@ -4,7 +4,7 @@ from math import floor
 
 export asyncdispatch, httpclient, os, strformat, strutils, tables, times
 
-
+# IDEA: consider renaming to common as this is becoming more accurate a name
 type
   Level* = enum
     lvlDebug,
@@ -160,7 +160,7 @@ proc displayStreams*(streams: seq[tuple[kind, id, mime, codec, ext, size, qlt, r
     headerExtension = Column(title: "extension", width: 11)
     headerCodec = Column(title: "codec", width: 7)
     headerSize = Column(title: "size", width: 6)
-    # headerFormat = Column(title: "format", width: 8)
+    headerFormat = Column(title: "format", width: 8)
 
   # NOTE: expand column widths as necessary
   for stream in streams:
@@ -184,11 +184,22 @@ proc displayStreams*(streams: seq[tuple[kind, id, mime, codec, ext, size, qlt, r
       headerCodec.width = stream.codec.len + 2
     if stream.size.len > headerSize.width - 2:
       headerSize.width = stream.size.len + 2
-    # if stream.format.len > headerFormat.width - 2:
-    #   headerFormat.width = stream.format.len + 2
+    if stream.format.len > headerFormat.width - 2:
+      headerFormat.width = stream.format.len + 2
 
-  let headers = [headerKind, headerId, headerQuality, headerResolution, headerFps,
-                 headerBitrate, headerMime, headerExtension, headerCodec, headerSize]
+  let headers = [
+                 headerKind,
+                 headerId,
+                 headerQuality,
+                 headerResolution,
+                 headerFps,
+                 headerBitrate,
+                 headerMime,
+                 headerExtension,
+                 headerCodec,
+                 headerSize,
+                 headerFormat
+                 ]
 
   # NOTE: write headers
   for idx, column in headers:
@@ -212,8 +223,8 @@ proc displayStreams*(streams: seq[tuple[kind, id, mime, codec, ext, size, qlt, r
     stdout.write(stream.mime.center(headerMime.width), columnSeparator)
     stdout.write(stream.ext.strip(trailing=false, chars={'.'}).center(headerExtension.width), columnSeparator)
     stdout.write(stream.codec.center(headerCodec.width), columnSeparator)
-    stdout.writeLine(stream.size.center(headerSize.width))
-    # stdout.writeLine(stream.format.center(headerSize.width))
+    stdout.write(stream.size.center(headerSize.width), columnSeparator)
+    stdout.writeLine(stream.format.center(headerFormat.width))
 
 
 proc joinStreams*(videoStream, audioStream, filename, subtitlesLanguage: string, includeSubtitles: bool) =

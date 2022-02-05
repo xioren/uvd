@@ -924,22 +924,31 @@ proc getStreamInfo(stream: JsonNode, duration: int): tuple[kind, id, mime, codec
     # WARNING: this is innacurate when the average bitrate it not available
     result.size = formatSize(int(rawBitrate * duration / 8), includeSpace=true)
 
+  if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
+    # NOTE: primary dash check
+    result.format = "dash"
+  else:
+    result.format = "https"
+
 
 proc newStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int, stream: JsonNode): Stream =
   if stream.kind != JNull:
     (result.kind, result.id, result.mime, result.codec, result.ext, result.size, result.quality, result.resolution, result.fps, result.bitrate, result.format) = getStreamInfo(stream, duration)
     result.filename = addFileExt(videoId, result.ext)
-    if not stream.hasKey("averageBitrate") and dashManifestUrl != "":
+    #[ NOTE: secondary dash check which catches malformed https streams (no average bitrate)
+    and falls back to dash if available ]#
+    # IDEA: could also use contentLength?
+    if result.format == "dash" or not (stream.hasKey("averageBitrate") and dashManifestUrl == ""):
       var
         baseUrl: string
         segmentList: string
-      result.format = "dash"
+      if result.format != "dash":
+        result.format = "dash"
       logDebug("DASH manifest: ", dashManifestUrl)
       result.urlSegments = extractDashSegments(extractDashEntry(dashManifestUrl, result.id))
       # TODO: add len check here and fallback to stream[0] or similar for audio if len == 0.
       # IDEA: consider taking all streams as argument which will allow redoing of selectVideoStream as needed.
     else:
-      result.format = "https"
       result.url = urlOrCipher(stream)
     result.exists = true
 
@@ -976,14 +985,16 @@ proc reportStreamInfo(stream: Stream) =
 proc reportStreams(playerResponse: JsonNode, duration: int) =
   ## echo metadata for all streams
   var parsedStreams: seq[tuple[kind, id, mime, codec, ext, size, qlt, resolution, fps, bitrate, format: string]]
-  if playerResponse["streamingData"].hasKey("adaptiveFormats"):
+  # IDEA: could take dash url as arg and determine if dash format
+  if playerResponse.hasKey("adaptiveFormats"):
     # NOTE: streaming formats
-    for item in playerResponse["streamingData"]["adaptiveFormats"]:
+    for item in playerResponse["adaptiveFormats"]:
       parsedStreams.add(getStreamInfo(item, duration))
-  if playerResponse["streamingData"].hasKey("formats"):
+  if playerResponse.hasKey("formats"):
     # NOTE: youtube premium download formats
-    for idx in countdown(playerResponse["streamingData"]["formats"].len.pred, 0):
-      parsedStreams.add(getStreamInfo(playerResponse["streamingData"]["formats"][idx], duration))
+    for idx in countdown(playerResponse["formats"].len.pred, 0):
+      parsedStreams.add(getStreamInfo(playerResponse["formats"][idx], duration))
+
   displayStreams(parsedStreams)
   # if playerResponse["streamingData"].hasKey("hlsManifestUrl"):
   #   # QUESTION: should this be if or elif? does it overlap with format?
@@ -1139,7 +1150,7 @@ proc getVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
           return
 
         if showStreams:
-          reportStreams(playerResponse, duration)
+          reportStreams(playerResponse["streamingData"], duration)
           return
 
         #[ NOTE: hls is for combined audio + videos streams (youtube premium downloads) while dash manifest
