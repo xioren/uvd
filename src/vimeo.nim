@@ -23,32 +23,6 @@ import utils
     116 = 240p
 ]#
 
-
-type
-  Stream = object
-    kind: string
-    id: string
-    mime: string
-    ext: string
-    codec: string
-    size: string
-    quality: string
-    resolution: string
-    fps: string
-    bitrate: string
-    format: string
-    urlSegments: seq[string]
-    filename: string
-    exists: bool
-
-  Video = object
-    title: string
-    videoId: string
-    url: string
-    thumbnailUrl: string
-    audioStream: Stream
-    videoStream: Stream
-
 const
   baseUrl = "https://vimeo.com"
   apiUrl = "https://api.vimeo.com"
@@ -73,6 +47,7 @@ var
 
 
 proc authorize() =
+  logDebug("requesting authorization")
   let (code, response) = doGet(authorizationUrl)
   if code.is2xx:
     let authResponse = parseJson(response)
@@ -104,7 +79,7 @@ proc generateSubtitles(captions: JsonNode) =
 
   if textTrack.kind != JNull:
     let textTrackUrl = baseUrl & textTrack["url"].getStr()
-
+    logDebug("requesting captions")
     let (code, response) = doGet(textTrackUrl)
     if code.is2xx:
       includeSubtitles = response.save(addFileExt(subtitlesLanguage, "srt"))
@@ -243,7 +218,7 @@ proc produceUrlSegments(stream: JsonNode, cdnUrl: string): seq[string] =
 
 
 proc getStreamInfo(stream: JsonNode): tuple[kind, id, mime, codec, ext, size, qlt, resolution, fps, bitrate, format: string] =
-  ## compile all relevent video stream metadata
+  ## compile all relevent stream metadata from vimeo json
   if stream.hasKey("width"):
     result.kind = "video"
     result.resolution = $stream["width"].getInt() & "x" & $stream["height"].getInt()
@@ -269,8 +244,7 @@ proc getStreamInfo(stream: JsonNode): tuple[kind, id, mime, codec, ext, size, ql
 
 proc newStream(cdnUrl, videoId: string, stream: JsonNode): Stream =
   if stream.kind != JNull:
-    # NOTE: should NEVER be JNull but go through the motions anyway for parity with newStream
-    (result.id, result.mime, result.codec, result.ext, result.size, result.quality, result.resolution, result.fps, result.bitrate, result.format) = getStreamInfo(stream)
+    (result.kind, result.id, result.mime, result.codec, result.ext, result.size, result.quality, result.resolution, result.fps, result.bitrate, result.format) = getStreamInfo(stream)
     result.filename = addFileExt(videoId, result.ext)
     result.urlSegments = stream.produceUrlSegments(cdnUrl.split("sep/")[0])
     result.exists = true
@@ -313,7 +287,7 @@ proc getProfileIds(vimeoUrl: string): tuple[profileId, sectionId: string] =
     profileResponse: JsonNode
     response: string
     code: HttpCode
-
+  logDebug("requesting webpage")
   (code, response) = doGet(vimeoUrl)
   if code.is2xx:
     profileResponse = parseJson(response)
@@ -377,6 +351,7 @@ proc getVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
 
   logInfo("id: ", videoId)
 
+  logDebug("requesting config.json")
   if vimeoUrl.contains("/config?"):
     # NOTE: config url already obtained (calls from getProfile)
     (code, response) = doGet(vimeoUrl)
@@ -436,6 +411,7 @@ proc getVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
       logDebug("default CDN: ", defaultCDN)
       logDebug("CDN url: ", cdnUrl)
 
+      logDebug("requesting master.json")
       (code, response) = doGet(cdnUrl.dequery())
       let cdnResponse = parseJson(response)
 
@@ -501,6 +477,7 @@ proc getProfile(vimeoUrl, aId, vId, aCodec, vCodec: string) =
 
   logInfo("collecting videos")
   while nextUrl != apiUrl:
+    # logDebug("requesting next video")
     (code, response) = doGet(nextUrl)
     if code.is2xx:
       profileResponse = parseJson(response)

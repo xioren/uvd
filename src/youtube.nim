@@ -10,32 +10,6 @@ import utils
   age gate tier 4: https://www.youtube.com/watch?v=Cr381pDsSsA
 ]#
 
-type
-  Stream = object
-    kind: string
-    itag: string
-    mime: string
-    ext: string
-    codec: string
-    size: string
-    quality: string
-    resolution: string
-    fps: string
-    bitrate: string
-    format: string
-    url: string
-    urlSegments: seq[string]
-    filename: string
-    exists: bool
-
-  Video = object
-    title: string
-    videoId: string
-    url: string
-    thumbnailUrl: string
-    audioStream: Stream
-    videoStream: Stream
-
 # NOTE: clientVersion can be found in contextUrl response (along with api key)
 # QUESTION: can language (hl) be set programatically? should it be?
 const
@@ -305,7 +279,7 @@ proc generateSubtitles(captions: JsonNode) =
     var captionTrackUrl = captionTrack["baseUrl"].getStr()
     if doTranslate:
       captionTrackUrl.add("&tlang=" & subtitlesLanguage)
-
+    logDebug("requesting captions")
     let (code, response) = doGet(captionTrackUrl)
     if code.is2xx:
       includeSubtitles = save(asrToSrt(response), addFileExt(subtitlesLanguage, "srt"))
@@ -324,6 +298,7 @@ proc generateSubtitles(captions: JsonNode) =
 
 proc extractHlsStreams(hlsStreamsUrl: string): seq[string] =
   ## extract hls stream data from hls xml
+  logDebug("requesting hlm manifest")
   let (_, xml) = doGet(hlsStreamsUrl)
   var
     idx: int
@@ -338,6 +313,7 @@ proc extractHlsStreams(hlsStreamsUrl: string): seq[string] =
 
 proc extractHlsSegments(hlsSegmentsUrl: string): seq[string] =
   ## extract individual hls segment urls from hls xml
+  logDebug("requesting hls segment manifest")
   let (_, xml) = doGet(hlsSegmentsUrl)
   var
     idx = xml.find("#EXTINF:")
@@ -363,6 +339,7 @@ proc extractHlsInfo(hlsEntry: string): tuple[itag, resolution, fps, codecs, hlsU
 
 proc extractDashStreams(dashManifestUrl: string): seq[string] =
   ## extract dash stream data from dash xml
+  logDebug("requesting dash manifest")
   let (_, xml) = doGet(dashManifestUrl)
   var
     dashEntry: string
@@ -408,6 +385,7 @@ proc extractDashInfo(dashEntry: string): tuple[itag, resolution, fps, codecs: st
 
 proc extractDashEntry(dashManifestUrl, itag: string): string =
   ## parse specific itag's dash entry from xml
+  logDebug("requesting dash manifest")
   let (_, xml) = doGet(dashManifestUrl)
   discard xml.parseUntil(result, "</Representation>", xml.find("""<Representation id="$1""" % itag))
 
@@ -949,8 +927,7 @@ proc getStreamInfo(stream: JsonNode, duration: int): tuple[kind, id, mime, codec
 
 proc newStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int, stream: JsonNode): Stream =
   if stream.kind != JNull:
-    # NOTE: should NEVER be JNull but go through the motions anyway for parity with newStream
-    (result.kind, result.itag, result.mime, result.codec, result.ext, result.size, result.quality, result.resolution, result.fps, result.bitrate, result.format) = getStreamInfo(stream, duration)
+    (result.kind, result.id, result.mime, result.codec, result.ext, result.size, result.quality, result.resolution, result.fps, result.bitrate, result.format) = getStreamInfo(stream, duration)
     result.filename = addFileExt(videoId, result.ext)
     if not stream.hasKey("averageBitrate") and dashManifestUrl != "":
       var
@@ -958,7 +935,7 @@ proc newStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int, stre
         segmentList: string
       result.format = "dash"
       logDebug("DASH manifest: ", dashManifestUrl)
-      result.urlSegments = extractDashSegments(extractDashEntry(dashManifestUrl, result.itag))
+      result.urlSegments = extractDashSegments(extractDashEntry(dashManifestUrl, result.id))
       # TODO: add len check here and fallback to stream[0] or similar for audio if len == 0.
       # IDEA: consider taking all streams as argument which will allow redoing of selectVideoStream as needed.
     else:
@@ -987,7 +964,7 @@ proc reportStreamInfo(stream: Stream) =
   ## echo metadata for single stream
   # TODO: expand this
   logInfo("stream: ", stream.filename)
-  logInfo("itag: ", stream.itag)
+  logInfo("itag: ", stream.id)
   logInfo("size: ", stream.size)
   logInfo("quality: ", stream.quality)
   logInfo("mime: ", stream.mime)
@@ -1025,6 +1002,7 @@ proc parseBaseJS() =
   ## extract cipher and throttle javascript code from youtube base.js
   logDebug("baseJS version: ", globalBaseJsVersion)
   logDebug("api locale: ", apiLocale)
+  logDebug("requesting base.js")
   let (code, response) = doGet(baseJsUrl % [globalBaseJsVersion, apiLocale])
   if code.is2xx:
     # NOTE: cipher code
@@ -1050,6 +1028,9 @@ proc isolateVideoId(youtubeUrl: string): string =
 proc isolateChannel(youtubeUrl: string): string =
   if "/c/" in youtubeUrl:
     # NOTE: vanity
+    #[ TODO: this should be extracted when the initial request is made instead of making
+      two requests for the same content ]#
+    logDebug("requesting webpage")
     let (_, response) = doGet(youtubeUrl)
     result = response.captureBetween('"', '"', response.find("""browseId":""") + 9)
   else:
@@ -1106,6 +1087,7 @@ proc getVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
   logInfo("id: ", videoId)
 
   # NOTE: make initial request to get base.js version, timestamp, and api locale
+  logDebug("requesting webpage")
   (code, response) = doGet(standardYoutubeUrl)
   if code.is2xx:
     apiLocale = response.captureBetween('\"', '\"', response.find("GAPI_LOCALE\":") + 12)
@@ -1115,7 +1097,7 @@ proc getVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
     if thisBaseJsVersion != globalBaseJsVersion:
       globalBaseJsVersion = thisBaseJsVersion
       parseBaseJS()
-
+    logDebug("requesting player")
     (code, response) = doPost(playerUrl, playerContext % [videoId, sigTimeStamp, date])
     if code.is2xx:
       playerResponse = parseJson(response)
@@ -1137,6 +1119,7 @@ proc getVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
         if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
           for idx, ctx in [playerBypassContextTier1, playerBypassContextTier2, playerBypassContextTier3]:
             logNotice("attempting age-gate bypass tier $1" % $idx.succ)
+            logDebug("requesting player")
             (code, response) = doPost(playerUrl, ctx % [videoId, sigTimeStamp, date])
             playerResponse = parseJson(response)
             if playerResponse["playabilityStatus"]["status"].getStr() != "OK":

@@ -15,6 +15,31 @@ type
     lvlFatal,
     lvlNone
 
+  Stream* = object
+    kind*: string
+    id*: string
+    mime*: string
+    ext*: string
+    codec*: string
+    size*: string
+    quality*: string
+    resolution*: string
+    fps*: string
+    bitrate*: string
+    format*: string
+    url*: string
+    urlSegments*: seq[string]
+    filename*: string
+    exists*: bool
+
+  Video* = object
+    title*: string
+    videoId*: string
+    url*: string
+    thumbnailUrl*: string
+    audioStream*: Stream
+    videoStream*: Stream
+
 const
   extensions* = {"video/mp4": ".mp4", "video/webm": ".webm",
                  "audio/mp4": ".m4a", "audio/webm": ".weba",
