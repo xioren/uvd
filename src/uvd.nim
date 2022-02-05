@@ -13,8 +13,8 @@ proc main() =
       options:
         -a, --audio-only                    audio only
         -v, --video-only                    video only
-        --audio-id, --audio-itag <id/itag>  audio stream id/itag
-        --video-id, --video-itag <id/itag>  video stream id/itag
+        --audio-id <id>                     audio stream id
+        --video-id <id>                     video stream id
         -f, --format <format>               audio output format
         -h, --help                          print this help
         -l, --language <iso code>           desired subtitle language
@@ -36,8 +36,8 @@ proc main() =
     debug: bool
     streams: bool
     silent: bool
-    aItag = "0"
-    vItag = "0"
+    aId = "0"
+    vId = "0"
     aCodec: string
     vCodec: string
     format = "ogg"
@@ -62,8 +62,8 @@ proc main() =
         case key
         of "a", "audio-only":
           iVideo = false
-        of "audio-id", "audio-itag":
-          aItag = val
+        of "audio-id":
+          aId = val
         of "debug":
           debug = true
         of "f", "format":
@@ -92,8 +92,8 @@ proc main() =
         of "V", "version":
           echo "uvd ", version
           return
-        of "video-id", "video-itag":
-          vItag = val
+        of "video-id":
+          vId = val
         of "v", "video-only":
           iAudio = false
         else:
@@ -101,10 +101,10 @@ proc main() =
           return
 
     if unknownUrl.contains("vimeo"):
-      vimeoDownload(unknownUrl, format, aItag, vItag, aCodec, vCodec, desiredLanguage,
+      vimeoDownload(unknownUrl, format, aId, vId, aCodec, vCodec, desiredLanguage,
                     iAudio, iVideo, iThumb, iSubtitles, streams, debug, silent)
     elif unknownUrl.contains("youtu"):
-      youtubeDownload(unknownUrl, format, aItag, vItag, aCodec, vCodec, desiredLanguage,
+      youtubeDownload(unknownUrl, format, aId, vId, aCodec, vCodec, desiredLanguage,
                       iAudio, iVideo, iThumb, iSubtitles, streams, debug, silent)
     else:
       echo "<invalid url>"
