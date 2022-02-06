@@ -1,8 +1,8 @@
 import std/[algorithm, asyncdispatch, asyncfile, httpclient, logging, os,
-            sets, strformat, strutils, tables, terminal, times]
+            parseutils, sets, strformat, strutils, tables, terminal, times, uri]
 from math import floor
 
-export algorithm, asyncdispatch, httpclient, os, strformat, strutils, tables, times
+export algorithm, asyncdispatch, httpclient, os, parseutils, strformat, strutils, tables, times, uri
 
 
 type
@@ -59,6 +59,8 @@ var
   madeProgress: bool
   headers* = @[("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.45 Safari/537.36"),
                ("accept", "*/*")]
+
+proc doGet*(url: string): tuple[httpcode: HttpCode, body: string]
 
 
 # NOTE: basic logger implementation
@@ -121,6 +123,79 @@ proc logFatal*(messageParts: varargs[string, `$`]) =
   if globalLogLevel < lvlNone:
     let fullMessage = formatLogMessage("fatal", messageParts)
     stdout.writeLine(fullMessage)
+
+
+########################################################
+# hls / dash manifest parsing
+########################################################
+
+
+proc extractDashStreams*(dashManifestUrl: string): seq[string] =
+  ## extract dash stream data from dash xml
+  logDebug("requesting dash stream manifest")
+  let (_, xml) = doGet(dashManifestUrl)
+  var
+    dashEntry: string
+    idx = xml.find("<Representation")
+
+  while true:
+    idx.inc(xml.skipUntil(' ', idx))
+    idx.inc(xml.parseUntil(dashEntry, "<Representation", idx))
+    if dashEntry.contains("/MPD"):
+      result.add("<Representation" & dashEntry.split("</AdaptationSet>")[0])
+      break
+    result.add("<Representation" & dashEntry)
+    inc idx
+
+
+proc extractDashSegments*(dashEntry: string): seq[string] =
+  ## extract individual segment urls from dash entry
+  logDebug("requesting dash segment manifest")
+  var
+    segments: string
+    capture: bool
+    segment: string
+
+  let baseUrl = parseUri(dashEntry.captureBetween('>', '<', dashEntry.find("<BaseURL>") + 8))
+  discard dashEntry.parseUntil(segments, """</SegmentList>""", dashEntry.find("""<SegmentList>"""))
+
+  for c in segments:
+    if c == '"':
+      if capture:
+        result.add($(baseUrl / segment))
+        segment = ""
+      capture = not capture
+    elif capture:
+      segment.add(c)
+
+
+proc extractHlsStreams*(hlsStreamsUrl: string): seq[string] =
+  logDebug("requesting hls stream manifest")
+  let (_, xml) = doGet(hlsStreamsUrl)
+  var
+    idx: int
+    hlsEntry: string
+
+  while idx < xml.high:
+    idx.inc(xml.skipUntil(':', idx))
+    inc idx
+    idx.inc(xml.parseUntil(hlsEntry, '#', idx))
+    result.add(hlsEntry)
+
+
+proc extractHlsSegments*(hlsSegmentsUrl: string): seq[string] =
+  logDebug("requesting hls segment manifest")
+  let (_, xml) = doGet(hlsSegmentsUrl)
+  var
+    idx = xml.find("#EXTINF:")
+    url: string
+  while true:
+    url = xml.captureBetween('\n', '\n', idx)
+    if url == "#EXT-X-ENDLIST" or url == "":
+      break
+    result.add(url)
+    idx.inc(xml.skipUntil('#', idx))
+    inc idx
 
 
 func dequery*(url: string): string =

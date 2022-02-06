@@ -1,4 +1,4 @@
-import std/[json, uri, parseutils, sequtils]
+import std/[json, sequtils]
 
 import common
 
@@ -189,9 +189,9 @@ proc newStream(stream: JsonNode, videoId: string, duration: int, cdnUrl=""): Str
       result.resolution = $stream["width"].getInt() & "x" & $stream["height"].getInt()
       result.semiperimeter = stream["width"].getInt() + stream["height"].getInt()
       if stream.hasKey("framerate"):
-        result.fps = fmt"""{stream["framerate"].getFloat():.3}"""
+        result.fps = fmt"""{stream["framerate"].getFloat():.4}"""
       elif stream.hasKey("fps"):
-        result.fps = fmt"""{stream["fps"].getFloat():.3}"""
+        result.fps = fmt"""{stream["fps"].getFloat():.4}"""
       if isVerticle(stream):
         result.quality = $stream["width"].getInt() & "p"
       else:
@@ -224,7 +224,8 @@ proc newStream(stream: JsonNode, videoId: string, duration: int, cdnUrl=""): Str
     if stream.hasKey("avg_bitrate"):
       result.bitrate = stream["avg_bitrate"].getInt()
     else:
-      result.bitrate = int((result.size * 8) / duration)
+      # NOTE: weight by 0.95 to account for audio in filesize
+      result.bitrate = int((result.size * 8) / duration * 0.95)
     result.bitrateShort = formatSize(result.bitrate, includeSpace=true) & "/s"
     result.exists = true
 
@@ -301,7 +302,7 @@ proc isUnlisted(vimeoUrl: string): bool =
 proc getBestThumb(thumbs: JsonNode): string =
   # QUESTION: are there other resolutions?
   if thumbs.hasKey("sizes"):
-    result = thumbs["sizes"][^1].getStr()
+    result = thumbs["base_link"].getStr()
   else:
     if thumbs.hasKey("base"):
       result = thumbs["base"].getStr()
@@ -378,11 +379,6 @@ proc getPlayerConfig(videoId: string, unlistedHash=""): JsonNode =
     return
 
   result = parseJson(response)
-
-
-# proc extractProgressiveStreams(streams: JsonNode): seq[JsonNode] =
-#   for stream in streams:
-#     result.add(newStream(stream))
 
 
 ########################################################

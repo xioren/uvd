@@ -1,4 +1,4 @@
-import std/[json, uri, algorithm, sequtils, parseutils]
+import std/[json, sequtils]
 # import std/[sha1]
 
 import common
@@ -292,84 +292,8 @@ proc generateSubtitles(captions: JsonNode) =
 
 
 ########################################################
-# hls / dash manifest parsing
+# youtube specific hls / dash manifest parsing
 ########################################################
-
-
-proc extractHlsStreams(hlsStreamsUrl: string): seq[string] =
-  ## extract hls stream data from hls xml
-  logDebug("requesting hlm manifest")
-  let (_, xml) = doGet(hlsStreamsUrl)
-  var
-    idx: int
-    hlsEntry: string
-
-  while idx < xml.high:
-    idx.inc(xml.skipUntil(':', idx))
-    inc idx
-    idx.inc(xml.parseUntil(hlsEntry, '#', idx))
-    result.add(hlsEntry)
-
-
-proc extractHlsSegments(hlsSegmentsUrl: string): seq[string] =
-  ## extract individual hls segment urls from hls xml
-  logDebug("requesting hls segment manifest")
-  let (_, xml) = doGet(hlsSegmentsUrl)
-  var
-    idx = xml.find("#EXTINF:")
-    url: string
-
-  while true:
-    url = xml.captureBetween('\n', '\n', idx)
-    if url == "#EXT-X-ENDLIST":
-      break
-    result.add(url)
-    idx.inc(xml.skipUntil(':', idx.succ))
-    inc idx
-
-
-proc extractHlsInfo(hlsEntry: string): tuple[itag, resolution, fps, codecs, hlsUrl: string] =
-  ## parse meta data for given hls entry
-  result.itag = hlsEntry.captureBetween('/', '/', hlsEntry.find("itag"))
-  result.resolution = hlsEntry.captureBetween('=', ',', hlsEntry.find("RESOLUTION"))
-  result.fps = hlsEntry.captureBetween('=', ',', hlsEntry.find("FRAME-RATE"))
-  result.codecs = hlsEntry.captureBetween('"', '"', hlsEntry.find("CODECS"))
-  result.hlsUrl = hlsEntry.captureBetween('\n', '\n')
-
-
-proc extractDashStreams(dashManifestUrl: string): seq[string] =
-  ## extract dash stream data from dash xml
-  logDebug("requesting dash manifest")
-  let (_, xml) = doGet(dashManifestUrl)
-  var
-    dashEntry: string
-    idx = xml.find("<Representation")
-
-  while idx < xml.high:
-    idx.inc(xml.parseUntil(dashEntry, "</Representation>", idx))
-    if not dashEntry.contains("/MPD"):
-      result.add(dashEntry)
-    inc idx
-
-
-proc extractDashSegments(dashEntry: string): seq[string] =
-  ## extract individual segment urls from dash entry
-  var
-    segments: string
-    capture: bool
-    segment: string
-
-  let baseUrl = parseUri(dashEntry.captureBetween('>', '<', dashEntry.find("<BaseURL>") + 8))
-  discard dashEntry.parseUntil(segments, """</SegmentList>""", dashEntry.find("""<SegmentList>"""))
-
-  for c in segments:
-    if c == '"':
-      if capture:
-        result.add($(baseUrl / segment))
-        segment = ""
-      capture = not capture
-    elif capture:
-      segment.add(c)
 
 
 proc extractDashInfo(dashEntry: string): tuple[itag, resolution, fps, codecs: string] =
@@ -383,11 +307,11 @@ proc extractDashInfo(dashEntry: string): tuple[itag, resolution, fps, codecs: st
   result.codecs = dashEntry.captureBetween('"', '"', dashEntry.find("codecs="))
 
 
-proc extractDashEntry(dashManifestUrl, itag: string): string =
+proc extractDashEntry(dashManifestUrl, id: string): string =
   ## parse specific itag's dash entry from xml
   logDebug("requesting dash manifest")
   let (_, xml) = doGet(dashManifestUrl)
-  discard xml.parseUntil(result, "</Representation>", xml.find("""<Representation id="$1""" % itag))
+  discard xml.parseUntil(result, "</Representation>", xml.find("""<Representation id="$1""" % id))
 
 
 ########################################################
@@ -938,7 +862,7 @@ proc isolatePlaylist(youtubeUrl: string): string =
 proc giveReasons(reason: JsonNode) =
   ## iterate over and echo youtube reason
   if reason.hasKey("runs"):
-    stdout.write("<error> ")
+    stdout.write("[error] ")
     for run in reason["runs"]:
       stdout.write(run["text"])
     stdout.write('\n')
@@ -955,11 +879,11 @@ proc walkErrorMessage(playabilityStatus: JsonNode) =
     for message in playabilityStatus["messages"]:
       logError(message.getStr().strip(chars={'"'}))
 
-  # if playabilityStatus.hasKey("errorScreen"):
-  #   if playabilityStatus["errorScreen"]["playerErrorMessageRenderer"].hasKey("reason"):
-  #     giveReasons(playabilityStatus["errorScreen"]["playerErrorMessageRenderer"]["reason"])
-    # if playabilityStatus["errorScreen"]["playerErrorMessageRenderer"].hasKey("subreason"):
-    #   giveReasons(playabilityStatus["errorScreen"]["playerErrorMessageRenderer"]["subreason"])
+  if playabilityStatus.hasKey("errorScreen"):
+    # if playabilityStatus["errorScreen"]["playerErrorMessageRenderer"].hasKey("reason"):
+    #   giveReasons(playabilityStatus["errorScreen"]["playerErrorMessageRenderer"]["reason"])
+    if playabilityStatus["errorScreen"]["playerErrorMessageRenderer"].hasKey("subreason"):
+      giveReasons(playabilityStatus["errorScreen"]["playerErrorMessageRenderer"]["subreason"])
 
 
 ########################################################
