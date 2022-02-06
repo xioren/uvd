@@ -1,6 +1,6 @@
 import std/[json, uri, parseutils, sequtils]
 
-import utils
+import common
 
 
 #[ NOTE: s=788550b1a916f3211f77d5261169782a1c4b5a46_1620593836
@@ -26,13 +26,13 @@ import utils
 const
   baseUrl = "https://vimeo.com"
   apiUrl = "https://api.vimeo.com"
-  configUrl = "https://player.vimeo.com/video/$1/config"
-  unlistedConfigUrl = "https://player.vimeo.com/video/$1/config?h=$2"
-  # detailsUrl = "https://vimeo.com/api/v2/video/$1.json"
-  authorizationUrl = "https://vimeo.com/_rv/viewer"
-  profileUrl = "https://api.vimeo.com/users/$1/profile_sections?fields=uri%2Ctitle%2CuserUri%2Curi%2C"
-  videosUrl = "https://api.vimeo.com/users/$1/profile_sections/$2/videos?fields=video_details%2Cprofile_section_uri%2Ccolumn_width%2Cclip.uri%2Cclip.name%2Cclip.type%2Cclip.categories.name%2Cclip.categories.uri%2Cclip.config_url%2Cclip.pictures%2Cclip.height%2Cclip.width%2Cclip.duration%2Cclip.description%2Cclip.created_time%2C&page=1&per_page=10"
+  profileApiUrl = "https://api.vimeo.com/users/$1/profile_sections?fields=uri%2Ctitle%2CuserUri%2Curi%2C"
+  videosApiUrl = "https://api.vimeo.com/users/$1/profile_sections/$2/videos?fields=video_details%2Cprofile_section_uri%2Ccolumn_width%2Cclip.uri%2Cclip.name%2Cclip.type%2Cclip.categories.name%2Cclip.categories.uri%2Cclip.config_url%2Cclip.pictures%2Cclip.height%2Cclip.width%2Cclip.duration%2Cclip.description%2Cclip.created_time%2C&page=1&per_page=10"
+  videoApiUrl = "https://api.vimeo.com/videos/$1?bypass_privacy=1"
+  configUrl = "https://player.vimeo.com/video/$1/config?bypass_privacy=1"
   bypassUrl = "https://player.vimeo.com/video/$1?app_id=122963&referrer=https%3A%2F%2Fwww.patreon.com%2F"
+  authorizationUrl = "https://vimeo.com/_rv/viewer"
+  # detailsUrl = "https://vimeo.com/api/v2/video/$1.json"
 
 var
   includeAudio, includeVideo, includeThumb, includeSubtitles: bool
@@ -102,65 +102,20 @@ proc isVerticle(stream: JsonNode): bool =
 
 proc getBitrate(stream: JsonNode): int =
   ## extract bitrate value from json. prefers average bitrate.
-  if stream.kind == JNull:
-    result = 0
-  elif stream.hasKey("avg_bitrate"):
+  if stream.hasKey("avg_bitrate"):
     result = stream["avg_bitrate"].getInt()
-  else:
+  elif stream.hasKey("bitrate"):
     result = stream["bitrate"].getInt()
 
 
-proc selectVideoByBitrate(streams: JsonNode, codec: string): JsonNode =
-  ## select $codec video stream with highest bitrate (and resolution)
-  var
-    thisBitrate, maxBitrate, idx, thisSemiperimeter, maxSemiperimeter: int
-    select = -1
-  result = newJNull()
-
-  for stream in streams:
-    if stream["codecs"].getStr().contains(codec):
-      thisSemiperimeter = stream["width"].getInt() + stream["height"].getInt()
-      if thisSemiperimeter >= maxSemiperimeter:
-        if thisSemiperimeter > maxSemiperimeter:
-          maxSemiperimeter = thisSemiperimeter
-
-        thisBitrate = getBitrate(stream)
-        if thisBitrate > maxBitrate:
-          maxBitrate = thisBitrate
-          select = idx
-    inc idx
-
-  if select > -1:
-    result = streams[select]
-
-
-proc selectAudioByBitrate(streams: JsonNode, codec: string): JsonNode =
-  ## select $codec audo stream with highest bitrate
-  var
-    thisBitrate, maxBitrate, idx: int
-    select = -1
-  result = newJNull()
-
-  for stream in streams:
-    if stream["codecs"].getStr().contains(codec):
-      thisBitrate = getBitrate(stream)
-      if thisBitrate > maxBitrate:
-        maxBitrate = thisBitrate
-        select = idx
-    inc idx
-
-  if select > -1:
-    result = streams[select]
-
-
-proc selectVideoStream(streams: JsonNode, id, codec: string): JsonNode =
+proc selectVideoStream(streams: seq[Stream], id, codec: string): Stream =
   ## select video by id or resolution
-  if id != "0":
+  if id != "":
     # NOTE: select by user itag choice
     for stream in streams:
-      if stream["id"].getStr() == id:
-        result = stream
-        break
+      # NOTE: check kind because there are audio and video streams with the same id
+      if stream.id == id and stream.kind != "audio":
+        return stream
   elif codec != "":
     # NOTE: select by user codec preference
     result = selectVideoByBitrate(streams, codec)
@@ -168,17 +123,18 @@ proc selectVideoStream(streams: JsonNode, id, codec: string): JsonNode =
     # NOTE: fallback selection
     result = selectVideoByBitrate(streams, "avc1")
 
+  if result.id == "":
+    result = streams[0]
 
-proc selectAudioStream(streams: JsonNode, id, codec: string): JsonNode =
+
+proc selectAudioStream(streams: seq[Stream], id, codec: string): Stream =
   ## select video by id or bitrate
-  if streams.kind == JNull:
-    result = streams
-  elif id != "0":
+  if id != "":
     # NOTE: select by user itag choice
     for stream in streams:
-      if stream["id"].getStr() == id:
-        result = stream
-        break
+      # NOTE: check kind because there are audio and video streams with the same id
+      if stream.id == id and stream.kind == "audio":
+        return stream
   elif codec != "":
     # NOTE: select by user codec preference
     result = selectAudioByBitrate(streams, codec)
@@ -217,71 +173,90 @@ proc produceUrlSegments(stream: JsonNode, cdnUrl: string): seq[string] =
       result.add($(cdnUri / sep / baseUrl / segment["url"].getStr()))
 
 
-proc getStreamInfo(stream: JsonNode): tuple[kind, id, mime, codec, ext, size, qlt, resolution, fps, bitrate, format: string] =
-  ## compile all relevent stream metadata from vimeo json
-  if stream.hasKey("width"):
-    result.kind = "video"
-    result.resolution = $stream["width"].getInt() & "x" & $stream["height"].getInt()
-    result.fps = fmt"""{stream["framerate"].getFloat():.3}"""
-    if isVerticle(stream):
-      result.qlt = $stream["width"].getInt() & 'p'
-    else:
-      result.qlt = $stream["height"].getInt() & 'p'
-  else:
-    result.kind = "audio"
-  result.id = stream["id"].getStr()
-  result.mime = stream["mime_type"].getStr()
-  result.codec = stream["codecs"].getStr()
-  result.ext = extensions[result.mime]
-  result.bitrate = formatSize(stream["avg_bitrate"].getInt(), includeSpace=true) & "/s"
-  result.format = stream["format"].getStr()
-
-  var size: int
-  for segment in stream["segments"]:
-    size.inc(segment["size"].getInt())
-  result.size = formatSize(size, includeSpace=true)
-
-
-proc newStream(cdnUrl, videoId: string, stream: JsonNode): Stream =
+proc newStream(stream: JsonNode, videoId: string, duration: int, cdnUrl=""): Stream =
+  ## populate new stream
   if stream.kind != JNull:
-    (result.kind, result.id, result.mime, result.codec, result.ext, result.size, result.quality, result.resolution, result.fps, result.bitrate, result.format) = getStreamInfo(stream)
-    result.filename = addFileExt(videoId, result.ext)
-    result.urlSegments = stream.produceUrlSegments(cdnUrl.split("sep/")[0])
+    if cdnUrl != "":
+      result.urlSegments = stream.produceUrlSegments(cdnUrl.split("sep/")[0])
+    else:
+      result.url = stream["link"].getStr()
+
+    if stream.hasKey("width"):
+      if stream.hasKey("public_name"):
+        result.kind = "combined"
+      else:
+        result.kind = "video"
+      result.resolution = $stream["width"].getInt() & "x" & $stream["height"].getInt()
+      result.semiperimeter = stream["width"].getInt() + stream["height"].getInt()
+      if stream.hasKey("framerate"):
+        result.fps = fmt"""{stream["framerate"].getFloat():.3}"""
+      elif stream.hasKey("fps"):
+        result.fps = fmt"""{stream["fps"].getFloat():.3}"""
+      if isVerticle(stream):
+        result.quality = $stream["width"].getInt() & "p"
+      else:
+        result.quality = $stream["height"].getInt() & "p"
+    else:
+      result.kind = "audio"
+    if stream.hasKey("id"):
+      result.id = stream["id"].getStr()
+    elif stream.hasKey("public_name"):
+      result.id = stream["public_name"].getStr()
+    if stream.hasKey("mime_type"):
+      result.mime = stream["mime_type"].getStr()
+      result.ext = extensions[result.mime]
+    if stream.hasKey("codecs"):
+      result.codec = stream["codecs"].getStr()
+    if result.kind == "combined":
+      result.format = "progressive"
+    else:
+      result.format = "dash"
+    result.duration = duration
+    result.filename = addFileExt(videoId & "-" & result.kind, result.ext)
+
+    if stream.hasKey("segments"):
+      for segment in stream["segments"]:
+        result.size.inc(segment["size"].getInt())
+    elif stream.hasKey("size"):
+      result.size = stream["size"].getInt()
+    result.sizeShort = formatSize(result.size, includeSpace=true)
+
+    if stream.hasKey("avg_bitrate"):
+      result.bitrate = stream["avg_bitrate"].getInt()
+    else:
+      result.bitrate = int((result.size * 8) / duration)
+    result.bitrateShort = formatSize(result.bitrate, includeSpace=true) & "/s"
     result.exists = true
 
 
-proc newVideo(vimeoUrl, cdnUrl, thumbnailUrl, title, videoId: string, cdnResponse: JsonNode, aId, vId, aCodec, vCodec: string): Video =
+proc newDownload(streams: seq[Stream], title, vimeoUrl, thumbnailUrl, videoId, aId, vId, aCodec, vCodec: string): Download =
   result.title = title
   result.url = vimeoUrl
   result.videoId = videoId
   result.thumbnailUrl = thumbnailUrl
-  result.videoStream = newStream(cdnUrl, videoId, selectVideoStream(cdnResponse["video"], vId, vCodec))
-  result.audioStream = newStream(cdnUrl, videoId, selectAudioStream(cdnResponse["audio"], aId, aCodec))
+
+  if includeVideo:
+    result.videoStream = selectVideoStream(streams, vId, vCodec)
+  if includeAudio and result.videoStream.format != "progressive":
+    result.audioStream = selectAudioStream(streams, aId, aCodec)
 
 
 proc reportStreamInfo(stream: Stream) =
   ## echo metadata for single stream
   logInfo("stream: ", stream.filename)
   logInfo("id: ", stream.id)
-  logInfo("size: ", stream.size)
-  if not (stream.quality == ""):
+  logInfo("size: ", stream.sizeShort)
+  if stream.quality != "":
     logInfo("quality: ", stream.quality)
-  logInfo("mime: ", stream.mime)
-  logInfo("codec: ", stream.codec)
-  logInfo("segments: ", stream.urlSegments.len)
+  if stream.mime != "":
+    logInfo("mime: ", stream.mime)
+  if stream.codec != "":
+    logInfo("codec: ", stream.codec)
+  if stream.format == "dash":
+    logInfo("segments: ", stream.urlSegments.len)
 
 
-proc reportStreams(cdnResponse: JsonNode) =
-  ## echo metadata for all streams
-  var parsedStreams: seq[tuple[kind, id, mime, codec, ext, size, qlt, resolution, fps, bitrate, format: string]]
-
-  for item in cdnResponse["video"]:
-    parsedStreams.add(getStreamInfo(item))
-  for item in cdnResponse["audio"]:
-    parsedStreams.add(getStreamInfo(item))
-  displayStreams(parsedStreams)
-
-proc getProfileIds(vimeoUrl: string): tuple[profileId, sectionId: string] =
+proc extractProfileIds(vimeoUrl: string): tuple[profileId, sectionId: string] =
   ## obtain userId and sectionId from profiles
   var
     profileResponse: JsonNode
@@ -325,14 +300,89 @@ proc isUnlisted(vimeoUrl: string): bool =
 
 proc getBestThumb(thumbs: JsonNode): string =
   # QUESTION: are there other resolutions?
-  if thumbs.hasKey("base"):
-    result = thumbs["base"].getStr()
-  elif thumbs.hasKey("1280"):
-    result = thumbs["1280"].getStr()
-  elif thumbs.hasKey("960"):
-    result = thumbs["960"].getStr()
-  elif thumbs.hasKey("640"):
-    result = thumbs["640"].getStr()
+  if thumbs.hasKey("sizes"):
+    result = thumbs["sizes"][^1].getStr()
+  else:
+    if thumbs.hasKey("base"):
+      result = thumbs["base"].getStr()
+    elif thumbs.hasKey("1280"):
+      result = thumbs["1280"].getStr()
+    elif thumbs.hasKey("960"):
+      result = thumbs["960"].getStr()
+    elif thumbs.hasKey("640"):
+      result = thumbs["640"].getStr()
+
+
+proc getVideoData(videoId: string, unlistedHash=""): JsonNode =
+  ## request video api data json
+  var
+    response: string
+    code: HttpCode
+
+  result = newJNull()
+
+  logDebug("requesting video api json")
+
+  if unlistedHash != "":
+    (code, response) = doGet(videoApiUrl % videoId & "&h=" & unlistedHash)
+  else:
+    (code, response) = doGet(videoApiUrl % videoId)
+
+  if code.is2xx:
+    result = parseJson(response)
+  else:
+    logError("failed to obtain video api data")
+
+
+proc getPlayerConfig(videoId: string, unlistedHash=""): JsonNode =
+  ## request player config json
+  var
+    response: string
+    code: HttpCode
+  let standardVimeoUrl = baseUrl & '/' & videoId
+
+  result = newJNull()
+
+  logDebug("requesting player config json")
+  if unlistedHash != "":
+    (code, response) = doGet(configUrl % videoId & "&h=" & unlistedHash)
+  else:
+    (code, response) = doGet(configUrl % videoId)
+
+  if code == Http403:
+    # NOTE: videos where this step was previously necessary now seem to work without it.
+    # QUESTION: can it be removed?
+    logNotice("trying signed config url")
+    (code, response) = doGet(standardVimeoUrl)
+    let signedConfigUrl = response.captureBetween('"', '"', response.find(""""config_url":""") + 13)
+
+    if not signedConfigUrl.contains("vimeo"):
+      logNotice("trying embed url")
+      # HACK: use patreon embed url to get meta data
+      # QUESTION: is there a seperate bypass url for unlisted videos?
+      headers.add(("referer", "https://cdn.embedly.com/"))
+      (code, response) = doGet(bypassUrl % videoId)
+      let embedResponse = response.captureBetween(' ', ';', response.find("""config =""") + 8)
+
+      if embedResponse.contains("cdn_url"):
+        response = embedResponse
+      else:
+        logError("failed to obtain player config")
+        return
+    else:
+      (code, response) = doGet(signedConfigUrl.replace("\\"))
+  elif not code.is2xx:
+    let configResponse = parseJson(response)
+    logError(configResponse["message"].getStr().strip(chars={'"'}))
+    logError("failed to obtain player config")
+    return
+
+  result = parseJson(response)
+
+
+# proc extractProgressiveStreams(streams: JsonNode): seq[JsonNode] =
+#   for stream in streams:
+#     result.add(newStream(stream))
 
 
 ########################################################
@@ -340,127 +390,129 @@ proc getBestThumb(thumbs: JsonNode): string =
 ########################################################
 
 
-proc getVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
+proc grabVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
   var
-    configResponse: JsonNode
-    response: string
     code: HttpCode
+    response: string
+    title: string
+    duration: int
     thumbnailUrl: string
-  let videoId = extractId(vimeoUrl)
-  var standardVimeoUrl = baseUrl & '/' & videoId
+    unlistedHash: string
+    defaultCDN: string
+    cdnUrl: string
+    audioStreams: seq[Stream]
+    videoStreams: seq[Stream]
+  let
+    videoId = extractId(vimeoUrl)
+    standardVimeoUrl = baseUrl & '/' & videoId
 
-  logInfo("id: ", videoId)
+  logInfo("video id: ", videoId)
 
-  logDebug("requesting config.json")
-  if vimeoUrl.contains("/config?"):
-    # NOTE: config url already obtained (calls from getProfile)
-    (code, response) = doGet(vimeoUrl)
+  if isUnlisted(vimeoUrl):
+    unlistedHash = extractHash(vimeoUrl)
+    logDebug("unlisted hash: ", unlistedHash)
+
+  authorize()
+  let apiResponse = getVideoData(videoId, unlistedHash)
+  let configResponse = getPlayerConfig(videoId, unlistedHash)
+
+  if apiResponse.kind != JNull:
+    title = apiResponse["name"].getStr()
+    duration = apiResponse["duration"].getInt()
+    thumbnailUrl = getBestThumb(apiResponse["pictures"])
+    for stream in apiResponse["download"]:
+      videoStreams.add(newStream(stream, videoId, duration))
+  if configResponse.kind != JNull:
+    if title == "":
+      title = configResponse["video"]["title"].getStr()
+    if duration == 0:
+      duration = configResponse["video"]["duration"].getInt()
+    if thumbnailUrl == "":
+      thumbnailUrl = getBestThumb(configResponse["video"]["thumbs"])
+    # NOTE: progressive streams have barely any meta data associated with them --> skip
+    # for stream in configResponse["request"]["files"]["progressive"]:
+    #   videoStreams.add(stream, videoId, duration)
+
+    defaultCDN = configResponse["request"]["files"]["dash"]["default_cdn"].getStr()
+    cdnUrl = configResponse["request"]["files"]["dash"]["cdns"][defaultCDN]["url"].getStr()
+    logDebug("default CDN: ", defaultCDN)
+    logDebug("CDN url: ", cdnUrl)
+    logDebug("requesting CDN json")
+    (code, response) = doGet(cdnUrl.dequery())
+    let cdnResponse = parseJson(response)
+    for stream in cdnResponse["video"]:
+      videoStreams.add(newStream(stream, videoId, duration, cdnUrl))
+    for stream in cdnResponse["audio"]:
+      audioStreams.add(newStream(stream, videoId, duration, cdnUrl))
   else:
-    if isUnlisted(vimeoUrl):
-      let unlistedHash = extractHash(vimeoUrl)
-      logDebug("unlisted hash: ", unlistedHash)
-      standardVimeoUrl = standardVimeoUrl & '/' & unlistedHash
-      (code, response) = doGet(unlistedConfigUrl % [videoId, unlistedHash])
-    else:
-      (code, response) = doGet(configUrl % videoId)
-    if code == Http403:
-      # NOTE: videos where this step was previously necessary now seem to work without it.
-      # QUESTION: can it be removed?
-      logNotice("trying signed config url")
-      (code, response) = doGet(standardVimeoUrl)
-      let signedConfigUrl = response.captureBetween('"', '"', response.find(""""config_url":""") + 13)
+    logError("failed to obtain video metadata")
+    return
 
-      if not signedConfigUrl.contains("vimeo"):
-        logNotice("trying embed url")
-        # HACK: use patreon embed url to get meta data
-        # QUESTION: is there a seperate bypass url for unlisted videos?
-        headers.add(("referer", "https://cdn.embedly.com/"))
-        (code, response) = doGet(bypassUrl % videoId)
-        let embedResponse = response.captureBetween(' ', ';', response.find("""config =""") + 8)
+  let allStreams = videoStreams.sorted(compareBitrate) & audioStreams.sorted(compareBitrate)
 
-        if embedResponse.contains("cdn_url"):
-          response = embedResponse
-        else:
-          logError("failed to obtain video metadata")
-          return
-      else:
-        (code, response) = doGet(signedConfigUrl.replace("\\"))
-    elif not code.is2xx:
-      configResponse = parseJson(response)
-      logError(configResponse["message"].getStr().strip(chars={'"'}))
-      logError("failed to obtain video metadata")
+  let
+    safeTitle = makeSafe(title)
+    fullFilename = addFileExt(safeTitle & " [" & videoId & ']', ".mkv")
+
+  if fileExists(fullFilename) and not showStreams:
+    logError("file exists: ", safeTitle)
+  else:
+    if showStreams:
+      displayStreams(allStreams)
       return
 
-  configResponse = parseJson(response)
-  if not configResponse["video"].hasKey("owner"):
-    logError("video does not exist or is hidden")
-  else:
-    let
-      title = configResponse["video"]["title"].getStr()
-      safeTitle = makeSafe(title)
-      fullFilename = addFileExt(safeTitle & " [" & videoId & ']', ".mkv")
-      thumbnailUrl = getBestThumb(configResponse["video"]["thumbs"])
+    let download = newDownload(allStreams, title, standardVimeoUrl, thumbnailUrl, videoId, aId, vId, aCodec, vCodec)
+    logInfo("title: ", download.title)
 
-    if fileExists(fullFilename) and not showStreams:
-      logError("file exists: ", safeTitle)
-    else:
-      let
-        defaultCDN = configResponse["request"]["files"]["dash"]["default_cdn"].getStr()
-        cdnUrl = configResponse["request"]["files"]["dash"]["cdns"][defaultCDN]["url"].getStr()
+    if includeThumb and thumbnailUrl != "":
+      if not grab(download.thumbnailUrl, fullFilename.changeFileExt("jpeg"), forceDl=true).is2xx:
+        logError("failed to download thumbnail")
 
-      logDebug("default CDN: ", defaultCDN)
-      logDebug("CDN url: ", cdnUrl)
-
-      logDebug("requesting master.json")
-      (code, response) = doGet(cdnUrl.dequery())
-      let cdnResponse = parseJson(response)
-
-      if showStreams:
-        reportStreams(cdnResponse)
-        return
-
-      let video = newVideo(standardVimeoUrl, cdnUrl, thumbnailUrl, title, videoId, cdnResponse, aId, vId, aCodec, vCodec)
-      logInfo("title: ", video.title)
-
-      if includeThumb and thumbnailUrl != "":
-        if not grab(video.thumbnailUrl, fullFilename.changeFileExt("jpeg"), forceDl=true).is2xx:
-          logError("failed to download thumbnail")
-
-      if includeSubtitles:
-        if configResponse["request"].hasKey("text_tracks"):
-          generateSubtitles(configResponse["request"]["text_tracks"])
-        else:
-          includeSubtitles = false
-          logError("video does not contain subtitles")
-
-      if includeVideo:
-        reportStreamInfo(video.videoStream)
-        if not grab(video.videoStream.urlSegments, video.videoStream.filename,
-                    forceDl=true).is2xx:
-          logError("failed to download video stream")
-          includeVideo = false
-
-      if includeAudio and video.audioStream.exists:
-        reportStreamInfo(video.audioStream)
-        if not grab(video.audioStream.urlSegments, video.audioStream.filename,
-                    forceDl=true).is2xx:
-          logError("failed to download audio stream")
-          includeAudio = false
+    if includeSubtitles:
+      if configResponse["request"].hasKey("text_tracks"):
+        generateSubtitles(configResponse["request"]["text_tracks"])
       else:
+        includeSubtitles = false
+        logError("video does not contain subtitles")
+
+    var attempt: HttpCode
+    if includeVideo:
+      reportStreamInfo(download.videoStream)
+      if download.videoStream.format == "dash":
+        attempt = grab(download.videoStream.urlSegments, download.videoStream.filename, forceDl=true)
+      else:
+        attempt = grab(download.videoStream.url, download.videoStream.filename, forceDl=true)
+      if not attempt.is2xx:
+        logError("failed to download video stream")
+        includeVideo = false
+        # NOTE: remove empty file
+        discard tryRemoveFile(download.videoStream.filename)
+
+    if includeAudio and download.audioStream.exists:
+      reportStreamInfo(download.audioStream)
+      if download.audioStream.format == "dash":
+        attempt = grab(download.audioStream.urlSegments, download.audioStream.filename, forceDl=true)
+      else:
+        attempt = grab(download.audioStream.url, download.audioStream.filename, forceDl=true)
+      if not attempt.is2xx:
+        logError("failed to download audio stream")
         includeAudio = false
+        # NOTE: remove empty file
+        discard tryRemoveFile(download.audioStream.filename)
+    else:
+      includeAudio = false
 
-      if includeAudio and includeVideo:
-        joinStreams(video.videoStream.filename, video.audioStream.filename, fullFilename, subtitlesLanguage, includeSubtitles)
-      elif includeAudio and not includeVideo:
-        convertAudio(video.audioStream.filename, safeTitle & " [" & videoId & ']', audioFormat)
-      elif includeVideo:
-        moveFile(video.videoStream.filename, fullFilename.changeFileExt(video.videoStream.ext))
-        logInfo("complete: ", addFileExt(safeTitle, video.videoStream.ext))
-      else:
-        logError("no streams were downloaded")
+    if includeAudio and includeVideo:
+      streamsToMkv(download.videoStream.filename, download.audioStream.filename, fullFilename, subtitlesLanguage, includeSubtitles)
+    elif includeAudio and not includeVideo:
+      convertAudio(download.audioStream.filename, safeTitle & " [" & videoId & ']', audioFormat)
+    elif includeVideo:
+      streamToMkv(download.videoStream.filename, fullFilename, subtitlesLanguage, includeSubtitles)
+    else:
+      logError("no streams were downloaded")
 
 
-proc getProfile(vimeoUrl, aId, vId, aCodec, vCodec: string) =
+proc grabProfile(vimeoUrl, aId, vId, aCodec, vCodec: string) =
   var
     profileResponse: JsonNode
     response: string
@@ -470,8 +522,8 @@ proc getProfile(vimeoUrl, aId, vId, aCodec, vCodec: string) =
 
   let userSlug = dequery(vimeoUrl).split('/')[^1]
   authorize()
-  let (userId, sectionId) = getProfileIds(profileUrl % userSlug)
-  nextUrl = videosUrl % [userId, sectionId]
+  let (userId, sectionId) = extractProfileIds(profileApiUrl % userSlug)
+  nextUrl = videosApiUrl % [userId, sectionId]
 
   logDebug("slug: ", userSlug, " user id: ", userId, " sectionId: ", sectionId)
 
@@ -491,7 +543,7 @@ proc getProfile(vimeoUrl, aId, vId, aCodec, vCodec: string) =
   logInfo(urls.len, " videos queued")
   for idx, url in urls:
     logGeneric(lvlInfo, "download", idx.succ, " of ", urls.len)
-    getVideo(url, aId, vId, aCodec, vCodec)
+    grabVideo(url, aId, vId, aCodec, vCodec)
 
 
 proc vimeoDownload*(vimeoUrl, aFormat, aId, vId, aCodec, vCodec, sLang: string,
@@ -511,6 +563,6 @@ proc vimeoDownload*(vimeoUrl, aFormat, aId, vId, aCodec, vCodec, sLang: string,
 
   logGeneric(lvlInfo, "uvd", "vimeo")
   if extractId(vimeoUrl).all(isDigit):
-    getVideo(vimeoUrl, aId, vId, aCodec, vCodec)
+    grabVideo(vimeoUrl, aId, vId, aCodec, vCodec)
   else:
-    getProfile(vimeoUrl, aId, vId, aCodec, vCodec)
+    grabProfile(vimeoUrl, aId, vId, aCodec, vCodec)

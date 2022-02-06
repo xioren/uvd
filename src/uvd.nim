@@ -36,8 +36,8 @@ proc main() =
     debug: bool
     streams: bool
     silent: bool
-    aId = "0"
-    vId = "0"
+    aId: string
+    vId: string
     aCodec: string
     vCodec: string
     format = "ogg"
@@ -97,7 +97,7 @@ proc main() =
         of "v", "video-only":
           iAudio = false
         else:
-          echo "<invalid arguments>"
+          echo "invalid argument: ", key
           return
 
     if unknownUrl.contains("vimeo"):
@@ -107,7 +107,7 @@ proc main() =
       youtubeDownload(unknownUrl, format, aId, vId, aCodec, vCodec, desiredLanguage,
                       iAudio, iVideo, iThumb, iSubtitles, streams, debug, silent)
     else:
-      echo "<invalid url>"
+      echo "invalid url: ", unknownUrl
 
 when isMainModule:
   main()

@@ -1,10 +1,10 @@
-import std/[asyncdispatch, asyncfile, httpclient, logging, os,
+import std/[algorithm, asyncdispatch, asyncfile, httpclient, logging, os,
             sets, strformat, strutils, tables, terminal, times]
 from math import floor
 
-export asyncdispatch, httpclient, os, strformat, strutils, tables, times
+export algorithm, asyncdispatch, httpclient, os, strformat, strutils, tables, times
 
-# IDEA: consider renaming to common as this is becoming more accurate a name
+
 type
   Level* = enum
     lvlDebug,
@@ -21,18 +21,22 @@ type
     mime*: string
     ext*: string
     codec*: string
-    size*: string
+    size*: int
+    sizeShort*: string
     quality*: string
     resolution*: string
+    semiperimeter*: int
     fps*: string
-    bitrate*: string
+    duration*: int
+    bitrate*: int
+    bitrateShort*: string
     format*: string
     url*: string
     urlSegments*: seq[string]
     filename*: string
     exists*: bool
 
-  Video* = object
+  Download* = object
     title*: string
     videoId*: string
     url*: string
@@ -139,7 +143,54 @@ proc indexOf*[T](that: openarray[T], this: T): int =
   raise newException(IndexDefect, "$1 not in $2" % [$this, $that.type])
 
 
-proc displayStreams*(streams: seq[tuple[kind, id, mime, codec, ext, size, qlt, resolution, fps, bitrate, format: string]]) =
+proc compareBitrate*[T](x, y: T): int =
+  ## compare bitrates for sorting
+  if x.bitrate > y.bitrate:
+    result = -1
+  else:
+    result = 1
+
+
+proc selectVideoByBitrate*(streams: seq[Stream], codec: string): Stream =
+  ## select $codec video stream with highest bitrate (and resolution)
+  var
+    maxBitrate, idx, maxSemiperimeter: int
+    select = -1
+
+  for stream in streams:
+    if stream.codec.contains(codec) and stream.kind != "audio":
+      if stream.semiperimeter >= maxSemiperimeter:
+        if stream.semiperimeter > maxSemiperimeter:
+          maxSemiperimeter = stream.semiperimeter
+
+        if stream.bitrate > maxBitrate:
+          maxBitrate = stream.bitrate
+          select = idx
+    inc idx
+
+  if select > -1:
+    result = streams[select]
+
+
+proc selectAudioByBitrate*(streams: seq[Stream], codec: string): Stream =
+  ## select $codec audo stream with highest bitrate
+  var
+    maxBitrate, idx: int
+    select = -1
+
+  for stream in streams:
+    # NOTE: for streams where codec is not known
+    if stream.codec.contains(codec) and stream.kind == "audio":
+      if stream.bitrate > maxBitrate:
+        maxBitrate = stream.bitrate
+        select = idx
+    inc idx
+
+  if select > -1:
+    result = streams[select]
+
+
+proc displayStreams*(streams: seq[Stream]) =
   ## display stream metadata in a readable layout
   # NOTE: inspiration taken from yt-dlp
   type Column = object
@@ -168,22 +219,22 @@ proc displayStreams*(streams: seq[tuple[kind, id, mime, codec, ext, size, qlt, r
       headerKind.width = stream.kind.len + 2
     if stream.id.len > headerId.width - 2:
       headerId.width = stream.id.len + 2
-    if stream.qlt.len > headerQuality.width - 2:
-      headerQuality.width = stream.qlt.len + 2
+    if stream.quality.len > headerQuality.width - 2:
+      headerQuality.width = stream.quality.len + 2
     if stream.resolution.len > headerResolution.width - 2:
       headerResolution.width = stream.resolution.len + 2
     if stream.fps.len > headerFps.width - 2:
       headerFps.width = stream.fps.len + 2
-    if stream.bitrate.len > headerBitrate.width - 2:
-      headerBitrate.width = stream.bitrate.len + 2
+    if stream.bitrateShort.len > headerBitrate.width - 2:
+      headerBitrate.width = stream.bitrateShort.len + 2
     if stream.mime.len > headerMime.width - 2:
       headerMime.width = stream.mime.len + 2
     if stream.ext.len > headerExtension.width - 2:
       headerExtension.width = stream.ext.len + 2
     if stream.codec.len > headerCodec.width - 2:
       headerCodec.width = stream.codec.len + 2
-    if stream.size.len > headerSize.width - 2:
-      headerSize.width = stream.size.len + 2
+    if stream.sizeShort.len > headerSize.width - 2:
+      headerSize.width = stream.sizeShort.len + 2
     if stream.format.len > headerFormat.width - 2:
       headerFormat.width = stream.format.len + 2
 
@@ -216,20 +267,39 @@ proc displayStreams*(streams: seq[tuple[kind, id, mime, codec, ext, size, qlt, r
   for stream in streams:
     stdout.write(stream.kind.center(headerKind.width), columnSeparator)
     stdout.write(stream.id.center(headerId.width), columnSeparator)
-    stdout.write(stream.qlt.center(headerQuality.width), columnSeparator)
+    stdout.write(stream.quality.center(headerQuality.width), columnSeparator)
     stdout.write(stream.resolution.center(headerResolution.width), columnSeparator)
     stdout.write(stream.fps.center(headerFps.width), columnSeparator)
-    stdout.write(stream.bitrate.center(headerBitrate.width), columnSeparator)
+    stdout.write(stream.bitrateShort.center(headerBitrate.width), columnSeparator)
     stdout.write(stream.mime.center(headerMime.width), columnSeparator)
     stdout.write(stream.ext.strip(trailing=false, chars={'.'}).center(headerExtension.width), columnSeparator)
     stdout.write(stream.codec.center(headerCodec.width), columnSeparator)
-    stdout.write(stream.size.center(headerSize.width), columnSeparator)
+    stdout.write(stream.sizeShort.center(headerSize.width), columnSeparator)
     stdout.writeLine(stream.format.center(headerFormat.width))
 
 
-proc joinStreams*(videoStream, audioStream, filename, subtitlesLanguage: string, includeSubtitles: bool) =
+proc streamToMkv*(stream, filename, subtitlesLanguage: string, includeSubtitles: bool) =
   ## join audio and video streams using ffmpeg
-  logInfo("joining streams ", videoStream, " + ", audioStream)
+  logInfo("converting: ", stream)
+  var command: string
+
+  if includeSubtitles:
+    command = fmt"ffmpeg -y -i {stream} -i subtitles.srt -metadata:s:s:0 language={quoteShell(subtitlesLanguage)} -c copy {quoteShell(filename)} > /dev/null 2>&1"
+  else:
+    command = fmt"ffmpeg -y -i {stream} -c copy {quoteShell(filename)} > /dev/null 2>&1"
+
+  if execShellCmd(command) == 0:
+    removeFile(stream)
+    if includeSubtitles:
+      removeFile(addFileExt(subtitlesLanguage, "srt"))
+    logGeneric(lvlInfo, "complete", filename)
+  else:
+    logError("failed to convert stream")
+
+
+proc streamsToMkv*(videoStream, audioStream, filename, subtitlesLanguage: string, includeSubtitles: bool) =
+  ## join audio and video streams using ffmpeg
+  logInfo("joining streams: ", videoStream, " + ", audioStream)
   var command: string
 
   if includeSubtitles:
@@ -253,7 +323,7 @@ proc convertAudio*(audioStream, filename, format: string) =
   let fullFilename = addFileExt(filename, format)
 
   if not audioStream.endsWith(format):
-    logInfo("converting stream ", audioStream)
+    logInfo("converting stream: ", audioStream)
     if format == "ogg" and audioStream.endsWith(".weba"):
       returnCode = execShellCmd(fmt"ffmpeg -y -i {audioStream} -codec:a copy {quoteShell(fullFilename)} > /dev/null 2>&1")
     else:

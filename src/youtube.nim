@@ -1,7 +1,7 @@
 import std/[json, uri, algorithm, sequtils, parseutils]
 # import std/[sha1]
 
-import utils
+import common
 
 #[ NOTE:
   age gate tier 1: https://www.youtube.com/watch?v=HtVdAasjOgU
@@ -709,18 +709,6 @@ proc getSigCipherUrl(signatureCipher: string): string =
 ########################################################
 
 
-proc hasItag(streams: JsonNode, itag: string): bool =
-  ## check if set of streams contains given itag
-  let intItag = parseInt(itag)
-  if intItag == 0:
-    result = true
-  else:
-
-    for stream in streams:
-      if stream["itag"].getInt() == intItag:
-        return true
-
-
 proc urlOrCipher(stream: JsonNode): string =
   ## produce stream url, deciphering if necessary and tranform n throttle string
   if stream.hasKey("url"):
@@ -738,78 +726,28 @@ proc urlOrCipher(stream: JsonNode): string =
       result = result.replace(n, transformedN)
     logDebug("initial n: ", n)
     logDebug("transformed n: ", transformedN)
-  logDebug("download url: ", result)
 
 
 proc getBitrate(stream: JsonNode): int =
   ## extract bitrate value from json. prefers average bitrate.
-  if stream.kind == JNull:
-    result = 0
-  elif stream.hasKey("averageBitrate"):
+  if stream.hasKey("averageBitrate"):
     # NOTE: not present in DASH streams metadata
     result = stream["averageBitrate"].getInt()
   else:
     result = stream["bitrate"].getInt()
 
 
-proc selectVideoByBitrate(streams: JsonNode, codec: string): JsonNode =
-  ## select $codec video stream with highest bitrate (and resolution)
-  var
-    thisBitrate, maxBitrate, idx, thisSemiperimeter, maxSemiperimeter: int
-    select = -1
-  result = newJNull()
-
-  for stream in streams:
-    if stream["mimeType"].getStr().contains(codec):
-      thisSemiperimeter = stream["width"].getInt() + stream["height"].getInt()
-      if thisSemiperimeter >= maxSemiperimeter:
-        if thisSemiperimeter > maxSemiperimeter:
-          maxSemiperimeter = thisSemiperimeter
-
-        thisBitrate = getBitrate(stream)
-        if thisBitrate > maxBitrate:
-          maxBitrate = thisBitrate
-          select = idx
-    inc idx
-
-  if select > -1:
-    result = streams[select]
-
-
-proc selectAudioByBitrate(streams: JsonNode, codec: string): JsonNode =
-  ## select $codec audo stream with highest bitrate
-  var
-    thisBitrate, maxBitrate, idx: int
-    select = -1
-  result = newJNull()
-
-  for stream in streams:
-    if stream["mimeType"].getStr().contains(codec):
-      thisBitrate = getBitrate(stream)
-      if thisBitrate > maxBitrate:
-        maxBitrate = thisBitrate
-        select = idx
-    inc idx
-
-  if select > -1:
-    result = streams[select]
-
-
-proc selectVideoStream(streams: JsonNode, itag, codec: string): JsonNode =
+proc selectVideoStream(streams: seq[Stream], id, codec: string): Stream =
   #[ NOTE: in tests, when adding up all samples where (subjectively) vp9 looked better, the average
     weight (vp9 bitrate/avc1 bitrate) was 0.92; this is fine in most cases. however a strong vp9 bias is preferential so
     a value of 0.8 is used. ]#
   const threshold = 0.8
-  let intItag = parseInt(itag)
-  var vp9Semiperimeter, avc1Semiperimeter, av1Semiperimeter: int
-  result = newJNull()
 
-  if intItag != 0:
+  if id != "":
     # NOTE: select by user itag choice
     for stream in streams:
-      if stream["itag"].getInt() == intItag:
-        result = stream
-        break
+      if stream.id == id:
+        return stream
   elif codec != "":
     # NOTE: select by user codec preference
     result = selectVideoByBitrate(streams, codec)
@@ -826,44 +764,26 @@ proc selectVideoStream(streams: JsonNode, itag, codec: string): JsonNode =
       bestVP9 = selectVideoByBitrate(streams, "vp9")
       bestAVC1 = selectVideoByBitrate(streams, "avc1")
       bestAV1 = selectVideoByBitrate(streams, "av01")
-    # NOTE: caclulate semiperimeter for each
-    if bestVP9.kind != JNull:
-      vp9Semiperimeter = bestVP9["width"].getInt() + bestVP9["height"].getInt()
-    if bestAVC1.kind != JNull:
-      avc1Semiperimeter = bestAVC1["width"].getInt() + bestAVC1["height"].getInt()
-    if bestAV1.kind != JNull:
-      av1Semiperimeter = bestAV1["width"].getInt() + bestAV1["height"].getInt()
-
     # NOTE: if any codec has a larger semiperimeter than the others, select it.
-    if (vp9Semiperimeter > avc1Semiperimeter and vp9Semiperimeter > av1Semiperimeter) or
-       (bestAVC1.kind == JNull and bestAV1.kind == JNull):
+    if (bestVP9.semiperimeter > bestAVC1.semiperimeter and bestVP9.semiperimeter > bestAV1.semiperimeter):
       result = bestVP9
-    elif (avc1Semiperimeter > vp9Semiperimeter and avc1Semiperimeter > av1Semiperimeter) or
-         (bestVP9.kind == JNull and bestAV1.kind == JNull):
+    elif (bestAVC1.semiperimeter > bestVP9.semiperimeter and bestAVC1.semiperimeter > bestAV1.semiperimeter):
       result = bestAVC1
-    elif (av1Semiperimeter > avc1Semiperimeter and av1Semiperimeter > vp9Semiperimeter) or
-         (bestAVC1.kind == JNull and bestVP9.kind == JNull):
+    elif (bestAV1.semiperimeter > bestAVC1.semiperimeter and bestAV1.semiperimeter > bestVP9.semiperimeter):
       result = bestAV1
     else:
-      # NOTE: no semiperimeter > others condidate --> compare by bitrates
-      let
-        avc1Bitrate = getBitrate(bestAVC1)
-        vp9Bitrate = getBitrate(bestVP9)
-        av1Bitrate = getBitrate(bestAV1)
       # QUESTION: should av1 just be defaulted to if it exists and is the same resolution as others?
-      if (av1Bitrate >= vp9Bitrate) and (av1Bitrate / avc1Bitrate >= threshold):
+      if (bestAV1.bitrate >= bestVP9.bitrate) and (bestAV1.bitrate / bestAVC1.bitrate >= threshold):
         result = bestAV1
-      elif vp9Bitrate / avc1Bitrate >= threshold:
+      elif bestVP9.bitrate / bestAVC1.bitrate >= threshold:
         result = bestVP9
       else:
         result = bestAVC1
-
-  if result.kind == JNull:
-    # NOTE: the itag/codec does not exist --> select zoroth stream
+  if result.id == "":
     result = streams[0]
 
 
-proc selectAudioStream(streams: JsonNode, itag, codec: string): JsonNode =
+proc selectAudioStream(streams: seq[Stream], id, codec: string): Stream =
   #[ NOTE: in tests, it seems youtube videos "without audio" still contain empty
     audio streams; furthermore aac streams seem to have a minimum bitrate as "empty"
     streams still have non trivial bitrate and filesizes.
@@ -873,12 +793,10 @@ proc selectAudioStream(streams: JsonNode, itag, codec: string): JsonNode =
     - itag 140 --> m4a
     - itag 251 --> opus
     + two low quality options (1 m4a and 1 opus) ]#
-  let intItag = parseInt(itag)
-  result = newJNull()
-  if intItag != 0:
+  if id != "":
     # NOTE: select by user itag choice
     for stream in streams:
-      if stream["itag"].getInt() == intItag:
+      if stream.id == id:
         return stream
   elif codec != "":
     # NOTE: select by user codec preference
@@ -887,86 +805,73 @@ proc selectAudioStream(streams: JsonNode, itag, codec: string): JsonNode =
     # NOTE: fallback selection
     result = selectAudioByBitrate(streams, "opus")
 
-  if result.kind == JNull:
-    # NOTE: the itag/codec do not exist or there were no opus streams to fall back to.
-    result = selectAudioByBitrate(streams, "mp4a")
 
-
-proc getStreamInfo(stream: JsonNode, duration: int): tuple[kind, id, mime, codec, ext, size, qlt, resolution, fps, bitrate, format: string] =
-  ## extract all relevent stream metadata from youtube JSON
-  if stream.hasKey("width") and stream.hasKey("audioQuality"):
-    result.kind = "combined"
-  elif stream.hasKey("audioQuality"):
-    result.kind = "audio"
-  else:
-    result.kind = "video"
-
-  if result.kind == "audio":
-    result.qlt = stream["audioQuality"].getStr().replace("AUDIO_QUALITY_").toLowerAscii()
-  else:
-    result.resolution = $stream["width"].getInt() & 'x' & $stream["height"].getInt()
-    result.qlt = stream["qualityLabel"].getStr()
-    result.fps = $stream["fps"].getInt()
-
-  result.id = $stream["itag"].getInt()
-  let mimeAndCodec = stream["mimeType"].getStr().split("; codecs=\"")
-  result.mime = mimeAndCodec[0]
-  result.codec = mimeAndCodec[1].strip(chars={'"'})
-  result.ext = extensions[result.mime]
-
-  let rawBitrate = getBitrate(stream)
-  result.bitrate = formatSize(rawBitrate, includeSpace=true) & "/s"
-
-  if stream.hasKey("contentLength"):
-    result.size = formatSize(parseInt(stream["contentLength"].getStr()), includeSpace=true)
-  else:
-    # NOTE: estimate from bitrate
-    # WARNING: this is innacurate when the average bitrate it not available
-    result.size = formatSize(int(rawBitrate * duration / 8), includeSpace=true)
-
-  if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
-    # NOTE: primary dash check
-    result.format = "dash"
-  else:
-    result.format = "https"
-
-
-proc newStream(youtubeUrl, dashManifestUrl, videoId: string, duration: int, stream: JsonNode): Stream =
+proc newStream(stream: JsonNode, videoId: string, duration: int, segmentsUrl = ""): Stream =
+  ## populate new stream
   if stream.kind != JNull:
-    (result.kind, result.id, result.mime, result.codec, result.ext, result.size, result.quality, result.resolution, result.fps, result.bitrate, result.format) = getStreamInfo(stream, duration)
-    result.filename = addFileExt(videoId, result.ext)
-    #[ NOTE: secondary dash check which catches malformed https streams (no average bitrate)
-    and falls back to dash if available ]#
+    if stream.hasKey("width") and stream.hasKey("audioQuality"):
+      result.kind = "combined"
+    elif stream.hasKey("audioQuality"):
+      result.kind = "audio"
+    else:
+      result.kind = "video"
+
+    if result.kind == "audio":
+      result.quality = stream["audioQuality"].getStr().replace("AUDIO_QUALITY_").toLowerAscii()
+    else:
+      result.resolution = $stream["width"].getInt() & 'x' & $stream["height"].getInt()
+      result.semiperimeter = stream["width"].getInt() + stream["height"].getInt()
+      result.quality = stream["qualityLabel"].getStr()
+      result.fps = $stream["fps"].getInt()
+
+    result.id = $stream["itag"].getInt()
+    let mimeAndCodec = stream["mimeType"].getStr().split("; codecs=\"")
+    result.mime = mimeAndCodec[0]
+    result.codec = mimeAndCodec[1].strip(chars={'"'})
+    result.ext = extensions[result.mime]
+
+    result.bitrate = getBitrate(stream)
+    result.bitrateShort = formatSize(result.bitrate, includeSpace=true) & "/s"
+
+    if stream.hasKey("contentLength"):
+      result.size = parseInt(stream["contentLength"].getStr())
+    else:
+      # NOTE: estimate from bitrate
+      # WARNING: this is innacurate when the average bitrate it not available
+      result.size = int(result.bitrate * duration / 8)
+    result.sizeShort = formatSize(result.size, includeSpace=true)
+
+    if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
+      result.format = "dash"
+    else:
+      result.format = "progressive"
+    result.duration = duration
+    result.filename = addFileExt(videoId & "-" & result.kind, result.ext)
+
     # IDEA: could also use contentLength?
-    if result.format == "dash" or not (stream.hasKey("averageBitrate") and dashManifestUrl == ""):
+    if result.format == "dash" or (not stream.hasKey("averageBitrate") and segmentsUrl != ""):
       var
         baseUrl: string
         segmentList: string
       if result.format != "dash":
         result.format = "dash"
-      logDebug("DASH manifest: ", dashManifestUrl)
-      result.urlSegments = extractDashSegments(extractDashEntry(dashManifestUrl, result.id))
-      # TODO: add len check here and fallback to stream[0] or similar for audio if len == 0.
-      # IDEA: consider taking all streams as argument which will allow redoing of selectVideoStream as needed.
+      logDebug("DASH manifest: ", segmentsUrl)
+      result.urlSegments = extractDashSegments(extractDashEntry(segmentsUrl, result.id))
     else:
       result.url = urlOrCipher(stream)
     result.exists = true
 
 
-proc newVideo(youtubeUrl, dashManifestUrl, thumbnailUrl, title, videoId: string, duration: int,
-              streamingData: JsonNode, aItag, vItag, aCodec, vCodec: string): Video =
+proc newDownload(streams: seq[Stream], title, youtubeUrl, thumbnailUrl, videoId,
+              aItag, vItag, aCodec, vCodec: string): Download =
   result.title = title
   result.url = youtubeUrl
   result.videoId = videoId
   result.thumbnailUrl = thumbnailUrl
-  if streamingData.hasKey("adaptiveFormats") and streamingData["adaptiveFormats"].hasItag(vItag):
-    result.videoStream = newStream(youtubeUrl, dashManifestUrl, videoId, duration,
-                                   selectVideoStream(streamingData["adaptiveFormats"], vItag, vCodec))
-    result.audioStream = newStream(youtubeUrl, dashManifestUrl, videoId, duration,
-                                   selectAudioStream(streamingData["adaptiveFormats"], aItag, aCodec))
-  else:
-    result.videoStream = newStream(youtubeUrl, dashManifestUrl, videoId, duration,
-                                   selectVideoStream(streamingData["formats"], vItag, vCodec))
+  if includeVideo:
+    result.videoStream = selectVideoStream(streams, vItag, vCodec)
+  if includeAudio and result.videoStream.kind != "combined":
+    result.audioStream = selectAudioStream(streams, aItag, aCodec)
 
 
 proc reportStreamInfo(stream: Stream) =
@@ -974,34 +879,12 @@ proc reportStreamInfo(stream: Stream) =
   # TODO: expand this
   logInfo("stream: ", stream.filename)
   logInfo("itag: ", stream.id)
-  logInfo("size: ", stream.size)
+  logInfo("size: ", stream.sizeShort)
   logInfo("quality: ", stream.quality)
   logInfo("mime: ", stream.mime)
   logInfo("codec: ", stream.codec)
   if stream.format == "dash":
     logInfo("segments: ", stream.urlSegments.len)
-
-
-proc reportStreams(playerResponse: JsonNode, duration: int) =
-  ## echo metadata for all streams
-  var parsedStreams: seq[tuple[kind, id, mime, codec, ext, size, qlt, resolution, fps, bitrate, format: string]]
-  # IDEA: could take dash url as arg and determine if dash format
-  if playerResponse.hasKey("adaptiveFormats"):
-    # NOTE: streaming formats
-    for item in playerResponse["adaptiveFormats"]:
-      parsedStreams.add(getStreamInfo(item, duration))
-  if playerResponse.hasKey("formats"):
-    # NOTE: youtube premium download formats
-    for idx in countdown(playerResponse["formats"].len.pred, 0):
-      parsedStreams.add(getStreamInfo(playerResponse["formats"][idx], duration))
-
-  displayStreams(parsedStreams)
-  # if playerResponse["streamingData"].hasKey("hlsManifestUrl"):
-  #   # QUESTION: should this be if or elif? does it overlap with format?
-  #   let hlsStreams = extractHlsStreams(playerResponse["streamingData"]["hlsManifestUrl"].getStr())
-  #   for idx in countdown(hlsStreams.high, 0):
-  #     (hlsItag, resolution, fps, codec, url) = hlsStreams[idx]
-
 
 
 ########################################################
@@ -1084,7 +967,7 @@ proc walkErrorMessage(playabilityStatus: JsonNode) =
 ########################################################
 
 
-proc getVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
+proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
   let
     videoId = isolateVideoId(youtubeUrl)
     standardYoutubeUrl = watchUrl & videoId
@@ -1094,8 +977,10 @@ proc getVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
     playerResponse: JsonNode
     dashManifestUrl, hlsManifestUrl: string
     captions: string
+    audioStreams: seq[Stream]
+    videoStreams: seq[Stream]
 
-  logInfo("id: ", videoId)
+  logInfo("video id: ", videoId)
 
   # NOTE: make initial request to get base.js version, timestamp, and api locale
   logDebug("requesting webpage")
@@ -1149,9 +1034,6 @@ proc getVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
           walkErrorMessage(playerResponse["playabilityStatus"])
           return
 
-        if showStreams:
-          reportStreams(playerResponse["streamingData"], duration)
-          return
 
         #[ NOTE: hls is for combined audio + videos streams (youtube premium downloads) while dash manifest
           is for single audio or videos streams. hls also seems to be specific to live streams. ]#
@@ -1159,12 +1041,28 @@ proc getVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
           dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
         if playerResponse["streamingData"].hasKey("hlsManifestUrl"):
           hlsManifestUrl = playerResponse["streamingData"]["hlsManifestUrl"].getStr()
-        let video = newVideo(standardYoutubeUrl, dashManifestUrl, thumbnailUrl, title, videoId, duration,
-                             playerResponse["streamingData"], aItag, vItag, aCodec, vCodec)
-        logInfo("title: ", video.title)
+
+        for stream in playerResponse["streamingData"]["adaptiveFormats"]:
+          if stream.hasKey("width"):
+            videoStreams.add(newStream(stream, videoId, duration, dashManifestUrl))
+          else:
+            audioStreams.add(newStream(stream, videoId, duration, dashManifestUrl))
+
+        if playerResponse["streamingData"].hasKey("formats"):
+          for stream in playerResponse["streamingData"]["formats"]:
+            videoStreams.add(newStream(stream, videoId, duration))
+
+        let allStreams = videoStreams.sorted(compareBitrate) & audioStreams.sorted(compareBitrate)
+
+        if showStreams:
+          displayStreams(allStreams)
+          return
+
+        let download = newDownload(allStreams, title, standardYoutubeUrl, thumbnailUrl, videoId, aItag, vItag, aCodec, vCodec)
+        logInfo("title: ", download.title)
 
         if includeThumb:
-          if not grab(video.thumbnailUrl, fullFilename.changeFileExt("jpeg"), forceDl=true).is2xx:
+          if not grab(download.thumbnailUrl, fullFilename.changeFileExt("jpeg"), forceDl=true).is2xx:
             logError("failed to download thumbnail")
 
         if includeSubtitles:
@@ -1176,39 +1074,38 @@ proc getVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
 
         var attempt: HttpCode
         if includeVideo:
-          reportStreamInfo(video.videoStream)
-          if video.videoStream.format == "dash":
-            attempt = grab(video.videoStream.urlSegments, video.videoStream.filename, forceDl=true)
+          reportStreamInfo(download.videoStream)
+          if download.videoStream.format == "dash":
+            attempt = grab(download.videoStream.urlSegments, download.videoStream.filename, forceDl=true)
           else:
-            attempt = grab(video.videoStream.url, video.videoStream.filename, forceDl=true)
+            attempt = grab(download.videoStream.url, download.videoStream.filename, forceDl=true)
           if not attempt.is2xx:
             logError("failed to download video stream")
             includeVideo = false
             # NOTE: remove empty file
-            discard tryRemoveFile(video.videoStream.filename)
+            discard tryRemoveFile(download.videoStream.filename)
 
-        if includeAudio and video.audioStream.exists:
-          reportStreamInfo(video.audioStream)
-          if video.audioStream.format == "dash":
-            attempt = grab(video.audioStream.urlSegments, video.audioStream.filename, forceDl=true)
+        if includeAudio and download.audioStream.exists:
+          reportStreamInfo(download.audioStream)
+          if download.audioStream.format == "dash":
+            attempt = grab(download.audioStream.urlSegments, download.audioStream.filename, forceDl=true)
           else:
-            attempt = grab(video.audioStream.url, video.audioStream.filename, forceDl=true)
+            attempt = grab(download.audioStream.url, download.audioStream.filename, forceDl=true)
           if not attempt.is2xx:
             logError("failed to download audio stream")
             includeAudio = false
             # NOTE: remove empty file
-            discard tryRemoveFile(video.audioStream.filename)
+            discard tryRemoveFile(download.audioStream.filename)
         else:
           includeAudio = false
 
         # QUESTION: should we abort if either audio or video streams failed to download?
         if includeAudio and includeVideo:
-          joinStreams(video.videoStream.filename, video.audioStream.filename, fullFilename, subtitlesLanguage, includeSubtitles)
+          streamsToMkv(download.videoStream.filename, download.audioStream.filename, fullFilename, subtitlesLanguage, includeSubtitles)
         elif includeAudio and not includeVideo:
-          convertAudio(video.audioStream.filename, safeTitle & " [" & videoId & ']', audioFormat)
+          convertAudio(download.audioStream.filename, safeTitle & " [" & videoId & ']', audioFormat)
         elif includeVideo:
-          moveFile(video.videoStream.filename, fullFilename.changeFileExt(video.videoStream.ext))
-          logGeneric(lvlInfo, "complete", addFileExt(safeTitle, video.videoStream.ext))
+          streamToMkv(download.videoStream.filename, fullFilename, subtitlesLanguage, includeSubtitles)
         else:
           logError("no streams were downloaded")
     else:
@@ -1219,7 +1116,7 @@ proc getVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
     logError(videoMetadataFailureMessage)
 
 
-proc getPlaylist(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
+proc grabPlaylist(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
   var videoIds: seq[string]
   let playlistId = isolatePlaylist(youtubeUrl)
 
@@ -1241,13 +1138,13 @@ proc getPlaylist(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
       logInfo(videoIds.len, " videos queued")
       for idx, id in videoIds:
         logGeneric(lvlInfo, "download", idx.succ, " of ", videoIds.len)
-        getVideo(watchUrl & id, aItag, vItag, aCodec, vCodec)
+        grabVideo(watchUrl & id, aItag, vItag, aCodec, vCodec)
   else:
     logError(code)
     logError(playlistMetadataFailureMessage)
 
 
-proc getChannel(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
+proc grabChannel(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
   let channel = isolateChannel(youtubeUrl)
   var
     channelResponse: JsonNode
@@ -1340,9 +1237,9 @@ proc getChannel(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
   logInfo(playlistIds.len, " playlists queued")
   for idx, id in videoIds:
     logGeneric(lvlInfo, "download", idx.succ, " of ", videoIds.len)
-    getVideo(watchUrl & id, aItag, vItag, aCodec, vCodec)
+    grabVideo(watchUrl & id, aItag, vItag, aCodec, vCodec)
   for id in playlistIds:
-    getPlaylist(playlistUrl & id, aItag, vItag, aCodec, vCodec)
+    grabPlaylist(playlistUrl & id, aItag, vItag, aCodec, vCodec)
 
 
 proc youtubeDownload*(youtubeUrl, aFormat, aItag, vItag, aCodec, vCodec, sLang: string,
@@ -1364,8 +1261,8 @@ proc youtubeDownload*(youtubeUrl, aFormat, aItag, vItag, aCodec, vCodec, sLang: 
 
   # QUESTION: make codecs and itags global?
   if "/channel/" in youtubeUrl or "/c/" in youtubeUrl:
-    getChannel(youtubeUrl, aItag, vItag, aCodec, vCodec)
+    grabChannel(youtubeUrl, aItag, vItag, aCodec, vCodec)
   elif "/playlist?" in youtubeUrl:
-    getPlaylist(youtubeUrl, aItag, vItag, aCodec, vCodec)
+    grabPlaylist(youtubeUrl, aItag, vItag, aCodec, vCodec)
   else:
-    getVideo(youtubeUrl, aItag, vItag, aCodec, vCodec)
+    grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec)
