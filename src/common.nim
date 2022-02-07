@@ -1,8 +1,8 @@
-import std/[algorithm, asyncdispatch, asyncfile, httpclient, logging, os,
-            parseutils, sets, strformat, strutils, tables, terminal, times, uri]
+import std/[algorithm, asyncdispatch, asyncfile, httpclient, json, logging, os,
+            parseutils, sequtils, sets, strformat, strutils, tables, terminal, times, uri]
 from math import floor
 
-export algorithm, asyncdispatch, httpclient, os, parseutils, strformat, strutils, tables, times, uri
+export algorithm, asyncdispatch, httpclient, json, os, parseutils, sequtils, strformat, strutils, tables, times, uri
 
 
 type
