@@ -780,7 +780,10 @@ proc newStream(stream: JsonNode, videoId: string, duration: int, segmentsUrl = "
     result.exists = true
 
 
-proc formatUrl(stream: var Stream, dashManifestUrl="", hlsManifestUrl="") =
+proc setUrl(stream: var Stream, dashManifestUrl="", hlsManifestUrl="") =
+  ## decipher url or extract dash/hls segments
+  #[ NOTE: this is not done in newStream so that requests are not made for manifests
+    for each stream, and only done for the selected streams ]#
   if stream.format == "dash":
     var
       baseUrl: string
@@ -799,10 +802,10 @@ proc newDownload(streams: seq[Stream], title, youtubeUrl, thumbnailUrl, videoId,
   result.thumbnailUrl = thumbnailUrl
   if includeVideo:
     result.videoStream = selectVideoStream(streams, vItag, vCodec)
-    result.videoStream.formatUrl(dashManifestUrl, hlsManifestUrl)
+    result.videoStream.setUrl(dashManifestUrl, hlsManifestUrl)
   if includeAudio and result.videoStream.kind != "combined":
     result.audioStream = selectAudioStream(streams, aItag, aCodec)
-    result.audioStream.formatUrl(dashManifestUrl, hlsManifestUrl)
+    result.audioStream.setUrl(dashManifestUrl, hlsManifestUrl)
 
 
 proc reportStreamInfo(stream: Stream) =

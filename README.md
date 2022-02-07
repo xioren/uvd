@@ -23,8 +23,8 @@ usage: uvd [options] url
 options:
   -a, --audio-only                    audio only
   -v, --video-only                    video only
-  --audio-id, --audio-itag <id/itag>  audio stream id/itag
-  --video-id, --video-itag <id/itag>  video stream id/itag
+  --audio-id <id>                     audio stream id
+  --video-id <id>                     video stream id
   -f, --format <format>               audio output format
   -h, --help                          print this help
   -l, --language <iso code>           desired subtitle language
