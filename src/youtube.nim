@@ -633,12 +633,12 @@ proc getSigCipherUrl(signatureCipher: string): string =
 ########################################################
 
 
-proc urlOrCipher(stream: JsonNode): string =
+proc urlOrCipher(stream: Stream): string =
   ## produce stream url, deciphering if necessary and tranform n throttle string
-  if stream.hasKey("url"):
-    result = stream["url"].getStr()
-  elif stream.hasKey("signatureCipher"):
-    result = getSigCipherUrl(stream["signatureCipher"].getStr())
+  if not stream.url.startsWith("https"):
+    result = getSigCipherUrl(stream.url)
+  else:
+    result = stream.url
 
   let n = result.captureBetween('=', '&', result.find("&n="))
   if nTransforms.haskey(n):
@@ -764,38 +764,45 @@ proc newStream(stream: JsonNode, videoId: string, duration: int, segmentsUrl = "
       # WARNING: this is innacurate when the average bitrate it not available
       result.size = int(result.bitrate * duration / 8)
     result.sizeShort = formatSize(result.size, includeSpace=true)
-
-    if stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF":
+    # IDEA: could also use contentLength?
+    if (stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF") or (not stream.hasKey("averageBitrate") and segmentsUrl != ""):
       result.format = "dash"
     else:
       result.format = "progressive"
+
+    if stream.hasKey("url"):
+      result.url = stream["url"].getStr()
+    elif stream.hasKey("signatureCipher"):
+      result.url = stream["signatureCipher"].getStr()
+
     result.duration = duration
     result.filename = addFileExt(videoId & "-" & result.kind, result.ext)
-
-    # IDEA: could also use contentLength?
-    if result.format == "dash" or (not stream.hasKey("averageBitrate") and segmentsUrl != ""):
-      var
-        baseUrl: string
-        segmentList: string
-      if result.format != "dash":
-        result.format = "dash"
-      logDebug("DASH manifest: ", segmentsUrl)
-      result.urlSegments = extractDashSegments(extractDashEntry(segmentsUrl, result.id))
-    else:
-      result.url = urlOrCipher(stream)
     result.exists = true
 
 
+proc formatUrl(stream: var Stream, dashManifestUrl="", hlsManifestUrl="") =
+  if stream.format == "dash":
+    var
+      baseUrl: string
+      segmentList: string
+    logDebug("DASH manifest: ", dashManifestUrl)
+    stream.urlSegments = extractDashSegments(extractDashEntry(dashManifestUrl, stream.id))
+  else:
+    stream.url = urlOrCipher(stream)
+
+
 proc newDownload(streams: seq[Stream], title, youtubeUrl, thumbnailUrl, videoId,
-              aItag, vItag, aCodec, vCodec: string): Download =
+              aItag, vItag, aCodec, vCodec: string, dashManifestUrl="", hlsManifestUrl=""): Download =
   result.title = title
   result.url = youtubeUrl
   result.videoId = videoId
   result.thumbnailUrl = thumbnailUrl
   if includeVideo:
     result.videoStream = selectVideoStream(streams, vItag, vCodec)
+    result.videoStream.formatUrl(dashManifestUrl, hlsManifestUrl)
   if includeAudio and result.videoStream.kind != "combined":
     result.audioStream = selectAudioStream(streams, aItag, aCodec)
+    result.audioStream.formatUrl(dashManifestUrl, hlsManifestUrl)
 
 
 proc reportStreamInfo(stream: Stream) =
@@ -982,7 +989,7 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
           displayStreams(allStreams)
           return
 
-        let download = newDownload(allStreams, title, standardYoutubeUrl, thumbnailUrl, videoId, aItag, vItag, aCodec, vCodec)
+        let download = newDownload(allStreams, title, standardYoutubeUrl, thumbnailUrl, videoId, aItag, vItag, aCodec, vCodec, dashManifestUrl, hlsManifestUrl)
         logInfo("title: ", download.title)
 
         if includeThumb:
