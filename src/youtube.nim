@@ -784,9 +784,6 @@ proc setUrl(stream: var Stream, dashManifestUrl="", hlsManifestUrl="") =
   #[ NOTE: this is not done in newStream so that requests are not made for manifests
     for each stream, and only done for the selected streams ]#
   if stream.format == "dash":
-    var
-      baseUrl: string
-      segmentList: string
     stream.urlSegments = extractDashSegments(extractDashEntry(dashManifestUrl, stream.id))
   else:
     stream.url = urlOrCipher(stream)
@@ -908,7 +905,6 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
     response: string
     playerResponse: JsonNode
     dashManifestUrl, hlsManifestUrl: string
-    captions: string
     audioStreams: seq[Stream]
     videoStreams: seq[Stream]
 
