@@ -459,7 +459,7 @@ proc grabVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
     logInfo("title: ", download.title)
 
     if includeThumb and thumbnailUrl != "":
-      if not grab(download.thumbnailUrl, fullFilename.changeFileExt("jpeg"), forceDl=true).is2xx:
+      if not grab(download.thumbnailUrl, fullFilename.changeFileExt("jpeg"), overwrite=true).is2xx:
         logError("failed to download thumbnail")
 
     if includeSubtitles:
@@ -473,9 +473,9 @@ proc grabVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
     if includeVideo:
       reportStreamInfo(download.videoStream)
       if download.videoStream.format == "dash":
-        attempt = grab(download.videoStream.urlSegments, download.videoStream.filename, forceDl=true)
+        attempt = grab(download.videoStream.urlSegments, download.videoStream.filename, overwrite=true)
       else:
-        attempt = grab(download.videoStream.url, download.videoStream.filename, forceDl=true)
+        attempt = grab(download.videoStream.url, download.videoStream.filename, overwrite=true)
       if not attempt.is2xx:
         logError("failed to download video stream")
         includeVideo = false
@@ -485,9 +485,9 @@ proc grabVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
     if includeAudio and download.audioStream.exists:
       reportStreamInfo(download.audioStream)
       if download.audioStream.format == "dash":
-        attempt = grab(download.audioStream.urlSegments, download.audioStream.filename, forceDl=true)
+        attempt = grab(download.audioStream.urlSegments, download.audioStream.filename, overwrite=true)
       else:
-        attempt = grab(download.audioStream.url, download.audioStream.filename, forceDl=true)
+        attempt = grab(download.audioStream.url, download.audioStream.filename, overwrite=true)
       if not attempt.is2xx:
         logError("failed to download audio stream")
         includeAudio = false

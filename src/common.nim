@@ -1,8 +1,9 @@
-import std/[algorithm, asyncdispatch, asyncfile, httpclient, json, logging, os,
-            parseutils, sequtils, sets, strformat, strutils, tables, terminal, times, uri]
+import std/[algorithm, asyncdispatch, asyncfile, httpclient, json, os, parseutils,
+            sequtils, sets, strformat, strutils, tables, terminal, times, uri]
 from math import floor
 
-export algorithm, asyncdispatch, httpclient, json, os, parseutils, sequtils, strformat, strutils, tables, times, uri
+export algorithm, asyncdispatch, httpclient, json, os, parseutils, sequtils,
+       strformat, strutils, tables, times, uri
 
 
 type
@@ -63,7 +64,11 @@ var
 proc doGet*(url: string): tuple[httpcode: HttpCode, body: string]
 
 
-# NOTE: basic logger implementation
+########################################################
+# basic logger implementation
+########################################################
+
+
 proc formatLogMessage(context: string, messageParts: varargs[string]): string =
   var msgLen = 0
   if context != "":
@@ -196,6 +201,11 @@ proc extractHlsSegments*(hlsSegmentsUrl: string): seq[string] =
     result.add(url)
     idx.inc(xml.skipUntil('#', idx))
     inc idx
+
+
+########################################################
+# misc
+########################################################
 
 
 func dequery*(url: string): string =
@@ -353,6 +363,51 @@ proc displayStreams*(streams: seq[Stream]) =
     stdout.writeLine(stream.format.center(headerFormat.width))
 
 
+proc clearProgress() =
+  if madeProgress:
+    stdout.eraseLine()
+    stdout.cursorDown()
+    stdout.eraseLine()
+    stdout.cursorUp()
+    madeProgress = false
+
+
+proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
+  ## for contiguous streams
+  const barWidth = 50
+  let
+    bar = '#'.repeat(floor(progress.int / total.int * barWidth).int)
+    eta = initDuration(seconds=((total - progress).int / speed.int).int)
+
+  stdout.eraseLine()
+  stdout.writeLine("> size: ", formatSize(total.int, includeSpace=true),
+                   " speed: ", formatSize(speed.int, includeSpace=true), "/s",
+                   " eta: ", $eta)
+  stdout.eraseLine()
+  stdout.write("[", alignLeft(bar, barWidth), "]")
+  stdout.setCursorXPos(0)
+  stdout.cursorUp()
+  stdout.flushFile()
+  if not madeProgress:
+    madeProgress = true
+
+
+proc onProgressChangedMulti(total, progress, speed: BiggestInt) {.async.} =
+  ## for segmented streams (e.g. DASH)
+  stdout.eraseLine()
+  stdout.write("> size: ", formatSize(total.int, includeSpace=true),
+               " segment: ", currentSegment, " of ", totalSegments)
+  stdout.setCursorXPos(0)
+  stdout.flushFile()
+  if not madeProgress:
+    madeProgress = true
+
+
+########################################################
+# net and io
+########################################################
+
+
 proc streamToMkv*(stream, filename, subtitlesLanguage: string, includeSubtitles: bool) =
   ## join audio and video streams using ffmpeg
   logInfo("converting: ", stream)
@@ -413,46 +468,6 @@ proc convertAudio*(audioStream, filename, format: string) =
     logError("error converting stream")
 
 
-proc clearProgress() =
-  if madeProgress:
-    stdout.eraseLine()
-    stdout.cursorDown()
-    stdout.eraseLine()
-    stdout.cursorUp()
-    madeProgress = false
-
-
-proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
-  ## for contiguous streams
-  const barWidth = 50
-  let
-    bar = '#'.repeat(floor(progress.int / total.int * barWidth).int)
-    eta = initDuration(seconds=((total - progress).int / speed.int).int)
-
-  stdout.eraseLine()
-  stdout.writeLine("> size: ", formatSize(total.int, includeSpace=true),
-                   " speed: ", formatSize(speed.int, includeSpace=true), "/s",
-                   " eta: ", $eta)
-  stdout.eraseLine()
-  stdout.write("[", alignLeft(bar, barWidth), "]")
-  stdout.setCursorXPos(0)
-  stdout.cursorUp()
-  stdout.flushFile()
-  if not madeProgress:
-    madeProgress = true
-
-
-proc onProgressChangedMulti(total, progress, speed: BiggestInt) {.async.} =
-  ## for segmented streams (e.g. DASH)
-  stdout.eraseLine()
-  stdout.write("> size: ", formatSize(total.int, includeSpace=true),
-               " segment: ", currentSegment, " of ", totalSegments)
-  stdout.setCursorXPos(0)
-  stdout.flushFile()
-  if not madeProgress:
-    madeProgress = true
-
-
 proc doPost*(url, body: string): tuple[httpcode: HttpCode, body: string] =
   let client = newHttpClient(headers=newHttpHeaders(headers))
   try:
@@ -478,7 +493,7 @@ proc doGet*(url: string): tuple[httpcode: HttpCode, body: string] =
 
 
 proc download(url, filepath: string): Future[HttpCode] {.async.} =
-  ## download single streams
+  ## download progressive streams
   let client = newAsyncHttpClient(headers=newHttpHeaders(headers))
   var file = openasync(filepath, fmWrite)
   client.onProgressChanged = onProgressChanged
@@ -496,7 +511,8 @@ proc download(url, filepath: string): Future[HttpCode] {.async.} =
 
 
 proc download(parts: seq[string], filepath: string): Future[HttpCode] {.async.} =
-  ## download multi-part streams
+  ## download dash/hls streams
+  # NOTE: global vars used by onProgressChangedMulti
   currentSegment = 0
   totalSegments = parts.len
   let client = newAsyncHttpClient(headers=newHttpHeaders(headers))
@@ -531,10 +547,10 @@ proc save*(content, filepath: string): bool =
     file.close()
 
 
-proc grab*(url: string | seq[string], filename: string, saveLocation=getCurrentDir(), forceDl=false): HttpCode =
+proc grab*(url: string | seq[string], filename: string, saveLocation=getCurrentDir(), overwrite=false): HttpCode =
   ## download front end
   let filepath = joinPath(saveLocation, filename)
-  if not forceDl and fileExists(filepath):
+  if not overwrite and fileExists(filepath):
     logError("file exists: ", filename)
   else:
     result = waitFor download(url, filepath)

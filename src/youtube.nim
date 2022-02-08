@@ -787,7 +787,6 @@ proc setUrl(stream: var Stream, dashManifestUrl="", hlsManifestUrl="") =
     var
       baseUrl: string
       segmentList: string
-    logDebug("DASH manifest: ", dashManifestUrl)
     stream.urlSegments = extractDashSegments(extractDashEntry(dashManifestUrl, stream.id))
   else:
     stream.url = urlOrCipher(stream)
@@ -969,11 +968,13 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
 
 
         #[ NOTE: hls is for combined audio + videos streams (youtube premium downloads) while dash manifest
-          is for single audio or videos streams. hls also seems to be specific to live streams. ]#
+          is for single audio or videos streams. hls also seems to be specificaly used for live streams. ]#
         if playerResponse["streamingData"].hasKey("dashManifestUrl"):
           dashManifestUrl = playerResponse["streamingData"]["dashManifestUrl"].getStr()
+          logDebug("DASH manifest url: ", dashManifestUrl)
         if playerResponse["streamingData"].hasKey("hlsManifestUrl"):
           hlsManifestUrl = playerResponse["streamingData"]["hlsManifestUrl"].getStr()
+          logDebug("HLS manifest url: ", hlsManifestUrl)
 
         for stream in playerResponse["streamingData"]["adaptiveFormats"]:
           if stream.hasKey("width"):
@@ -995,7 +996,7 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
         logInfo("title: ", download.title)
 
         if includeThumb:
-          if not grab(download.thumbnailUrl, fullFilename.changeFileExt("jpeg"), forceDl=true).is2xx:
+          if not grab(download.thumbnailUrl, fullFilename.changeFileExt("jpeg"), overwrite=true).is2xx:
             logError("failed to download thumbnail")
 
         if includeSubtitles:
@@ -1009,9 +1010,9 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
         if includeVideo:
           reportStreamInfo(download.videoStream)
           if download.videoStream.format == "dash":
-            attempt = grab(download.videoStream.urlSegments, download.videoStream.filename, forceDl=true)
+            attempt = grab(download.videoStream.urlSegments, download.videoStream.filename, overwrite=true)
           else:
-            attempt = grab(download.videoStream.url, download.videoStream.filename, forceDl=true)
+            attempt = grab(download.videoStream.url, download.videoStream.filename, overwrite=true)
           if not attempt.is2xx:
             logError("failed to download video stream")
             includeVideo = false
@@ -1021,9 +1022,9 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
         if includeAudio and download.audioStream.exists:
           reportStreamInfo(download.audioStream)
           if download.audioStream.format == "dash":
-            attempt = grab(download.audioStream.urlSegments, download.audioStream.filename, forceDl=true)
+            attempt = grab(download.audioStream.urlSegments, download.audioStream.filename, overwrite=true)
           else:
-            attempt = grab(download.audioStream.url, download.audioStream.filename, forceDl=true)
+            attempt = grab(download.audioStream.url, download.audioStream.filename, overwrite=true)
           if not attempt.is2xx:
             logError("failed to download audio stream")
             includeAudio = false
