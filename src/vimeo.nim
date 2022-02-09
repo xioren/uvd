@@ -28,9 +28,9 @@ const
   apiUrl = "https://api.vimeo.com"
   profileApiUrl = "https://api.vimeo.com/users/$1/profile_sections?fields=uri%2Ctitle%2CuserUri%2Curi%2C"
   videosApiUrl = "https://api.vimeo.com/users/$1/profile_sections/$2/videos?fields=video_details%2Cprofile_section_uri%2Ccolumn_width%2Cclip.uri%2Cclip.name%2Cclip.type%2Cclip.categories.name%2Cclip.categories.uri%2Cclip.config_url%2Cclip.pictures%2Cclip.height%2Cclip.width%2Cclip.duration%2Cclip.description%2Cclip.created_time%2C&page=1&per_page=10"
-  videoApiUrl = "https://api.vimeo.com/videos/$1?bypass_privacy=1"
-  videoApiUnlistedUrl = "https://api.vimeo.com/videos/$1:$2?bypass_privacy=1"
-  genericConfigUrl = "https://player.vimeo.com/video/$1/config?bypass_privacy=1"
+  videoApiUrl = "https://api.vimeo.com/videos/$1?bypass_privacy=1&force_embed=1"
+  videoApiUnlistedUrl = "https://api.vimeo.com/videos/$1:$2?bypass_privacy=1&force_embed=1"
+  genericConfigUrl = "https://player.vimeo.com/video/$1/config?bypass_privacy=1&force_embed=1"
   bypassUrl = "https://player.vimeo.com/video/$1?app_id=122963&referrer=https%3A%2F%2Fwww.patreon.com%2F"
   authorizationUrl = "https://vimeo.com/_rv/viewer"
   # detailsUrl = "https://vimeo.com/api/v2/video/$1.json"
@@ -292,18 +292,24 @@ proc extractId(vimeoUrl: string): string =
 
 proc extractHash(vimeoUrl: string): string =
   ## extract unlinsted hash from url
-  result = vimeoUrl.dequery().split('/')[^1]
+  if vimeoUrl.contains("&h="):
+    result = vimeoUrl.captureBetween('=', '&', vimeoUrl.find("&h="))
+  else:
+    result = vimeoUrl.dequery().split('/')[^1]
 
 
 proc isUnlisted(vimeoUrl: string): bool =
   ## check for unlisted hash in vimeo url
-  var slug: string
-  if vimeoUrl.contains("/video/"):
-    slug = vimeoUrl.captureBetween('/', '?', vimeoUrl.find("video/"))
-  else:
-    slug = vimeoUrl.captureBetween('/', '?', vimeoUrl.find(".com/"))
-  if slug.count('/') > 0:
+  if vimeoUrl.contains("&h="):
     result = true
+  else:
+    var slug: string
+    if vimeoUrl.contains("/video/"):
+      slug = vimeoUrl.captureBetween('/', '?', vimeoUrl.find("video/"))
+    else:
+      slug = vimeoUrl.captureBetween('/', '?', vimeoUrl.find(".com/"))
+    if slug.count('/') > 0:
+      result = true
 
 
 proc getBestThumb(thumbs: JsonNode): string =
