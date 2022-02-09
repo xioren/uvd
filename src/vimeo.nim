@@ -283,7 +283,7 @@ proc extractId(vimeoUrl: string): string =
   elif vimeoUrl.contains("/video/"):
     result = vimeoUrl.captureBetween('/', '?', vimeoUrl.find("video/"))
   else:
-    result = vimeoUrl.captureBetween('/', '?', start=vimeoUrl.find(".com/"))
+    result = vimeoUrl.captureBetween('/', '?', start=vimeoUrl.find(".com"))
 
 
 proc extractHash(vimeoUrl: string): string =
@@ -349,7 +349,7 @@ proc getPlayerConfig(videoId: string, unlistedHash=""): JsonNode =
 
   logDebug("requesting player config json")
   if unlistedHash != "":
-  logDebug("unlisted hash: ", unlistedHash)
+    logDebug("unlisted hash: ", unlistedHash)
     (code, response) = doGet(configUrl % videoId & "&h=" & unlistedHash)
   else:
     (code, response) = doGet(configUrl % videoId)
