@@ -121,8 +121,9 @@ proc selectVideoStream(streams: seq[Stream], id, codec: string): Stream =
     # NOTE: fallback selection
     result = selectVideoByBitrate(streams, "avc1")
 
+  # NOTE: all other selection attempts failed, final attempt with not codec filter
   if result.id == "":
-    result = streams[0]
+    result = selectVideoByBitrate(streams, "")
 
 
 proc selectAudioStream(streams: seq[Stream], id, codec: string): Stream =
@@ -139,6 +140,10 @@ proc selectAudioStream(streams: seq[Stream], id, codec: string): Stream =
   else:
     # NOTE: fallback selection
     result = selectAudioByBitrate(streams, "mp4a")
+
+  # NOTE: all other selection attempts failed, final attempt with not codec filter
+  if result.id == "":
+    result = selectVideoByBitrate(streams, "")
 
 
 proc produceUrlSegments(stream: JsonNode, cdnUrl: string): seq[string] =
@@ -519,7 +524,7 @@ proc grabProfile(vimeoUrl, aId, vId, aCodec, vCodec: string) =
   let (userId, sectionId) = extractProfileIds(profileApiUrl % userSlug)
   nextUrl = videosApiUrl % [userId, sectionId]
 
-  logDebug("slug: ", userSlug, " user id: ", userId, " sectionId: ", sectionId)
+  logDebug("user slug: ", userSlug, " user id: ", userId, " section id: ", sectionId)
 
   logInfo("collecting videos")
   while nextUrl != apiUrl:
@@ -527,6 +532,8 @@ proc grabProfile(vimeoUrl, aId, vId, aCodec, vCodec: string) =
     (code, response) = doGet(nextUrl)
     if code.is2xx:
       profileResponse = parseJson(response)
+      #[ QUESTION: should this be config url now that api url is used to obtain streams
+        as well? should we just pass the base vimeo url instead? ]#
       for video in profileResponse["data"]:
         urls.add(video["clip"]["config_url"].getStr())
       nextUrl = apiUrl & profileResponse["paging"]["next"].getStr()

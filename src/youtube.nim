@@ -123,7 +123,7 @@ const
     "playlistId": "$1"
   }"""
   apiKey = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
-  baseUrl = "https://www.youtube.com"
+  # baseUrl = "https://www.youtube.com"
   watchUrl = "https://www.youtube.com/watch?v="
   # channelUrl = "https://www.youtube.com/channel/"
   # channelVanityUrl = "https://www.youtube.com/c/"
@@ -702,8 +702,10 @@ proc selectVideoStream(streams: seq[Stream], id, codec: string): Stream =
         result = bestVP9
       else:
         result = bestAVC1
+
+  # NOTE: all other selection attempts failed, final attempt with not codec filter
   if result.id == "":
-    result = streams[0]
+    result = selectVideoByBitrate(streams, "")
 
 
 proc selectAudioStream(streams: seq[Stream], id, codec: string): Stream =
@@ -727,6 +729,10 @@ proc selectAudioStream(streams: seq[Stream], id, codec: string): Stream =
   else:
     # NOTE: fallback selection
     result = selectAudioByBitrate(streams, "opus")
+
+  # NOTE: all other selection attempts failed, final attempt with not codec filter
+  if result.id == "":
+    result = selectVideoByBitrate(streams, "")
 
 
 proc newStream(stream: JsonNode, videoId: string, duration: int, segmentsUrl = ""): Stream =
@@ -948,6 +954,7 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
             playerResponse = parseJson(response)
             if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
               walkErrorMessage(playerResponse["playabilityStatus"])
+              # NOTE: all attempts failed
               if idx == 2:
                 return
             else:
@@ -1085,7 +1092,7 @@ proc grabChannel(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
     playlistIds: seq[string]
     tabIdx = 1
 
-  logDebug("channel: ", channel)
+  logDebug("channel id: ", channel)
 
   iterator gridRendererExtractor(renderer: string): string =
     let capRenderer = capitalizeAscii(renderer)
