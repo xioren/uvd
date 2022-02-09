@@ -8,6 +8,7 @@ import common
   timestamp most likely used in hash as salt ]#
 # QUESTIONS: SAPISIDHASH?
 # other url containing jwt: https://api.vimeo.com/client_configs/single_video_view?clip_id=477957994&vuid=192548912.843356162&clip_hash=2282452868&fields=presence
+# some notable query string args: bypass_privacy=1, forceembed=1
 
 #[ NOTE: profiles:
     172 = 2160p
@@ -284,7 +285,7 @@ proc extractId(vimeoUrl: string): string =
   if vimeoUrl.contains("/config"):
     result = vimeoUrl.captureBetween('/', '/', vimeoUrl.find("video/"))
   elif vimeoUrl.contains("/video/"):
-    discard vimeoUrl.parseUntil(result, '?', vimeoUrl.find("video/"))
+    discard vimeoUrl.parseUntil(result, '?', vimeoUrl.find("video/") + 6)
   else:
     discard vimeoUrl.parseUntil(result, {'?', '/'}, start=vimeoUrl.find(".com/") + 5)
 
@@ -399,6 +400,7 @@ proc grabVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
     standardVimeoUrl = baseUrl & '/' & videoId
 
   logInfo("video id: ", videoId)
+  logDebug("grabVideo called")
 
   if isUnlisted(vimeoUrl):
     unlistedHash = extractHash(vimeoUrl)
@@ -406,9 +408,9 @@ proc grabVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
 
   authorize()
   let apiResponse = getVideoData(videoId, unlistedHash)
-  if apiResponse.hasKey("config_url"):
+  if apiResponse.kind != JNull and apiResponse.hasKey("config_url"):
     configUrl = apiResponse["config_url"].getStr()
-  elif apiResponse.hasKey("embed_player_config_url"):
+  elif apiResponse.kind != JNull and apiResponse.hasKey("embed_player_config_url"):
     configUrl = apiResponse["embed_player_config_url"].getStr()
   else:
     configUrl = genericConfigUrl % videoId
@@ -517,6 +519,8 @@ proc grabProfile(vimeoUrl, aId, vId, aCodec, vCodec: string) =
     code: HttpCode
     nextUrl: string
     urls: seq[string]
+
+  logDebug("grabProfile called")
 
   let userSlug = dequery(vimeoUrl).split('/')[^1]
   authorize()
