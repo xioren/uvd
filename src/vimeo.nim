@@ -7,6 +7,7 @@ import common
   can use toUnix(getTime()) or epochTime().int
   timestamp most likely used in hash as salt ]#
 # QUESTIONS: SAPISIDHASH?
+# other url containing jwt: https://api.vimeo.com/client_configs/single_video_view?clip_id=477957994&vuid=192548912.843356162&clip_hash=2282452868&fields=presence
 
 #[ NOTE: profiles:
     172 = 2160p
@@ -27,7 +28,8 @@ const
   profileApiUrl = "https://api.vimeo.com/users/$1/profile_sections?fields=uri%2Ctitle%2CuserUri%2Curi%2C"
   videosApiUrl = "https://api.vimeo.com/users/$1/profile_sections/$2/videos?fields=video_details%2Cprofile_section_uri%2Ccolumn_width%2Cclip.uri%2Cclip.name%2Cclip.type%2Cclip.categories.name%2Cclip.categories.uri%2Cclip.config_url%2Cclip.pictures%2Cclip.height%2Cclip.width%2Cclip.duration%2Cclip.description%2Cclip.created_time%2C&page=1&per_page=10"
   videoApiUrl = "https://api.vimeo.com/videos/$1?bypass_privacy=1"
-  configUrl = "https://player.vimeo.com/video/$1/config?bypass_privacy=1"
+  videoApiUnlistedUrl = "https://api.vimeo.com/videos/$1:$2?bypass_privacy=1"
+  genericConfigUrl = "https://player.vimeo.com/video/$1/config?bypass_privacy=1"
   bypassUrl = "https://player.vimeo.com/video/$1?app_id=122963&referrer=https%3A%2F%2Fwww.patreon.com%2F"
   authorizationUrl = "https://vimeo.com/_rv/viewer"
   # detailsUrl = "https://vimeo.com/api/v2/video/$1.json"
@@ -45,6 +47,7 @@ var
 
 
 proc authorize() =
+  # QUESTION: vuid needed?
   logDebug("requesting authorization")
   let (code, response) = doGet(authorizationUrl)
   if code.is2xx:
@@ -281,9 +284,9 @@ proc extractId(vimeoUrl: string): string =
   if vimeoUrl.contains("/config"):
     result = vimeoUrl.captureBetween('/', '/', vimeoUrl.find("video/"))
   elif vimeoUrl.contains("/video/"):
-    result = vimeoUrl.captureBetween('/', '?', vimeoUrl.find("video/"))
+    discard vimeoUrl.parseUntil(result, '?', vimeoUrl.find("video/"))
   else:
-    result = vimeoUrl.captureBetween('/', '?', start=vimeoUrl.find(".com"))
+    discard vimeoUrl.parseUntil(result, {'?', '/'}, start=vimeoUrl.find(".com/") + 5)
 
 
 proc extractHash(vimeoUrl: string): string =
@@ -328,7 +331,7 @@ proc getVideoData(videoId: string, unlistedHash=""): JsonNode =
   logDebug("requesting video api json")
 
   if unlistedHash != "":
-    (code, response) = doGet(videoApiUrl % videoId & "&h=" & unlistedHash)
+    (code, response) = doGet(videoApiUnlistedUrl % [videoId, unlistedHash])
   else:
     (code, response) = doGet(videoApiUrl % videoId)
 
@@ -338,44 +341,32 @@ proc getVideoData(videoId: string, unlistedHash=""): JsonNode =
     logError("failed to obtain video api data")
 
 
-proc getPlayerConfig(videoId: string, unlistedHash=""): JsonNode =
+proc getPlayerConfig(configUrl, videoId: string): JsonNode =
   ## request player config json
   var
-    response: string
     code: HttpCode
+    response: string
   let standardVimeoUrl = baseUrl & '/' & videoId
 
   result = newJNull()
 
   logDebug("requesting player config json")
-  if unlistedHash != "":
-    logDebug("unlisted hash: ", unlistedHash)
-    (code, response) = doGet(configUrl % videoId & "&h=" & unlistedHash)
-  else:
-    (code, response) = doGet(configUrl % videoId)
+  logDebug("config url: ", configUrl)
+  (code, response) = doGet(configUrl)
 
   if code == Http403:
-    # NOTE: videos where this step was previously necessary now seem to work without it.
-    # QUESTION: can it be removed?
-    logNotice("trying signed config url")
-    (code, response) = doGet(standardVimeoUrl)
-    let signedConfigUrl = response.captureBetween('"', '"', response.find(""""config_url":""") + 13)
+    logNotice("trying embed url")
+    # HACK: use patreon embed url to get meta data
+    # QUESTION: is there a seperate bypass url for unlisted videos?
+    headers.add(("referer", "https://cdn.embedly.com/"))
+    (code, response) = doGet(bypassUrl % videoId)
+    let embedResponse = response.captureBetween(' ', ';', response.find("""config =""") + 8)
 
-    if not signedConfigUrl.contains("vimeo"):
-      logNotice("trying embed url")
-      # HACK: use patreon embed url to get meta data
-      # QUESTION: is there a seperate bypass url for unlisted videos?
-      headers.add(("referer", "https://cdn.embedly.com/"))
-      (code, response) = doGet(bypassUrl % videoId)
-      let embedResponse = response.captureBetween(' ', ';', response.find("""config =""") + 8)
-
-      if embedResponse.contains("cdn_url"):
-        response = embedResponse
-      else:
-        logError("failed to obtain player config")
-        return
+    if embedResponse.contains("cdn_url"):
+      response = embedResponse
     else:
-      (code, response) = doGet(signedConfigUrl.replace("\\"))
+      logError("failed to obtain player config")
+      return
   elif not code.is2xx:
     let configResponse = parseJson(response)
     logError(configResponse["message"].getStr().strip(chars={'"'}))
@@ -396,6 +387,7 @@ proc grabVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
     response: string
     title: string
     duration: int
+    configUrl: string
     thumbnailUrl: string
     unlistedHash: string
     defaultCDN: string
@@ -414,7 +406,13 @@ proc grabVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
 
   authorize()
   let apiResponse = getVideoData(videoId, unlistedHash)
-  let configResponse = getPlayerConfig(videoId, unlistedHash)
+  if apiResponse.hasKey("config_url"):
+    configUrl = apiResponse["config_url"].getStr()
+  elif apiResponse.hasKey("embed_player_config_url"):
+    configUrl = apiResponse["embed_player_config_url"].getStr()
+  else:
+    configUrl = genericConfigUrl % videoId
+  let configResponse = getPlayerConfig(configUrl, videoId)
 
   if apiResponse.kind != JNull:
     title = apiResponse["name"].getStr()
