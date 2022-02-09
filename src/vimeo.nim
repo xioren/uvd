@@ -349,6 +349,7 @@ proc getPlayerConfig(videoId: string, unlistedHash=""): JsonNode =
 
   logDebug("requesting player config json")
   if unlistedHash != "":
+  logDebug("unlisted hash: ", unlistedHash)
     (code, response) = doGet(configUrl % videoId & "&h=" & unlistedHash)
   else:
     (code, response) = doGet(configUrl % videoId)
