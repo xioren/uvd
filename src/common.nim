@@ -347,8 +347,6 @@ proc displayStreams*(streams: seq[Stream]) =
     totalWidth.inc(column.width)
 
   echo columnDivider.repeat(totalWidth + headers.len.pred)
-  let test = columnDivider.repeat(totalWidth + headers.len.pred)
-  echo test.len
 
   # NOTE: write stream data
   for stream in streams:
