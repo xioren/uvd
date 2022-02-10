@@ -38,7 +38,7 @@ options:
 ```
 
 #### USAGE NOTES:
-  + requires ssl compile with: ```nim c -d:ssl -d:release uvd.nim```
+  + to compile: ```nim c -d:ssl -d:release uvd.nim```
   + a country (ISO) code is given as the argument to --language to select
   the desired language output of the subtitles; forgoing this option selects the default
   subtitle language for a given video. for youtube, if the desired language
