@@ -278,6 +278,7 @@ proc extractProfileIds(vimeoUrl: string): tuple[profileId, sectionId: string] =
     let parts = profileResponse["data"][0]["uri"].getStr().split('/')
     result = (parts[2], parts[^1])
   else:
+    logError(code)
     logError("failed to obtain profile metadata")
 
 
@@ -544,8 +545,6 @@ proc grabProfile(vimeoUrl, aId, vId, aCodec, vCodec: string) =
     (code, response) = doGet(nextUrl)
     if code.is2xx:
       profileResponse = parseJson(response)
-      #[ QUESTION: should this be config url now that api url is used to obtain streams
-        as well? should we just pass the base vimeo url instead? ]#
       for video in profileResponse["data"]:
         urls.add(playerUrl & video["clip"]["uri"].getStr())
       nextUrl = apiUrl & profileResponse["paging"]["next"].getStr()
