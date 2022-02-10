@@ -58,7 +58,7 @@ var
   currentSegment, totalSegments: int
   # HACK: a not ideal solution to prevent erroneosly clearing terminal when no progress was made (e.g. 403 forbidden)
   madeProgress: bool
-  headers* = @[("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.45 Safari/537.36"),
+  headers* = @[("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.87 Safari/537.36"),
                ("accept", "*/*")]
 
 proc doGet*(url: string): tuple[httpcode: HttpCode, body: string]
@@ -414,9 +414,9 @@ proc streamToMkv*(stream, filename, subtitlesLanguage: string, includeSubtitles:
   var command: string
 
   if includeSubtitles:
-    command = fmt"ffmpeg -y -i {stream} -i subtitles.srt -metadata:s:s:0 language={quoteShell(subtitlesLanguage)} -c copy {quoteShell(filename)} > /dev/null 2>&1"
+    command = fmt"ffmpeg -y -loglevel panic -i {stream} -i subtitles.srt -metadata:s:s:0 language={quoteShell(subtitlesLanguage)} -c copy {quoteShell(filename)}"
   else:
-    command = fmt"ffmpeg -y -i {stream} -c copy {quoteShell(filename)} > /dev/null 2>&1"
+    command = fmt"ffmpeg -y -loglevel panic -i {stream} -c copy {quoteShell(filename)}"
 
   if execShellCmd(command) == 0:
     removeFile(stream)
@@ -433,9 +433,9 @@ proc streamsToMkv*(videoStream, audioStream, filename, subtitlesLanguage: string
   var command: string
 
   if includeSubtitles:
-    command = fmt"ffmpeg -y -i {videoStream} -i {audioStream} -i subtitles.srt -metadata:s:s:0 language={quoteShell(subtitlesLanguage)} -c copy {quoteShell(filename)} > /dev/null 2>&1"
+    command = fmt"ffmpeg -y -loglevel panic -i {videoStream} -i {audioStream} -i subtitles.srt -metadata:s:s:0 language={quoteShell(subtitlesLanguage)} -c copy {quoteShell(filename)}"
   else:
-    command = fmt"ffmpeg -y -i {videoStream} -i {audioStream} -c copy {quoteShell(filename)} > /dev/null 2>&1"
+    command = fmt"ffmpeg -y -loglevel panic -i {videoStream} -i {audioStream} -c copy {quoteShell(filename)}"
 
   if execShellCmd(command) == 0:
     removeFile(videoStream)
@@ -455,9 +455,9 @@ proc convertAudio*(audioStream, filename, format: string) =
   if not audioStream.endsWith(format):
     logInfo("converting stream: ", audioStream)
     if format == "ogg" and audioStream.endsWith(".weba"):
-      returnCode = execShellCmd(fmt"ffmpeg -y -i {audioStream} -codec:a copy {quoteShell(fullFilename)} > /dev/null 2>&1")
+      returnCode = execShellCmd(fmt"ffmpeg -y -loglevel panic -i {audioStream} -codec:a copy {quoteShell(fullFilename)}")
     else:
-      returnCode = execShellCmd(fmt"ffmpeg -y -i {audioStream} -codec:a {audioCodecs[format]} {codecOptions[format]} {quoteShell(fullFilename)} > /dev/null 2>&1")
+      returnCode = execShellCmd(fmt"ffmpeg -y -loglevel panic -i {audioStream} -codec:a {audioCodecs[format]} {codecOptions[format]} {quoteShell(fullFilename)}")
   else:
     moveFile(audioStream, fullFilename)
 
