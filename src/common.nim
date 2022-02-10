@@ -340,13 +340,15 @@ proc displayStreams*(streams: seq[Stream]) =
   # NOTE: write headers
   for idx, column in headers:
     if idx < headers.high:
-      stdout.styledWrite(fgMagenta, column.title.center(column.width))
+      stdout.styledWrite(fgCyan, column.title.center(column.width))
       stdout.write(columnSeparator)
     else:
-      stdout.styledWriteLine(fgMagenta, column.title.center(column.width))
+      stdout.styledWriteLine(fgCyan, column.title.center(column.width))
     totalWidth.inc(column.width)
 
   echo columnDivider.repeat(totalWidth + headers.len.pred)
+  let test = columnDivider.repeat(totalWidth + headers.len.pred)
+  echo test.len
 
   # NOTE: write stream data
   for stream in streams:
@@ -497,6 +499,7 @@ proc download(url, filepath: string): Future[HttpCode] {.async.} =
   let client = newAsyncHttpClient(headers=newHttpHeaders(headers))
   var file = openasync(filepath, fmWrite)
   client.onProgressChanged = onProgressChanged
+  logDebug("file opened at: ", filepath)
 
   try:
     let resp = await client.request(url)
@@ -518,6 +521,7 @@ proc download(parts: seq[string], filepath: string): Future[HttpCode] {.async.} 
   let client = newAsyncHttpClient(headers=newHttpHeaders(headers))
   var file = openasync(filepath, fmWrite)
   client.onProgressChanged = onProgressChangedMulti
+  logDebug("file opened at: ", filepath)
 
   try:
     for url in parts:
