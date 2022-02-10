@@ -2,8 +2,8 @@
 
 
 + fast downloader for youtube and vimeo
++ zero regex
 + requires ffmpeg
-+ *nix only
 
 
 *youtube:*
