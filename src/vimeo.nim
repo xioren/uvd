@@ -25,6 +25,7 @@ import common
 
 const
   baseUrl = "https://vimeo.com"
+  playerUrl = "https://player.vimeo.com"
   apiUrl = "https://api.vimeo.com"
   profileApiUrl = "https://api.vimeo.com/users/$1/profile_sections?fields=uri%2Ctitle%2CuserUri%2Curi%2C"
   videosApiUrl = "https://api.vimeo.com/users/$1/profile_sections/$2/videos?fields=video_details%2Cprofile_section_uri%2Ccolumn_width%2Cclip.uri%2Cclip.name%2Cclip.type%2Cclip.categories.name%2Cclip.categories.uri%2Cclip.config_url%2Cclip.pictures%2Cclip.height%2Cclip.width%2Cclip.duration%2Cclip.description%2Cclip.created_time%2C&page=1&per_page=10"
@@ -284,8 +285,8 @@ proc extractId(vimeoUrl: string): string =
   ## extract video/profile id from url
   if vimeoUrl.contains("/config"):
     result = vimeoUrl.captureBetween('/', '/', vimeoUrl.find("video/"))
-  elif vimeoUrl.contains("/video/"):
-    discard vimeoUrl.parseUntil(result, '?', vimeoUrl.find("video/") + 6)
+  elif vimeoUrl.contains("/video"):
+    discard vimeoUrl.parseUntil(result, '?', vimeoUrl.find("video") + 7)
   else:
     discard vimeoUrl.parseUntil(result, {'?', '/'}, start=vimeoUrl.find(".com/") + 5)
 
@@ -304,8 +305,8 @@ proc isUnlisted(vimeoUrl: string): bool =
     result = true
   else:
     var slug: string
-    if vimeoUrl.contains("/video/"):
-      slug = vimeoUrl.captureBetween('/', '?', vimeoUrl.find("video/"))
+    if vimeoUrl.contains("/video"):
+      slug = vimeoUrl.captureBetween('/', '?', vimeoUrl.find("/video").succ)
     else:
       slug = vimeoUrl.captureBetween('/', '?', vimeoUrl.find(".com/"))
     if slug.count('/') > 0:
@@ -330,21 +331,25 @@ proc getBestThumb(thumbs: JsonNode): string =
 proc getVideoData(videoId: string, unlistedHash=""): JsonNode =
   ## request video api data json
   var
-    response: string
     code: HttpCode
+    response: string
+    apiUrl: string
 
   result = newJNull()
 
-  logDebug("requesting video api json")
-
   if unlistedHash != "":
-    (code, response) = doGet(videoApiUnlistedUrl % [videoId, unlistedHash])
+    apiUrl = videoApiUnlistedUrl % [videoId, unlistedHash]
   else:
-    (code, response) = doGet(videoApiUrl % videoId)
+    apiUrl = videoApiUrl % videoId
+
+  logDebug("requesting video api json")
+  logDebug("api url: ", apiUrl)
+  (code, response) = doGet(apiUrl)
 
   if code.is2xx:
     result = parseJson(response)
   else:
+    logError(code)
     logError("failed to obtain video api data")
 
 
@@ -362,6 +367,7 @@ proc getPlayerConfig(configUrl, videoId: string): JsonNode =
   (code, response) = doGet(configUrl)
 
   if code == Http403:
+    logError(code)
     logNotice("trying embed url")
     # HACK: use patreon embed url to get meta data
     # QUESTION: is there a seperate bypass url for unlisted videos?
@@ -370,17 +376,16 @@ proc getPlayerConfig(configUrl, videoId: string): JsonNode =
     let embedResponse = response.captureBetween(' ', ';', response.find("""config =""") + 8)
 
     if embedResponse.contains("cdn_url"):
-      response = embedResponse
+      result = parseJson(embedResponse)
     else:
       logError("failed to obtain player config")
-      return
   elif not code.is2xx:
-    let configResponse = parseJson(response)
-    logError(configResponse["message"].getStr().strip(chars={'"'}))
+    # let configResponse = parseJson(response)
+    logError(code)
+    # logError(configResponse["message"].getStr().strip(chars={'"'}))
     logError("failed to obtain player config")
-    return
-
-  result = parseJson(response)
+  else:
+    result = parseJson(response)
 
 
 ########################################################
@@ -412,7 +417,6 @@ proc grabVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
     unlistedHash = extractHash(vimeoUrl)
     logDebug("unlisted hash: ", unlistedHash)
 
-  authorize()
   let apiResponse = getVideoData(videoId, unlistedHash)
   if apiResponse.kind != JNull and apiResponse.hasKey("config_url"):
     configUrl = apiResponse["config_url"].getStr()
@@ -529,7 +533,6 @@ proc grabProfile(vimeoUrl, aId, vId, aCodec, vCodec: string) =
   logDebug("grabProfile called")
 
   let userSlug = dequery(vimeoUrl).split('/')[^1]
-  authorize()
   let (userId, sectionId) = extractProfileIds(profileApiUrl % userSlug)
   nextUrl = videosApiUrl % [userId, sectionId]
 
@@ -544,9 +547,10 @@ proc grabProfile(vimeoUrl, aId, vId, aCodec, vCodec: string) =
       #[ QUESTION: should this be config url now that api url is used to obtain streams
         as well? should we just pass the base vimeo url instead? ]#
       for video in profileResponse["data"]:
-        urls.add(video["clip"]["config_url"].getStr())
+        urls.add(playerUrl & video["clip"]["uri"].getStr())
       nextUrl = apiUrl & profileResponse["paging"]["next"].getStr()
     else:
+      logError(code)
       logError("failed to obtain profile metadata")
       return
 
@@ -572,6 +576,7 @@ proc vimeoDownload*(vimeoUrl, aFormat, aId, vId, aCodec, vCodec, sLang: string,
     globalLogLevel = lvlNone
 
   logGeneric(lvlInfo, "uvd", "vimeo")
+  authorize()
   if extractId(vimeoUrl).all(isDigit):
     grabVideo(vimeoUrl, aId, vId, aCodec, vCodec)
   else:
