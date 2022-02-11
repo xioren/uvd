@@ -414,11 +414,11 @@ iterator splitThrottleArray(js: string): string =
   else:
     discard js.parseUntil(code, "];c[", js.find(",c=[") + 4)
 
+  #[ NOTE: commas separate function arguments and functions themselves.
+  only yield if the comma is separating two functions in the base scope
+  and not function arguments or child functions.
+  ]#
   for idx, c in code:
-    #[ NOTE: commas separate function arguments and functions themselves.
-      only yield if the comma is separating two functions in the base scope
-      and not function arguments or child functions.
-    ]#
     if (c == ',' and scope == 0 and '{' notin code[idx..min(idx + 5, code.high)]) or idx == code.high:
       if idx == code.high:
         step.add(c)
@@ -841,6 +841,9 @@ proc parseBaseJS() =
     let throttleCode = extractThrottleCode(extractThrottleFunctionName(response), response)
     throttlePlan = parseThrottlePlan(throttleCode)
     throttleArray = parseThrottleArray(throttleCode)
+  else:
+    logDebug(code)
+    logError("failed to obtain base.js")
 
 
 proc isolateVideoId(youtubeUrl: string): string =
@@ -915,6 +918,7 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
     videoStreams: seq[Stream]
 
   logInfo("video id: ", videoId)
+  logDebug("video url: ", standardYoutubeUrl)
 
   # NOTE: make initial request to get base.js version, timestamp, and api locale
   logDebug("requesting webpage")
@@ -927,6 +931,9 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
     if thisBaseJsVersion != globalBaseJsVersion:
       globalBaseJsVersion = thisBaseJsVersion
       parseBaseJS()
+    logDebug("api locale: ", apiLocale)
+    logDebug("sig timestamp: ", sigTimeStamp)
+    logDebug("base.js version: ", globalBaseJsVersion)
     logDebug("requesting player")
     (code, response) = doPost(playerUrl, playerContext % [videoId, sigTimeStamp, date])
     if code.is2xx:
@@ -1017,6 +1024,7 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
           else:
             attempt = grab(download.videoStream.url, download.videoStream.filename, overwrite=true)
           if not attempt.is2xx:
+            logDebug(attempt)
             logError("failed to download video stream")
             includeVideo = false
             # NOTE: remove empty file
@@ -1029,6 +1037,7 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
           else:
             attempt = grab(download.audioStream.url, download.audioStream.filename, overwrite=true)
           if not attempt.is2xx:
+            logDebug(attempt)
             logError("failed to download audio stream")
             includeAudio = false
             # NOTE: remove empty file
@@ -1046,10 +1055,10 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
         else:
           logError("no streams were downloaded")
     else:
-      logError(code)
+      logDebug(code)
       logError(videoMetadataFailureMessage)
   else:
-    logError(code)
+    logDebug(code)
     logError(videoMetadataFailureMessage)
 
 
@@ -1077,7 +1086,7 @@ proc grabPlaylist(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
         logGeneric(lvlInfo, "download", idx.succ, " of ", videoIds.len)
         grabVideo(watchUrl & id, aItag, vItag, aCodec, vCodec)
   else:
-    logError(code)
+    logDebug(code)
     logError(playlistMetadataFailureMessage)
 
 
@@ -1119,6 +1128,7 @@ proc grabChannel(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
                 else:
                   lastToken = thisToken
               else:
+                logDebug(code)
                 logError(channelMetadataFailureMessage)
           else:
             yield item["grid" & capRenderer & "Renderer"][renderer & "Id"].getStr()
@@ -1132,6 +1142,9 @@ proc grabChannel(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
       for id in gridRendererExtractor("video"):
         videoIds.add(id)
       inc tabIdx
+    else:
+      logDebug("no videos tab found")
+      logError(channelMetadataFailureMessage)
 
     if title.endsWith(" - Topic"):
       # NOTE: for now only get playlists for topic channels (youtube music)
@@ -1158,16 +1171,19 @@ proc grabChannel(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
                   for item in section["itemSectionRenderer"]["contents"][0]["shelfRenderer"]["content"]["horizontalListRenderer"]["items"]:
                     playlistIds.add(item["gridPlaylistRenderer"]["playlistId"].getStr())
                 else:
+                  logDebug("no expandedShelfContentsRenderer or horizontalListRenderer found")
                   logError(channelMetadataFailureMessage)
               else:
+                logDebug("no gridRenderer or shelfRenderer found")
                 logError(channelMetadataFailureMessage)
         else:
+          logDebug("no playlist tab found")
           logError(channelMetadataFailureMessage)
       else:
-        logError(code)
+        logDebug(code)
         logError(channelMetadataFailureMessage)
   else:
-    logError(code)
+    logDebug(code)
     logError(channelMetadataFailureMessage)
 
   logInfo(videoIds.len, " videos queued")

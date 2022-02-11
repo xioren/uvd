@@ -246,7 +246,7 @@ proc newDownload(streams: seq[Stream], title, vimeoUrl, thumbnailUrl, videoId, a
 
   if includeVideo:
     result.videoStream = selectVideoStream(streams, vId, vCodec)
-  if includeAudio and result.videoStream.format != "progressive":
+  if includeAudio and result.videoStream.kind != "combined":
     result.audioStream = selectAudioStream(streams, aId, aCodec)
 
 
@@ -278,7 +278,7 @@ proc extractProfileIds(vimeoUrl: string): tuple[profileId, sectionId: string] =
     let parts = profileResponse["data"][0]["uri"].getStr().split('/')
     result = (parts[2], parts[^1])
   else:
-    logError(code)
+    logDebug(code)
     logError("failed to obtain profile metadata")
 
 
@@ -350,7 +350,7 @@ proc getVideoData(videoId: string, unlistedHash=""): JsonNode =
   if code.is2xx:
     result = parseJson(response)
   else:
-    logError(code)
+    logDebug(code)
     logError("failed to obtain video api data")
 
 
@@ -368,7 +368,7 @@ proc getPlayerConfig(configUrl, videoId: string): JsonNode =
   (code, response) = doGet(configUrl)
 
   if code == Http403:
-    logError(code)
+    logDebug(code)
     logNotice("trying embed url")
     # HACK: use patreon embed url to get meta data
     # QUESTION: is there a seperate bypass url for unlisted videos?
@@ -382,7 +382,7 @@ proc getPlayerConfig(configUrl, videoId: string): JsonNode =
       logError("failed to obtain player config")
   elif not code.is2xx:
     # let configResponse = parseJson(response)
-    logError(code)
+    logDebug(code)
     # logError(configResponse["message"].getStr().strip(chars={'"'}))
     logError("failed to obtain player config")
   else:
@@ -549,7 +549,7 @@ proc grabProfile(vimeoUrl, aId, vId, aCodec, vCodec: string) =
         urls.add(playerUrl & video["clip"]["uri"].getStr())
       nextUrl = apiUrl & profileResponse["paging"]["next"].getStr()
     else:
-      logError(code)
+      logDebug(code)
       logError("failed to obtain profile metadata")
       return
 
