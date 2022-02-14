@@ -931,9 +931,7 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
     if thisBaseJsVersion != globalBaseJsVersion:
       globalBaseJsVersion = thisBaseJsVersion
       parseBaseJS()
-    logDebug("api locale: ", apiLocale)
-    logDebug("sig timestamp: ", sigTimeStamp)
-    logDebug("base.js version: ", globalBaseJsVersion)
+
     logDebug("requesting player")
     (code, response) = doPost(playerUrl, playerContext % [videoId, sigTimeStamp, date])
     if code.is2xx:
