@@ -174,8 +174,7 @@ var
 ########################################################
 # authentication (wip)
 ########################################################
-
-
+# QUESTION: is psid used as well?
 # proc creatAuthenticationCookie(): string =
 #   const xOrigin = "https://www.youtube.com"
 #   let
@@ -198,7 +197,6 @@ proc formatTime(time: string): string =
   else:
     # NOTE: int seconds
     parts = @[time, "000"]
-
 
   let td = initDuration(seconds=parseInt(parts[0]), milliseconds=parseInt(&"""{parts[1]:.3}""")).toParts()
   result = ($td[Hours]).align(2, '0') & ':' & ($td[Minutes]).align(2, '0') & ':' & ($td[Seconds]).align(2, '0') & ',' & ($td[Milliseconds]).align(3, '0')
@@ -229,7 +227,7 @@ proc asrToSrt(xml: string): string =
     endPoint = $(parseFloat(startPoint) + parseFloat(duration))
 
     if idx < splitEntries.high.pred:
-      #[ NOTE: choose min between enpoint of current text and startpoint of next text to eliminate crowding
+      #[ NOTE: choose min between endpoint of current text and startpoint of next text to eliminate crowding
         i.e. only one subtitle entry on screen at a time ]#
       nextStartPoint = splitEntries[idx.succ].captureBetween('"', '"')
       result.add(formatTime(startPoint) & " --> " & formatTime($min(parseFloat(endPoint), parseFloat(nextStartPoint))) & '\n')
@@ -277,6 +275,7 @@ proc generateSubtitles(captions: JsonNode) =
   if captionTrack.kind != JNull:
     var captionTrackUrl = captionTrack["baseUrl"].getStr()
     if doTranslate:
+      logDebug("adding translation language to url: ", subtitlesLanguage)
       captionTrackUrl.add("&tlang=" & subtitlesLanguage)
     logDebug("requesting captions")
     let (code, response) = doGet(captionTrackUrl)
@@ -308,7 +307,7 @@ proc extractDashInfo(dashEntry: string): tuple[itag, resolution, fps, codecs: st
 
 proc extractDashEntry(dashManifestUrl, id: string): string =
   ## parse specific itag's dash entry from xml
-  logDebug("requesting dash manifest")
+  logDebug("extracting $1 dash entry" % id)
   let (_, xml) = doGet(dashManifestUrl)
   discard xml.parseUntil(result, "</Representation>", xml.find("""<Representation id="$1""" % id))
 
@@ -556,17 +555,6 @@ proc getParts(cipherSignature: string): tuple[url, sc, s: string] =
   result = (decodeUrl(parts[2].split('=')[1]), parts[1].split('=')[1], decodeUrl(parts[0].split('=')[1]))
 
 
-proc extractFunctionPlan(js: string): seq[string] =
-  ## get the scramble functions
-  ## returns: @["ix.Nh(a,2)", "ix.ai(a,5)"...]
-
-  #[ NOTE: matches vy=function(a){a=a.split("");uy.bH(a,3);uy.Fg(a,7);uy.Fg(a,50);
-    uy.S6(a,71);uy.bH(a,2);uy.S6(a,80);uy.Fg(a,38);return a.join("")}; ]#
-  var functions: string
-  discard js.parseUntil(functions, ";return", js.find("""=function(a){a=a.split("");""") + 27)
-  result = functions.split(';')
-
-
 proc extractParentFunctionName(jsFunction: string): string =
   ## get the name of the function containing the scramble functions
   ## ix.Nh(a,2) --> ix
@@ -589,7 +577,18 @@ proc extractIndex(jsFunction: string): int =
     result = parseInt(jsFunction.captureBetween('[', ']', jsFunction.find("var")))
 
 
-proc createFunctionMap(js, mainFunc: string): Table[string, string] =
+proc extractCipherPlan(js: string): seq[string] =
+  ## get the scramble functions
+  ## returns: @["ix.Nh(a,2)", "ix.ai(a,5)"...]
+
+  #[ NOTE: matches vy=function(a){a=a.split("");uy.bH(a,3);uy.Fg(a,7);uy.Fg(a,50);
+    uy.S6(a,71);uy.bH(a,2);uy.S6(a,80);uy.Fg(a,38);return a.join("")}; ]#
+  var functions: string
+  discard js.parseUntil(functions, ";return", js.find("""=function(a){a=a.split("");""") + 27)
+  result = functions.split(';')
+
+
+proc createCipherMap(js, mainFunc: string): Table[string, string] =
   ## map functions to corresponding function names
   ## {"wW": "function(a){a.reverse()}", "Nh": "function(a,b){a.splice(0,b)}"...}
   var code: string
@@ -703,7 +702,7 @@ proc selectVideoStream(streams: seq[Stream], id, codec: string): Stream =
       else:
         result = bestAVC1
 
-  # NOTE: all other selection attempts failed, final attempt with not codec filter
+  # NOTE: all other selection attempts failed, final attempt with no codec filter
   if result.id == "":
     result = selectVideoByBitrate(streams, "")
 
@@ -712,12 +711,12 @@ proc selectAudioStream(streams: seq[Stream], id, codec: string): Stream =
   #[ NOTE: in tests, it seems youtube videos "without audio" still contain empty
     audio streams; furthermore aac streams seem to have a minimum bitrate as "empty"
     streams still have non trivial bitrate and filesizes.
-  + "audio-less" video: https://www.youtube.com/watch?v=fW2e0CZjnFM
-  + prefer opus
-  + the majority of (all?) the time there are 4 audio streams:
-    - itag 140 --> m4a
-    - itag 251 --> opus
-    + two low quality options (1 m4a and 1 opus) ]#
+    + "audio-less" video: https://www.youtube.com/watch?v=fW2e0CZjnFM
+    + prefer opus
+    + the majority of (all?) the time there are 4 audio streams:
+      - itag 140 --> m4a
+      - itag 251 --> opus
+      - two low quality options (usually 1 m4a and 1 opus) ]#
   if id != "":
     # NOTE: select by user itag choice
     for stream in streams:
@@ -730,7 +729,7 @@ proc selectAudioStream(streams: seq[Stream], id, codec: string): Stream =
     # NOTE: fallback selection
     result = selectAudioByBitrate(streams, "opus")
 
-  # NOTE: all other selection attempts failed, final attempt with not codec filter
+  # NOTE: all other selection attempts failed, final attempt with no codec filter
   if result.id == "":
     result = selectVideoByBitrate(streams, "")
 
@@ -770,7 +769,8 @@ proc newStream(stream: JsonNode, videoId: string, duration: int, segmentsUrl = "
       result.size = int(result.bitrate * duration / 8)
     result.sizeShort = formatSize(result.size, includeSpace=true)
     # IDEA: could also use contentLength?
-    if (stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF") or (not stream.hasKey("averageBitrate") and segmentsUrl != ""):
+    if (stream.hasKey("type") and stream["type"].getStr() == "FORMAT_STREAM_TYPE_OTF") or
+       (not stream.hasKey("averageBitrate") and segmentsUrl != ""):
       result.format = "dash"
     else:
       result.format = "progressive"
@@ -781,7 +781,7 @@ proc newStream(stream: JsonNode, videoId: string, duration: int, segmentsUrl = "
       result.url = stream["signatureCipher"].getStr()
 
     result.duration = duration
-    result.filename = addFileExt(videoId & "-" & result.kind, result.ext)
+    result.filename = addFileExt(videoId & "-" & result.id, result.ext)
     result.exists = true
 
 
@@ -818,7 +818,7 @@ proc reportStreamInfo(stream: Stream) =
   logInfo("quality: ", stream.quality)
   logInfo("mime: ", stream.mime)
   logInfo("codec: ", stream.codec)
-  if stream.format == "dash":
+  if stream.format != "progressive":
     logInfo("segments: ", stream.urlSegments.len)
 
 
@@ -835,8 +835,10 @@ proc parseBaseJS() =
   let (code, response) = doGet(baseJsUrl % [globalBaseJsVersion, apiLocale])
   if code.is2xx:
     # NOTE: cipher code
-    cipherPlan = extractFunctionPlan(response)
-    cipherFunctionMap = createFunctionMap(response, extractParentFunctionName(cipherPlan[0]))
+    #[ IDEA: extract relavent code first then parse that, like throttle code instead
+      of parsing the entire response twice ]#
+    cipherPlan = extractCipherPlan(response)
+    cipherFunctionMap = createCipherMap(response, extractParentFunctionName(cipherPlan[0]))
     # NOTE: throttle code
     let throttleCode = extractThrottleCode(extractThrottleFunctionName(response), response)
     throttlePlan = parseThrottlePlan(throttleCode)

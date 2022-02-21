@@ -6,9 +6,9 @@ import common
   timestamp == unix time
   can use toUnix(getTime()) or epochTime().int
   timestamp most likely used in hash as salt ]#
-# QUESTIONS: SAPISIDHASH?
-# other url containing jwt: https://api.vimeo.com/client_configs/single_video_view?clip_id=477957994&vuid=192548912.843356162&clip_hash=2282452868&fields=presence
-# some notable query string args: bypass_privacy=1, force_embed=1
+# QUESTION: SAPISIDHASH?
+# NOTE: other url containing jwt: https://api.vimeo.com/client_configs/single_video_view?clip_id=477957994&vuid=192548912.843356162&clip_hash=2282452868&fields=presence
+# NOTE: some notable query string args: bypass_privacy=1, force_embed=1
 
 #[ NOTE: profiles:
     172 = 2160p
@@ -220,7 +220,7 @@ proc newStream(stream: JsonNode, videoId: string, duration: int, cdnUrl=""): Str
     else:
       result.format = "dash"
     result.duration = duration
-    result.filename = addFileExt(videoId & "-" & result.kind, result.ext)
+    result.filename = addFileExt(videoId & "-" & result.id, result.ext)
 
     if stream.hasKey("segments"):
       for segment in stream["segments"]:
@@ -440,7 +440,7 @@ proc grabVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
       duration = configResponse["video"]["duration"].getInt()
     if thumbnailUrl == "":
       thumbnailUrl = getBestThumb(configResponse["video"]["thumbs"])
-    # NOTE: progressive streams have barely any meta data associated with them --> skip
+    # NOTE: progressive streams have sparse meta data associated with them --> skip
     # for stream in configResponse["request"]["files"]["progressive"]:
     #   videoStreams.add(stream, videoId, duration)
 
@@ -450,11 +450,24 @@ proc grabVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
     logDebug("CDN url: ", cdnUrl)
     logDebug("requesting CDN json")
     (code, response) = doGet(cdnUrl.dequery())
-    let cdnResponse = parseJson(response)
-    for stream in cdnResponse["video"]:
-      videoStreams.add(newStream(stream, videoId, duration, cdnUrl))
-    for stream in cdnResponse["audio"]:
-      audioStreams.add(newStream(stream, videoId, duration, cdnUrl))
+    if code.is2xx:
+      let cdnResponse = parseJson(response)
+      if cdnResponse["video"].kind != JNull:
+        for stream in cdnResponse["video"]:
+          videoStreams.add(newStream(stream, videoId, duration, cdnUrl))
+      elif includeVideo:
+        logDebug("no video streams present in cdn response")
+        includeVideo = false
+      if cdnResponse["audio"].kind != JNull:
+        for stream in cdnResponse["audio"]:
+          audioStreams.add(newStream(stream, videoId, duration, cdnUrl))
+      elif includeAudio:
+        logDebug("no audio streams present in cdn response")
+        includeAudio = false
+    else:
+      logDebug(code)
+      logError("failed to obtain cdn json")
+      return
   else:
     logError("failed to obtain video metadata")
     return
@@ -465,62 +478,62 @@ proc grabVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
     safeTitle = makeSafe(title)
     fullFilename = addFileExt(safeTitle & " [" & videoId & ']', ".mkv")
 
-  if fileExists(fullFilename) and not showStreams:
-    logError("file exists: ", safeTitle)
-  else:
-    if showStreams:
-      displayStreams(allStreams)
-      return
+  if showStreams:
+    displayStreams(allStreams)
+    return
+  if fileExists(fullFilename):
+    logError("file exists: ", fullFilename)
+    return
 
-    let download = newDownload(allStreams, title, standardVimeoUrl, thumbnailUrl, videoId, aId, vId, aCodec, vCodec)
-    logInfo("title: ", download.title)
+  let download = newDownload(allStreams, title, standardVimeoUrl, thumbnailUrl, videoId, aId, vId, aCodec, vCodec)
+  logInfo("title: ", download.title)
 
-    if includeThumb and thumbnailUrl != "":
-      if not grab(download.thumbnailUrl, fullFilename.changeFileExt("jpeg"), overwrite=true).is2xx:
-        logError("failed to download thumbnail")
+  if includeThumb and thumbnailUrl != "":
+    if not grab(download.thumbnailUrl, fullFilename.changeFileExt("jpeg"), overwrite=true).is2xx:
+      logError("failed to download thumbnail")
 
-    if includeSubtitles:
-      if configResponse["request"].hasKey("text_tracks"):
-        generateSubtitles(configResponse["request"]["text_tracks"])
-      else:
-        includeSubtitles = false
-        logError("video does not contain subtitles")
-
-    var attempt: HttpCode
-    if includeVideo:
-      reportStreamInfo(download.videoStream)
-      if download.videoStream.format == "dash":
-        attempt = grab(download.videoStream.urlSegments, download.videoStream.filename, overwrite=true)
-      else:
-        attempt = grab(download.videoStream.url, download.videoStream.filename, overwrite=true)
-      if not attempt.is2xx:
-        logError("failed to download video stream")
-        includeVideo = false
-        # NOTE: remove empty file
-        discard tryRemoveFile(download.videoStream.filename)
-
-    if includeAudio and download.audioStream.exists:
-      reportStreamInfo(download.audioStream)
-      if download.audioStream.format == "dash":
-        attempt = grab(download.audioStream.urlSegments, download.audioStream.filename, overwrite=true)
-      else:
-        attempt = grab(download.audioStream.url, download.audioStream.filename, overwrite=true)
-      if not attempt.is2xx:
-        logError("failed to download audio stream")
-        includeAudio = false
-        # NOTE: remove empty file
-        discard tryRemoveFile(download.audioStream.filename)
+  if includeSubtitles:
+    if configResponse["request"].hasKey("text_tracks"):
+      generateSubtitles(configResponse["request"]["text_tracks"])
     else:
+      includeSubtitles = false
+      logError("video does not contain subtitles")
+
+  var attempt: HttpCode
+  if includeVideo:
+    reportStreamInfo(download.videoStream)
+    if download.videoStream.format == "dash":
+      attempt = grab(download.videoStream.urlSegments, download.videoStream.filename, overwrite=true)
+    else:
+      attempt = grab(download.videoStream.url, download.videoStream.filename, overwrite=true)
+    if not attempt.is2xx:
+      logError("failed to download video stream")
+      includeVideo = false
+      # NOTE: remove empty file
+      discard tryRemoveFile(download.videoStream.filename)
+
+  if includeAudio and download.audioStream.exists:
+    reportStreamInfo(download.audioStream)
+    if download.audioStream.format == "dash":
+      attempt = grab(download.audioStream.urlSegments, download.audioStream.filename, overwrite=true)
+    else:
+      attempt = grab(download.audioStream.url, download.audioStream.filename, overwrite=true)
+    if not attempt.is2xx:
+      logError("failed to download audio stream")
       includeAudio = false
+      # NOTE: remove empty file
+      discard tryRemoveFile(download.audioStream.filename)
+  else:
+    includeAudio = false
 
-    if includeAudio and includeVideo:
-      streamsToMkv(download.videoStream.filename, download.audioStream.filename, fullFilename, subtitlesLanguage, includeSubtitles)
-    elif includeAudio and not includeVideo:
-      convertAudio(download.audioStream.filename, safeTitle & " [" & videoId & ']', audioFormat)
-    elif includeVideo:
-      streamToMkv(download.videoStream.filename, fullFilename, subtitlesLanguage, includeSubtitles)
-    else:
-      logError("no streams were downloaded")
+  if includeAudio and includeVideo:
+    streamsToMkv(download.videoStream.filename, download.audioStream.filename, fullFilename, subtitlesLanguage, includeSubtitles)
+  elif includeAudio and not includeVideo:
+    convertAudio(download.audioStream.filename, safeTitle & " [" & videoId & ']', audioFormat)
+  elif includeVideo:
+    streamToMkv(download.videoStream.filename, fullFilename, subtitlesLanguage, includeSubtitles)
+  else:
+    logError("no streams were downloaded")
 
 
 proc grabProfile(vimeoUrl, aId, vId, aCodec, vCodec: string) =
