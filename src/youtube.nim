@@ -50,7 +50,7 @@ const
     "context": {
       "client": {
         "hl": "en",
-        "clientName": "WEB_EMBEDDED_PLAYER",
+        "clientName": "WEB",
         "clientVersion": "2.$3.00.00",
         "clientScreen": "EMBED"
       }
@@ -68,28 +68,7 @@ const
     "context": {
       "client": {
         "hl": "en",
-        "clientName": "WEB_EMBEDDED_PLAYER",
-        "clientVersion": "2.$3.00.00",
-        "clientScreen": "EMBED"
-        },
-      "thirdParty": {
-        "embedUrl": "https://google.com"
-      }
-    },
-    "playbackContext": {
-      "contentPlaybackContext": {
-        "signatureTimestamp": $2
-      }
-    },
-    "contentCheckOk": true,
-    "racyCheckOk": true,
-    "videoId": "$1"
-  }"""
-  playerBypassContextTierLastResort = """{
-    "context": {
-      "client": {
-        "hl": "en",
-        "clientName": "MWEB",
+        "clientName": "WEB",
         "clientVersion": "2.$3.00.00",
         "clientScreen": "EMBED"
         },
@@ -975,7 +954,7 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
       else:
         # NOTE: age gate and unplayable video handling
         if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
-          for idx, ctx in [playerBypassContextTierLastResort]:
+          for idx, ctx in [playerBypassContextTier1, playerBypassContextTier2, playerBypassContextTier3]:
             logNotice("attempting age-gate bypass tier $1" % $idx.succ)
             logDebug("requesting player")
             (code, response) = doPost(playerUrl, ctx % [videoId, sigTimeStamp, date])
@@ -983,7 +962,8 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
             if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
               walkErrorMessage(playerResponse["playabilityStatus"])
               # NOTE: all attempts failed
-              return
+              if idx == 2:
+                return
             else:
               break
         elif playerResponse["videoDetails"].hasKey("isLive") and playerResponse["videoDetails"]["isLive"].getBool():
