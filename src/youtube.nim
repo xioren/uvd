@@ -963,6 +963,7 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
               walkErrorMessage(playerResponse["playabilityStatus"])
               # NOTE: all attempts failed
               if idx == 2:
+                logNotice("age-gate bypass is unreliable. sometimes waiting a while and retrying works.")
                 return
             else:
               break
@@ -1029,6 +1030,7 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
             includeVideo = false
             # NOTE: remove empty file
             discard tryRemoveFile(download.videoStream.filename)
+            return
 
         if includeAudio and download.audioStream.exists:
           reportStreamInfo(download.audioStream)

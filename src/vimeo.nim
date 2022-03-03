@@ -287,22 +287,22 @@ proc extractId(vimeoUrl: string): string =
   if vimeoUrl.contains("/config"):
     result = vimeoUrl.captureBetween('/', '/', vimeoUrl.find("video/"))
   elif vimeoUrl.contains("/video"):
-    discard vimeoUrl.parseUntil(result, '?', vimeoUrl.find("video") + 7)
+    discard vimeoUrl.parseUntil(result, '?', vimeoUrl.find("video") + 6)
   else:
     discard vimeoUrl.parseUntil(result, {'?', '/'}, start=vimeoUrl.find(".com/") + 5)
 
 
 proc extractHash(vimeoUrl: string): string =
   ## extract unlinsted hash from url
-  if vimeoUrl.contains("&h="):
-    result = vimeoUrl.captureBetween('=', '&', vimeoUrl.find("&h="))
+  if vimeoUrl.contains("h="):
+    result = vimeoUrl.captureBetween('=', '&', vimeoUrl.find("h="))
   else:
     result = vimeoUrl.dequery().split('/')[^1]
 
 
 proc isUnlisted(vimeoUrl: string): bool =
   ## check for unlisted hash in vimeo url
-  if vimeoUrl.contains("&h="):
+  if vimeoUrl.contains("h="):
     result = true
   else:
     var slug: string

@@ -217,7 +217,8 @@ func makeSafe*(title: string): string =
   ## make video titles more suitable for filenames
   # NOTE: subjective
   title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"), ("#", ""),
-                     ("\\", "-"), ("|", "-"))
+                     ("\\", "-"), ("|", "-"), ("*", ""), ("?", ""), ("\"", ""),
+                     ("<", ""), (">", ""), ("^", ""))
 
 
 proc indexOf*[T](that: openarray[T], this: T): int =
