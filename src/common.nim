@@ -168,7 +168,7 @@ proc extractDashSegments*(dashEntry: string): seq[string] =
     if c == '"':
       if capture:
         result.add($(baseUrl / segment))
-        segment = ""
+        segment.reset()
       capture = not capture
     elif capture:
       segment.add(c)
@@ -218,7 +218,7 @@ func makeSafe*(title: string): string =
   # NOTE: subjective
   title.multiReplace((".", ""), ("/", "-"), (": ", " - "), (":", "-"), ("#", ""),
                      ("\\", "-"), ("|", "-"), ("*", ""), ("?", ""), ("\"", ""),
-                     ("<", ""), (">", ""), ("^", ""))
+                     ("<", ""), (">", ""), ("^", "")).strip(chars={'-'})
 
 
 proc indexOf*[T](that: openarray[T], this: T): int =

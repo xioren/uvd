@@ -409,6 +409,7 @@ iterator splitThrottleArray(js: string): string =
     scope: int
 
   if js.contains("];\nc["):
+    # NOTE: code block contains new line char
     discard js.parseUntil(code, "];\nc[", js.find(",c=[") + 4)
   else:
     discard js.parseUntil(code, "];c[", js.find(",c=[") + 4)
@@ -422,7 +423,7 @@ iterator splitThrottleArray(js: string): string =
       if idx == code.high:
         step.add(c)
       yield step.multiReplace(("\x00", ""), ("\n", ""))
-      step = ""
+      step.reset()
     else:
       if c == '{':
         inc scope
@@ -465,16 +466,15 @@ proc parseThrottlePlan(js: string): seq[seq[string]] =
   ## parse steps and indexes of throttle plan
   # NOTE: (c[4](c[52])...) --> @[@[4, 52],...]
   let plan = js.captureBetween('{', '}', js.find("try"))
-  var step: seq[string]
-  var last: char
+  var
+    step: seq[string]
+    last: char
   for idx, c in plan:
     if c == 'c':
       step.add(plan.captureBetween('[', ']', idx))
-    elif c == ',' and last == ')':
+    elif (c == ',' and last == ')') or idx == plan.high:
       result.add(step)
-      step = @[]
-    elif idx == plan.high:
-      result.add(step)
+      step.reset()
     last = c
 
 
@@ -694,6 +694,7 @@ proc selectVideoStream(streams: seq[Stream], id, codec: string): Stream =
     elif (bestAV1.semiperimeter > bestAVC1.semiperimeter and bestAV1.semiperimeter > bestVP9.semiperimeter):
       result = bestAV1
     else:
+      # NOTE: bitrate comparations
       # QUESTION: should av1 just be defaulted to if it exists and is the same resolution as others?
       if (bestAV1.bitrate >= bestVP9.bitrate) and (bestAV1.bitrate / bestAVC1.bitrate >= threshold):
         result = bestAV1
@@ -702,8 +703,8 @@ proc selectVideoStream(streams: seq[Stream], id, codec: string): Stream =
       else:
         result = bestAVC1
 
-  # NOTE: all other selection attempts failed, final attempt with no codec filter
   if result.id == "":
+    # NOTE: previous selection attempt failed, retry with no codec filter
     result = selectVideoByBitrate(streams, "")
 
 
@@ -729,8 +730,8 @@ proc selectAudioStream(streams: seq[Stream], id, codec: string): Stream =
     # NOTE: fallback selection
     result = selectAudioByBitrate(streams, "opus")
 
-  # NOTE: all other selection attempts failed, final attempt with no codec filter
   if result.id == "":
+    # NOTE: previous selection attempt failed, retry with no codec filter
     result = selectVideoByBitrate(streams, "")
 
 
