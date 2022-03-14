@@ -10,6 +10,11 @@ import common
 # NOTE: other url containing jwt: https://api.vimeo.com/client_configs/single_video_view?clip_id=477957994&vuid=192548912.843356162&clip_hash=2282452868&fields=presence
 # NOTE: some notable query string args: bypass_privacy=1, force_embed=1
 
+# password protected video: https://player.vimeo.com/video/412573977?h=f7f2d6fcb7
+# pw: butter
+# post password to https://player.vimeo.com/video/412573977/check-password
+# payload {password=YnV0dGVy&Watch%20Video}
+
 #[ NOTE: profiles:
     172 = 2160p
     170 = 1440p
@@ -427,7 +432,7 @@ proc grabVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
     configUrl = genericConfigUrl % videoId
   let configResponse = getPlayerConfig(configUrl, videoId)
 
-  if apiResponse.kind != JNull:
+  if apiResponse.kind != JNull and apiResponse.hasKey("vimeo_api_url"):
     title = apiResponse["name"].getStr()
     duration = apiResponse["duration"].getInt()
     thumbnailUrl = getBestThumb(apiResponse["pictures"])
