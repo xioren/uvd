@@ -222,7 +222,7 @@ func makeSafe*(title: string): string =
 
 
 proc indexOf*[T](that: openarray[T], this: T): int =
-  ## provide index of this in item that
+  ## provide index of element "this" in item "that"
   for idx, item in that:
     if item == this:
       return idx
@@ -374,7 +374,7 @@ proc clearProgress() =
 
 
 proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
-  ## for contiguous streams
+  ## for progressive streams
   const barWidth = 50
   let
     bar = '#'.repeat(floor(progress.int / total.int * barWidth).int)

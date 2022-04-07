@@ -73,7 +73,7 @@ const
         "clientScreen": "EMBED"
         },
       "thirdParty": {
-        "embedUrl": "https://google.com"
+        "embedUrl": "https://youtube.com"
       }
     },
     "playbackContext": {

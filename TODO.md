@@ -17,3 +17,4 @@
 + --show output should be context specific --> --show when passing a channel url
 should show channel information, while passing a video url should show video information
 + add retry logic --> this will require homebrew version of writeFromStream
++ reelShelfRenderer
