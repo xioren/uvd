@@ -291,6 +291,8 @@ proc extractId(vimeoUrl: string): string =
   ## extract video/profile id from url
   if vimeoUrl.contains("/config"):
     result = vimeoUrl.captureBetween('/', '/', vimeoUrl.find("video/"))
+  elif vimeoUrl.contains("/videos"):
+    discard vimeoUrl.parseUntil(result, '?', vimeoUrl.find("video") + 7)
   elif vimeoUrl.contains("/video"):
     discard vimeoUrl.parseUntil(result, '?', vimeoUrl.find("video") + 6)
   else:
@@ -432,7 +434,9 @@ proc grabVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
     configUrl = genericConfigUrl % videoId
   let configResponse = getPlayerConfig(configUrl, videoId)
 
-  if apiResponse.kind != JNull and apiResponse.hasKey("vimeo_api_url"):
+  if apiResponse.kind != JNull:
+    #[ QUESTION: used to check for apiResponse.hasKey("vimeo_api_url") as well, why?
+    this key is not always present]#
     title = apiResponse["name"].getStr()
     duration = apiResponse["duration"].getInt()
     thumbnailUrl = getBestThumb(apiResponse["pictures"])
