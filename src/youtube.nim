@@ -395,7 +395,7 @@ proc extractThrottleFunctionName(js: string): string =
   discard js.parseUntil(result, "=", js.find("""a.split(""),c=[""") - 22)
 
 
-proc extractThrottleCode(mainFunc, js: string): string =
+proc extractThrottleCode(js: string): string =
   ## extract throttle code block from base.js
   # NOTE: iha=function(a){var b=a.split("").....a.join("")}
   # TODO: a more robust solution is needed
@@ -842,7 +842,7 @@ proc parseBaseJS() =
     cipherPlan = extractCipherPlan(response)
     cipherFunctionMap = createCipherMap(response, extractParentFunctionName(cipherPlan[0]))
     # NOTE: throttle code
-    let throttleCode = extractThrottleCode(extractThrottleFunctionName(response), response)
+    let throttleCode = extractThrottleCode(response)
     throttlePlan = parseThrottlePlan(throttleCode)
     throttleArray = parseThrottleArray(throttleCode)
   else:
