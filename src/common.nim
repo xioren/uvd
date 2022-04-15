@@ -58,7 +58,9 @@ var
   currentSegment, totalSegments: int
   # HACK: a not ideal solution to prevent erroneosly clearing terminal when no progress was made (e.g. 403 forbidden)
   madeProgress: bool
-  headers* = @[("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.87 Safari/537.36"),
+  #[ NOTE: audio streams are now throttled despite correct n value translation. using identity encoding and bytes=0-resource size
+    bypasses this ]#
+  headers* = @[("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.79 Safari/537.36"),
                ("accept", "*/*")]
 
 proc doGet*(url: string): tuple[httpcode: HttpCode, body: string]

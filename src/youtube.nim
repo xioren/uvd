@@ -398,7 +398,7 @@ proc extractThrottleFunctionName(js: string): string =
 proc extractThrottleCode(mainFunc, js: string): string =
   ## extract throttle code block from base.js
   # NOTE: iha=function(a){var b=a.split("").....a.join("")}
-  discard js.parseUntil(result, "catch(d)", js.find("\n" & mainFunc) + 1)
+  discard js.parseUntil(result, "catch(d)", js.find("c=[function(d,e){d.push(e)}") - 30)
 
 
 iterator splitThrottleArray(js: string): string =
