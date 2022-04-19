@@ -395,11 +395,13 @@ proc extractThrottleFunctionName(js: string): string =
   discard js.parseUntil(result, "=", js.find("""a.split(""),c=[""") - 22)
 
 
-proc extractThrottleCode(js: string): string =
-  ## extract throttle code block from base.js
-  # NOTE: iha=function(a){var b=a.split("").....a.join("")}
-  # TODO: a more robust solution is needed
-  discard js.parseUntil(result, "catch(d)", js.find("c=[function(d,e){d.push(e)}") - 30)
+  proc extractThrottleCode(js: string): string =
+    ## extract throttle code block from base.js
+    # NOTE: iha=function(a){var b=a.split("").....a.join("")}
+    #[ WARNING: this pattern appears twice in the js. for now it seems like the one we want
+      is the first occurance, but assuming this will always be the case opens us up for breakage. ]#
+    # TODO: a more robust solution is needed
+    discard js.parseUntil(result, "catch(d)", js.find("""function(a){var b=a.split(""),c=["""))
 
 
 iterator splitThrottleArray(js: string): string =
