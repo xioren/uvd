@@ -735,7 +735,7 @@ proc selectAudioStream(streams: seq[Stream], id, codec: string): Stream =
 
   if result.id == "":
     # NOTE: previous selection attempt failed, retry with no codec filter
-    result = selectVideoByBitrate(streams, "")
+    result = selectAudioByBitrate(streams, "")
 
 
 proc newStream(stream: JsonNode, videoId: string, duration: int, segmentsUrl = ""): Stream =
