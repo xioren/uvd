@@ -412,14 +412,16 @@ proc onProgressChangedMulti(total, progress, speed: BiggestInt) {.async.} =
 
 
 proc streamToMkv*(stream, filename, subtitlesLanguage: string, includeSubtitles: bool) =
-  ## join audio and video streams using ffmpeg
+  ## put single stream in mkv container
   logInfo("converting: ", stream)
   var command: string
 
   if includeSubtitles:
-    command = fmt"ffmpeg -y -loglevel panic -i {stream} -i subtitles.srt -metadata:s:s:0 language={quoteShell(subtitlesLanguage)} -c copy {quoteShell(filename)}"
+    command = fmt"ffmpeg -y -loglevel panic -i {stream} -i {quoteShell(subtitlesLanguage)}.srt -metadata:s:s:0 language={quoteShell(subtitlesLanguage)} -c copy {quoteShell(filename)}"
   else:
     command = fmt"ffmpeg -y -loglevel panic -i {stream} -c copy {quoteShell(filename)}"
+
+  logDebug("ffmpeg command: ", command)
 
   if execShellCmd(command) == 0:
     removeFile(stream)
@@ -431,14 +433,16 @@ proc streamToMkv*(stream, filename, subtitlesLanguage: string, includeSubtitles:
 
 
 proc streamsToMkv*(videoStream, audioStream, filename, subtitlesLanguage: string, includeSubtitles: bool) =
-  ## join audio and video streams using ffmpeg
+  ## join audio and video streams in mkv container
   logInfo("joining streams: ", videoStream, " + ", audioStream)
   var command: string
 
   if includeSubtitles:
-    command = fmt"ffmpeg -y -loglevel panic -i {videoStream} -i {audioStream} -i subtitles.srt -metadata:s:s:0 language={quoteShell(subtitlesLanguage)} -c copy {quoteShell(filename)}"
+    command = fmt"ffmpeg -y -loglevel panic -i {videoStream} -i {audioStream} -i {quoteShell(subtitlesLanguage)}.srt -metadata:s:s:0 language={quoteShell(subtitlesLanguage)} -c copy {quoteShell(filename)}"
   else:
     command = fmt"ffmpeg -y -loglevel panic -i {videoStream} -i {audioStream} -c copy {quoteShell(filename)}"
+
+  logDebug("ffmpeg command: ", command)
 
   if execShellCmd(command) == 0:
     removeFile(videoStream)
@@ -497,6 +501,7 @@ proc doGet*(url: string): tuple[httpcode: HttpCode, body: string] =
 
 proc download(url, filepath: string): Future[HttpCode] {.async.} =
   ## download progressive streams
+  logDebug("download url: ", url)
   let client = newAsyncHttpClient(headers=newHttpHeaders(headers))
   var file = openasync(filepath, fmWrite)
   client.onProgressChanged = onProgressChanged
@@ -526,6 +531,7 @@ proc download(parts: seq[string], filepath: string): Future[HttpCode] {.async.} 
 
   try:
     for url in parts:
+      # logDebug("download url: ", url)
       let resp = await client.request(url)
       await file.writeFromStream(resp.bodyStream)
       result = resp.code

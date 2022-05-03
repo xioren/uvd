@@ -227,9 +227,9 @@ proc asrToSrt(xml: string): string =
     endPoint = $(parseFloat(startPoint) + parseFloat(duration))
 
     if idx < splitEntries.high.pred:
-      #[ NOTE: choose min between endpoint of current text and startpoint of next text to eliminate crowding
-        i.e. only one subtitle entry on screen at a time ]#
       nextStartPoint = splitEntries[idx.succ].captureBetween('"', '"')
+      #[ NOTE: choose min between endpoint of current text and startpoint of next text to eliminate crowding
+      i.e. only one subtitle entry on screen at a time ]#
       result.add(formatTime(startPoint) & " --> " & formatTime($min(parseFloat(endPoint), parseFloat(nextStartPoint))) & '\n')
       result.add(text.replace("&amp;#39;", "'") & "\n\n")
     else:
@@ -636,20 +636,24 @@ proc getSigCipherUrl(signatureCipher: string): string =
 
 proc urlOrCipher(stream: Stream): string =
   ## produce stream url, deciphering if necessary and tranform n throttle string
+  var transformedN: string
   if not stream.url.startsWith("https"):
     result = getSigCipherUrl(stream.url)
   else:
     result = stream.url
 
+  # TEMP: this is to see if sometimes the server sends empty urls or some other unkown value / format
+  logDebug("initial url: ", result)
+
   let n = result.captureBetween('=', '&', result.find("&n="))
+  logDebug("initial n: ", n)
   if nTransforms.haskey(n):
-    result = result.replace(n, nTransforms[n])
+    transformedN = nTransforms[n]
   else:
-    let transformedN = transformN(n)
+    transformedN = transformN(n)
     nTransforms[n] = transformedN
-    if n != transformedN:
-      result = result.replace(n, transformedN)
-    logDebug("initial n: ", n)
+  if n != transformedN:
+    result = result.replace(n, transformedN)
     logDebug("transformed n: ", transformedN)
 
 
@@ -783,6 +787,8 @@ proc newStream(stream: JsonNode, videoId: string, duration: int, segmentsUrl = "
       result.url = stream["url"].getStr()
     elif stream.hasKey("signatureCipher"):
       result.url = stream["signatureCipher"].getStr()
+    else:
+      logDebug("stream did not contain a url")
 
     result.duration = duration
     result.filename = addFileExt(videoId & "-" & result.id, result.ext)
@@ -1079,11 +1085,11 @@ proc grabPlaylist(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
     let
       playlistResponse = parseJson(response)
       title = playlistResponse["contents"]["twoColumnWatchNextResults"]["playlist"]["playlist"]["title"].getStr()
-    logInfo("collecting videos: ", title)
 
     if playlistResponse["contents"]["twoColumnWatchNextResults"]["playlist"]["playlist"]["isInfinite"].getBool():
       logError("infinite playlist...aborting")
     else:
+      logInfo("collecting videos: ", title)
       for item in playlistResponse["contents"]["twoColumnWatchNextResults"]["playlist"]["playlist"]["contents"]:
         videoIds.add(item["playlistPanelVideoRenderer"]["videoId"].getStr())
 
