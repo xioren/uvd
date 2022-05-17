@@ -237,11 +237,12 @@ proc asrToSrt(xml: string): string =
       result.add(text.replace("&amp;#39;", "'"))
 
 
-proc generateSubtitles(captions: JsonNode) =
+proc generateSubtitles(captions: JsonNode): bool =
   var
     doTranslate: bool
     captionTrack = newJNull()
     defaultAudioTrackIndex, defaultCaptionTrackIndex: int
+  result = true
 
   if subtitlesLanguage != "":
     # NOTE: check if desired language exists natively
@@ -282,10 +283,10 @@ proc generateSubtitles(captions: JsonNode) =
     if code.is2xx:
       includeSubtitles = save(asrToSrt(response), addFileExt(subtitlesLanguage, "srt"))
     else:
-      includeSubtitles = false
+      result = false
       logError("error downloading subtitles")
   else:
-    includeSubtitles = false
+    result = false
     logError("error obtaining subtitles")
 
 
@@ -1024,8 +1025,7 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
 
         if includeSubtitles:
           if playerResponse.hasKey("captions"):
-            generateSubtitles(playerResponse["captions"])
-            withSubs = true
+            withSubs = generateSubtitles(playerResponse["captions"])
           else:
             logError("video does not contain subtitles")
 
