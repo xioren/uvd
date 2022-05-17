@@ -74,8 +74,7 @@ proc doGet*(url: string): tuple[httpcode: HttpCode, body: string]
 proc formatLogMessage(context: string, messageParts: varargs[string]): string =
   var msgLen = 0
   if context != "":
-    msgLen.inc(context.len)
-    msgLen.inc(3)
+    msgLen.inc(context.len + 3)
   for m in messageParts:
     msgLen.inc(m.len)
 
@@ -83,50 +82,49 @@ proc formatLogMessage(context: string, messageParts: varargs[string]): string =
   if context != "":
     result.add('[')
     result.add(context)
-    result.add(']')
-    result.add(' ')
+    result.add("] ")
 
   for m in messageParts:
     result.add(m)
 
 
-proc logGeneric*(level: Level, context: string, messageParts: varargs[string, `$`]) =
+proc logGeneric*(level: Level, context: string, messageParts: varargs[string, `$`]) {.inline.} =
   if globalLogLevel <= level:
     let fullMessage = formatLogMessage(context, messageParts)
     stdout.writeLine(fullMessage)
 
 
-proc logDebug*(messageParts: varargs[string, `$`]) =
+proc logDebug*(messageParts: varargs[string, `$`]) {.inline.} =
   if globalLogLevel < lvlInfo:
     let fullMessage = formatLogMessage("debug", messageParts)
     stdout.writeLine(fullMessage)
 
 
-proc logInfo*(messageParts: varargs[string, `$`]) =
+proc logInfo*(messageParts: varargs[string, `$`]) {.inline.} =
   if globalLogLevel < lvlNotice:
     let fullMessage = formatLogMessage("info", messageParts)
     stdout.writeLine(fullMessage)
 
 
-proc logNotice*(messageParts: varargs[string, `$`]) =
+proc logNotice*(messageParts: varargs[string, `$`]) {.inline.} =
   if globalLogLevel < lvlWarn:
     let fullMessage = formatLogMessage("notice", messageParts)
     stdout.writeLine(fullMessage)
 
 
-proc logWarning*(messageParts: varargs[string, `$`]) =
+proc logWarning*(messageParts: varargs[string, `$`]) {.inline.} =
   if globalLogLevel < lvlError:
     let fullMessage = formatLogMessage("warning", messageParts)
     stdout.writeLine(fullMessage)
 
 
-proc logError*(messageParts: varargs[string, `$`]) =
+proc logError*(messageParts: varargs[string, `$`]) {.inline.} =
   if globalLogLevel < lvlFatal:
     let fullMessage = formatLogMessage("error", messageParts)
     stdout.writeLine(fullMessage)
 
 
-proc logFatal*(messageParts: varargs[string, `$`]) =
+proc logFatal*(messageParts: varargs[string, `$`]) {.inline.} =
   if globalLogLevel < lvlNone:
     let fullMessage = formatLogMessage("fatal", messageParts)
     stdout.writeLine(fullMessage)

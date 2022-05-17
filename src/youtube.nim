@@ -389,10 +389,10 @@ proc throttleSwap(d: var (string | seq[string]), e: int) {.inline.} =
   swap(d[0], d[z])
 
 
-proc extractThrottleFunctionName(js: string): string =
-  ## extract main throttle function
-  # NOTE: iha=function(a){var b=a.split("") --> iha
-  discard js.parseUntil(result, "=", js.find("""a.split(""),c=[""") - 22)
+# proc extractThrottleFunctionName(js: string): string =
+#   ## extract main throttle function
+#   # NOTE: iha=function(a){var b=a.split("") --> iha
+#   discard js.parseUntil(result, "=", js.find("""a.split(""),c=[""") - 22)
 
 
 proc extractThrottleCode(js: string): string =
@@ -789,6 +789,7 @@ proc newStream(stream: JsonNode, videoId: string, duration: int, segmentsUrl = "
       result.url = stream["signatureCipher"].getStr()
     else:
       logDebug("stream did not contain a url")
+      return
 
     result.duration = duration
     result.filename = addFileExt(videoId & "-" & result.id, result.ext)
@@ -926,6 +927,9 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
     response: string
     playerResponse: JsonNode
     dashManifestUrl, hlsManifestUrl: string
+    withAudio = true
+    withVideo = true
+    withSubs: bool
     audioStreams: seq[Stream]
     videoStreams: seq[Stream]
 
@@ -1023,8 +1027,8 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
         if includeSubtitles:
           if playerResponse.hasKey("captions"):
             generateSubtitles(playerResponse["captions"])
+            withSubs = true
           else:
-            includeSubtitles = false
             logError("video does not contain subtitles")
 
         var attempt: HttpCode
@@ -1037,7 +1041,7 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
           if not attempt.is2xx:
             logDebug(attempt)
             logError("failed to download video stream")
-            includeVideo = false
+            withVideo = false
             # NOTE: remove empty file
             discard tryRemoveFile(download.videoStream.filename)
             return
@@ -1051,19 +1055,20 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
           if not attempt.is2xx:
             logDebug(attempt)
             logError("failed to download audio stream")
-            includeAudio = false
+            withAudio = false
             # NOTE: remove empty file
             discard tryRemoveFile(download.audioStream.filename)
+            return
         else:
-          includeAudio = false
+          withAudio = false
 
         # QUESTION: should we abort if either audio or video streams failed to download?
-        if includeAudio and includeVideo:
-          streamsToMkv(download.videoStream.filename, download.audioStream.filename, fullFilename, subtitlesLanguage, includeSubtitles)
-        elif includeAudio and not includeVideo:
+        if withAudio and withVideo:
+          streamsToMkv(download.videoStream.filename, download.audioStream.filename, fullFilename, subtitlesLanguage, withSubs)
+        elif withAudio and not withVideo:
           convertAudio(download.audioStream.filename, safeTitle & " [" & videoId & ']', audioFormat)
-        elif includeVideo:
-          streamToMkv(download.videoStream.filename, fullFilename, subtitlesLanguage, includeSubtitles)
+        elif withVideo:
+          streamToMkv(download.videoStream.filename, fullFilename, subtitlesLanguage, withSubs)
         else:
           logError("no streams were downloaded")
     else:

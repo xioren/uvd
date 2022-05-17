@@ -520,6 +520,7 @@ proc grabVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
       includeVideo = false
       # NOTE: remove empty file
       discard tryRemoveFile(download.videoStream.filename)
+      return
 
   if includeAudio and download.audioStream.exists:
     reportStreamInfo(download.audioStream)
@@ -532,6 +533,7 @@ proc grabVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
       includeAudio = false
       # NOTE: remove empty file
       discard tryRemoveFile(download.audioStream.filename)
+      return
   else:
     includeAudio = false
 
