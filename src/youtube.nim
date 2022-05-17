@@ -927,9 +927,7 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
     response: string
     playerResponse: JsonNode
     dashManifestUrl, hlsManifestUrl: string
-    withAudio = true
-    withVideo = true
-    withSubs: bool
+    withAudio, withVideo, withSubs: bool
     audioStreams: seq[Stream]
     videoStreams: seq[Stream]
 
@@ -1038,10 +1036,11 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
             attempt = grab(download.videoStream.urlSegments, download.videoStream.filename, overwrite=true)
           else:
             attempt = grab(download.videoStream.url, download.videoStream.filename, overwrite=true)
-          if not attempt.is2xx:
+          if attempt.is2xx:
+            withVideo = true
+          else:
             logDebug(attempt)
             logError("failed to download video stream")
-            withVideo = false
             # NOTE: remove empty file
             discard tryRemoveFile(download.videoStream.filename)
             return
@@ -1052,15 +1051,14 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
             attempt = grab(download.audioStream.urlSegments, download.audioStream.filename, overwrite=true)
           else:
             attempt = grab(download.audioStream.url, download.audioStream.filename, overwrite=true)
-          if not attempt.is2xx:
+          if attempt.is2xx:
+            withAudio = true
+          else:
             logDebug(attempt)
             logError("failed to download audio stream")
-            withAudio = false
             # NOTE: remove empty file
             discard tryRemoveFile(download.audioStream.filename)
             return
-        else:
-          withAudio = false
 
         # QUESTION: should we abort if either audio or video streams failed to download?
         if withAudio and withVideo:
