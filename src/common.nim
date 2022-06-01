@@ -58,8 +58,8 @@ var
   currentSegment, totalSegments: int
   # HACK: a not ideal solution to prevent erroneosly clearing terminal when no progress was made (e.g. 403 forbidden)
   madeProgress: bool
-  #[ NOTE: audio streams are now throttled despite correct n value translation. using identity encoding and bytes=0-resource size
-    bypasses this ]#
+  #[ NOTE: all streams are now throttled by bitrate/filesize despite correct n value translation.
+    using identity encoding and bytes=0-resource size bypasses this ]#
   headers* = @[("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.79 Safari/537.36"),
                ("accept", "*/*")]
 
@@ -229,9 +229,9 @@ proc indexOf*[T](that: openarray[T], this: T): int =
   raise newException(IndexDefect, "$1 not in $2" % [$this, $that.type])
 
 
-proc compareBitrate*[T](x, y: T): int =
+proc compareBitrate*[T](this, that: T): int =
   ## compare bitrates for sorting
-  if x.bitrate > y.bitrate:
+  if this.bitrate > that.bitrate:
     result = -1
   else:
     result = 1

@@ -377,7 +377,7 @@ proc getPlayerConfig(configUrl, videoId: string): JsonNode =
   if code == Http403:
     logDebug(code)
     logNotice("trying embed url")
-    # HACK: use patreon embed url to get meta data
+    # HACK: use embed url to get meta data
     # QUESTION: is there a seperate bypass url for unlisted videos?
     headers.add(("referer", "https://cdn.embedly.com/"))
     (code, response) = doGet(bypassUrl % videoId)
