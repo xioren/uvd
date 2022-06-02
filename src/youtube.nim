@@ -158,7 +158,6 @@ let date = now().format("yyyyMMdd")
 
 var
   apiLocale: string
-  includeAudio, includeVideo, includeThumb, includeSubtitles: bool
   subtitlesLanguage: string
   audioFormat: string
   showStreams: bool
@@ -281,7 +280,7 @@ proc generateSubtitles(captions: JsonNode): bool =
     logDebug("requesting captions")
     let (code, response) = doGet(captionTrackUrl)
     if code.is2xx:
-      includeSubtitles = save(asrToSrt(response), addFileExt(subtitlesLanguage, "srt"))
+      result = save(asrToSrt(response), addFileExt(subtitlesLanguage, "srt"))
     else:
       result = false
       logError("error downloading subtitles")
@@ -807,33 +806,6 @@ proc setUrl(stream: var Stream, dashManifestUrl="", hlsManifestUrl="") =
     stream.url = urlOrCipher(stream)
 
 
-proc newDownload(streams: seq[Stream], title, youtubeUrl, thumbnailUrl, videoId,
-              aItag, vItag, aCodec, vCodec: string, dashManifestUrl="", hlsManifestUrl=""): Download =
-  result.title = title
-  result.url = youtubeUrl
-  result.videoId = videoId
-  result.thumbnailUrl = thumbnailUrl
-  if includeVideo:
-    result.videoStream = selectVideoStream(streams, vItag, vCodec)
-    result.videoStream.setUrl(dashManifestUrl, hlsManifestUrl)
-  if includeAudio and result.videoStream.kind != "combined":
-    result.audioStream = selectAudioStream(streams, aItag, aCodec)
-    result.audioStream.setUrl(dashManifestUrl, hlsManifestUrl)
-
-
-proc reportStreamInfo(stream: Stream) =
-  ## echo metadata for single stream
-  # TODO: expand this
-  logInfo("stream: ", stream.filename)
-  logInfo("itag: ", stream.id)
-  logInfo("size: ", stream.sizeShort)
-  logInfo("quality: ", stream.quality)
-  logInfo("mime: ", stream.mime)
-  logInfo("codec: ", stream.codec)
-  if stream.format != "progressive":
-    logInfo("segments: ", stream.urlSegments.len)
-
-
 ########################################################
 # misc
 ########################################################
@@ -928,7 +900,6 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
     response: string
     playerResponse: JsonNode
     dashManifestUrl, hlsManifestUrl: string
-    withAudio, withVideo, withSubs: bool
     audioStreams: seq[Stream]
     videoStreams: seq[Stream]
 
@@ -1016,59 +987,31 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
           displayStreams(allStreams)
           return
 
-        let download = newDownload(allStreams, title, standardYoutubeUrl, thumbnailUrl, videoId, aItag, vItag, aCodec, vCodec, dashManifestUrl, hlsManifestUrl)
+        var download = newDownload(title, standardYoutubeUrl, thumbnailUrl, videoId)
         logInfo("title: ", download.title)
 
-        if includeThumb:
+        if download.includeVideo:
+          download.videoStream = selectVideoStream(allStreams, vItag, vCodec)
+          download.videoStream.setUrl(dashManifestUrl, hlsManifestUrl)
+        if download.includeAudio and download.videoStream.kind != "combined":
+          download.audioStream = selectAudioStream(allStreams, aItag, aCodec)
+          download.audioStream.setUrl(dashManifestUrl, hlsManifestUrl)
+
+        download.headers.add(("range", "bytes=0-$1" % $download.videoStream.size))
+        if download.includeThumb:
           if not grab(download.thumbnailUrl, fullFilename.changeFileExt("jpeg"), overwrite=true).is2xx:
             logError("failed to download thumbnail")
 
-        if includeSubtitles:
+        if download.includeSubs:
           if playerResponse.hasKey("captions"):
-            withSubs = generateSubtitles(playerResponse["captions"])
+            if not generateSubtitles(playerResponse["captions"]):
+              download.includeSubs = false
           else:
+            download.includeSubs = false
             logError("video does not contain subtitles")
 
-        var attempt: HttpCode
-        if includeVideo:
-          reportStreamInfo(download.videoStream)
-          if download.videoStream.format == "dash":
-            attempt = grab(download.videoStream.urlSegments, download.videoStream.filename, overwrite=true)
-          else:
-            attempt = grab(download.videoStream.url, download.videoStream.filename, overwrite=true)
-          if attempt.is2xx:
-            withVideo = true
-          else:
-            logDebug(attempt)
-            logError("failed to download video stream")
-            # NOTE: remove empty file
-            discard tryRemoveFile(download.videoStream.filename)
-            return
-
-        if includeAudio and download.audioStream.exists:
-          reportStreamInfo(download.audioStream)
-          if download.audioStream.format == "dash":
-            attempt = grab(download.audioStream.urlSegments, download.audioStream.filename, overwrite=true)
-          else:
-            attempt = grab(download.audioStream.url, download.audioStream.filename, overwrite=true)
-          if attempt.is2xx:
-            withAudio = true
-          else:
-            logDebug(attempt)
-            logError("failed to download audio stream")
-            # NOTE: remove empty file
-            discard tryRemoveFile(download.audioStream.filename)
-            return
-
-        # QUESTION: should we abort if either audio or video streams failed to download?
-        if withAudio and withVideo:
-          streamsToMkv(download.videoStream.filename, download.audioStream.filename, fullFilename, subtitlesLanguage, withSubs)
-        elif withAudio and not withVideo:
-          convertAudio(download.audioStream.filename, safeTitle & " [" & videoId & ']', audioFormat)
-        elif withVideo:
-          streamToMkv(download.videoStream.filename, fullFilename, subtitlesLanguage, withSubs)
-        else:
-          logError("no streams were downloaded")
+        if not download.complete(fullFilename, safeTitle, subtitlesLanguage, audioFormat):
+          logError(download.videoId, ": failed")
     else:
       logDebug(code)
       logError(videoMetadataFailureMessage)
@@ -1210,13 +1153,13 @@ proc grabChannel(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
     grabPlaylist(playlistUrl & id, aItag, vItag, aCodec, vCodec)
 
 
-proc youtubeDownload*(youtubeUrl, aFormat, aItag, vItag, aCodec, vCodec, sLang: string,
-                      iAudio, iVideo, iThumb, iSubtitles, sStreams, debug, silent: bool) =
-  includeAudio = iAudio
-  includeVideo = iVideo
-  includeThumb = iThumb
-  includeSubtitles = iSubtitles
-  subtitlesLanguage = sLang
+proc youtubeDownload*(youtubeUrl, aFormat, aItag, vItag, aCodec, vCodec, subLang: string,
+                      userWantsAudio, userWantsVideo, userWantsThumb, userWantsSubtitles, sStreams, debug, silent: bool) =
+  globalIncludeAudio = userWantsAudio
+  globalIncludeVideo = userWantsVideo
+  globalIncludeThumb = userWantsThumb
+  globalIncludeSubs = userWantsSubtitles
+  subtitlesLanguage = subLang
   audioFormat = aFormat
   showStreams = sStreams
 

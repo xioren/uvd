@@ -1,5 +1,6 @@
 import std/[algorithm, asyncdispatch, asyncfile, httpclient, json, os, parseutils,
             sequtils, sets, strformat, strutils, tables, terminal, times, uri]
+from net import TimeoutError
 from math import floor
 
 export algorithm, asyncdispatch, httpclient, json, os, parseutils, sequtils,
@@ -44,8 +45,16 @@ type
     thumbnailUrl*: string
     audioStream*: Stream
     videoStream*: Stream
+    includeAudio*: bool
+    includeVideo*: bool
+    includeThumb*: bool
+    includeSubs*: bool
+    headers*: seq[tuple[key, val: string]]
 
 const
+  globalTimeout = 60
+  globalTimeoutInMilliseconds = globalTimeout * 1000
+  globalRetryCount = 10
   extensions* = {"video/mp4": ".mp4", "video/webm": ".webm",
                  "audio/mp4": ".m4a", "audio/webm": ".weba",
                  "video/3gpp": ".3gpp"}.toTable
@@ -56,16 +65,20 @@ const
 let
   termWidth = terminalWidth()
 var
+  globalHeaders* = @[("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.79 Safari/537.36"),
+                     ("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*"),
+                     ("accept-Language", "en-us,en;q=0.5"),
+                     ("accept-encoding", "identity"),
+                     ("sec-fetch-mode", "navigate")]
+  globalIncludeAudio*, globalIncludeVideo*, globalIncludeThumb*, globalIncludeSubs*: bool
   globalLogLevel* = lvlInfo
   currentSegment, totalSegments: int
   # HACK: a not ideal solution to prevent erroneosly clearing terminal when no progress was made (e.g. 403 forbidden)
   madeProgress: bool
   #[ NOTE: all streams are now throttled by bitrate/filesize despite correct n value translation.
     using identity encoding and bytes=0-resource size bypasses this ]#
-  headers* = @[("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.79 Safari/537.36"),
-               ("accept", "*/*")]
 
-proc doGet*(url: string): tuple[httpcode: HttpCode, body: string]
+proc doGet*(url: string, headers=globalHeaders): tuple[httpcode: HttpCode, body: string]
 
 
 ########################################################
@@ -130,6 +143,23 @@ proc logFatal*(messageParts: varargs[string, `$`]) {.inline.} =
   if globalLogLevel < lvlNone:
     let fullMessage = formatLogMessage("fatal", messageParts)
     stdout.writeLine(fullMessage)
+
+
+########################################################
+# common
+########################################################
+
+
+proc newDownload*(title, url, thumbnailUrl, videoId: string): Download =
+  result.title = title
+  result.url = url
+  result.videoId = videoId
+  result.thumbnailUrl = thumbnailUrl
+  result.includeAudio = globalIncludeAudio
+  result.includeVideo = globalIncludeVideo
+  result.includeThumb = globalIncludeThumb
+  result.includeSubs = globalIncludeSubs
+  result.headers = globalHeaders
 
 
 ########################################################
@@ -380,12 +410,16 @@ proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
   const barWidth = 50
   let
     bar = '#'.repeat(floor(progress.int / total.int * barWidth).int)
-    eta = initDuration(seconds=((total - progress).int / speed.int).int)
+  var
+    eta = $initDuration(seconds=((total - progress).int / speed.int).int)
+
+  if eta.len >= termWidth:
+    eta = eta[0..<termWidth]
 
   stdout.eraseLine()
   stdout.writeLine("> size: ", formatSize(total.int, includeSpace=true),
                    " speed: ", formatSize(speed.int, includeSpace=true), "/s",
-                   " eta: ", ($eta)[0..<termWidth])
+                   " eta: ", eta)
   stdout.eraseLine()
   stdout.write("[", alignLeft(bar, barWidth), "]")
   stdout.setCursorXPos(0)
@@ -406,12 +440,36 @@ proc onProgressChangedMulti(total, progress, speed: BiggestInt) {.async.} =
     madeProgress = true
 
 
+proc reportStreamInfo(stream: Stream) =
+  ## echo metadata for single stream
+  logInfo("stream: ", stream.filename)
+  logInfo("id: ", stream.id)
+  logInfo("size: ", stream.sizeShort)
+  if stream.quality != "":
+    logInfo("quality: ", stream.quality)
+  if stream.mime != "":
+    logInfo("mime: ", stream.mime)
+  if stream.codec != "":
+    logInfo("codec: ", stream.codec)
+  if stream.format == "dash":
+    logInfo("segments: ", stream.urlSegments.len)
+
+
 ########################################################
 # net and io
 ########################################################
 
 
-proc streamToMkv*(stream, filename, subtitlesLanguage: string, includeSubtitles: bool) =
+proc update*(headers: var seq[tuple[key, val: string]], newEntry: tuple[key, val: string]) =
+  ## update header entry or add if it doesn't exist
+  for idx, existing in headers:
+    if existing.key == newEntry.key:
+      headers[idx] = newEntry
+      return
+  headers.add(newEntry)
+
+
+proc streamToMkv*(stream, filename, subtitlesLanguage: string, includeSubtitles: bool): bool =
   ## put single stream in mkv container
   logInfo("converting: ", stream)
   var command: string
@@ -428,11 +486,12 @@ proc streamToMkv*(stream, filename, subtitlesLanguage: string, includeSubtitles:
     if includeSubtitles:
       removeFile(addFileExt(subtitlesLanguage, "srt"))
     logGeneric(lvlInfo, "complete", filename)
+    result = true
   else:
     logError("failed to convert stream")
 
 
-proc streamsToMkv*(videoStream, audioStream, filename, subtitlesLanguage: string, includeSubtitles: bool) =
+proc streamsToMkv*(videoStream, audioStream, filename, subtitlesLanguage: string, includeSubtitles: bool): bool =
   ## join audio and video streams in mkv container
   logInfo("joining streams: ", videoStream, " + ", audioStream)
   var command: string
@@ -450,11 +509,12 @@ proc streamsToMkv*(videoStream, audioStream, filename, subtitlesLanguage: string
     if includeSubtitles:
       removeFile(addFileExt(subtitlesLanguage, "srt"))
     logGeneric(lvlInfo, "complete", filename)
+    result = true
   else:
     logError("failed to join streams")
 
 
-proc convertAudio*(audioStream, filename, format: string) =
+proc convertAudio*(audioStream, filename, format: string): bool =
   ## convert audio stream to desired format
   var returnCode: int
   let fullFilename = addFileExt(filename, format)
@@ -471,11 +531,32 @@ proc convertAudio*(audioStream, filename, format: string) =
   if returnCode == 0:
     removeFile(audioStream)
     logGeneric(lvlInfo, "complete", fullFilename)
+    result = true
   else:
     logError("error converting stream")
 
 
-proc doPost*(url, body: string): tuple[httpcode: HttpCode, body: string] =
+proc writeFromStream(f: AsyncFile, fs: FutureStream[string]): Future[int] {.async.} =
+  ## in house version of stdlib proc with timeout
+  var
+    hasValue: bool
+    value: string
+    attempt: Future[(bool, string)]
+
+  while true:
+    attempt = fs.read()
+    if await attempt.withTimeout(globalTimeoutInMilliseconds):
+      (hasValue, value) = attempt.read()
+      if hasValue:
+        await f.write(value)
+        result.inc(value.len)
+      else:
+        break
+    else:
+      raise newException(TimeoutError, "the server did not respond in time")
+
+
+proc doPost*(url, body: string, headers=globalHeaders): tuple[httpcode: HttpCode, body: string] =
   let client = newHttpClient(headers=newHttpHeaders(headers))
   try:
     let response = client.post(url, body=body)
@@ -487,7 +568,7 @@ proc doPost*(url, body: string): tuple[httpcode: HttpCode, body: string] =
     client.close()
 
 
-proc doGet*(url: string): tuple[httpcode: HttpCode, body: string] =
+proc doGet*(url: string, headers=globalHeaders): tuple[httpcode: HttpCode, body: string] =
   let client = newHttpClient(headers=newHttpHeaders(headers))
   try:
     let response = client.get(url)
@@ -499,55 +580,149 @@ proc doGet*(url: string): tuple[httpcode: HttpCode, body: string] =
     client.close()
 
 
-proc download(url, filepath: string): Future[HttpCode] {.async.} =
+proc doDownload(url, filepath: string, headers: seq[tuple[key, val: string]]): Future[HttpCode] {.async.} =
   ## download progressive streams
+  var
+    file: AsyncFile
+    attempt: Future[AsyncResponse]
+    resp: AsyncResponse
+    fMode: FileMode
+    bytesRead: int
+    tempHeaders = headers
+
   logDebug("download url: ", url)
-  let client = newAsyncHttpClient(headers=newHttpHeaders(headers))
-  var file = openasync(filepath, fmWrite)
-  client.onProgressChanged = onProgressChanged
-  logDebug("file opened at: ", filepath)
 
-  try:
-    let resp = await client.request(url)
-    await file.writeFromStream(resp.bodyStream)
-    result = resp.code
-  except Exception as e:
-    logError(e.msg)
-  finally:
-    file.close()
-    client.close()
-    clearProgress()
+  for n in 0..<globalRetryCount:
+    if n > 0:
+      logWarning("retry attempt: ", n)
+    if bytesRead > 0:
+      fMode = fmAppend
+      tempHeaders.update(("range", "bytes=$1-" % $bytesRead))
+    else:
+      fMode = fmWrite
+
+    let client = newAsyncHttpClient(headers=newHttpHeaders(tempHeaders))
+    client.onProgressChanged = onProgressChanged
+    logDebug("request headers: ", tempHeaders)
+
+    attempt = client.request(url)
+    try:
+      if await attempt.withTimeout(globalTimeoutInMilliseconds):
+        resp = attempt.read()
+      else:
+        result = Http408
+        raise newException(TimeoutError, "the server did not respond in time")
+      result = resp.code
+    except Exception as e:
+      logError(e.msg)
+      client.close()
+      return
+
+    logDebug(result)
+
+    if result == Http429:
+      let waitTime = resp.headers.getOrDefault("retry-after").parseInt()
+      logWarning("too many requests --> waiting: ", waitTime, " seconds")
+      await sleepAsync(waitTime * 1000)
+      continue
+
+    file = openasync(filepath, fMode)
+    logDebug("file opened at: ", filepath)
+    try:
+      bytesRead = await file.writeFromStream(resp.bodyStream)
+    except TimeoutError:
+      result = Http408
+      logError("aborting after waiting $1 seconds for a response" % $globalTimeout)
+    except Exception as catchall:
+      logError(catchall.msg)
+      result = HttpCode(0)
+    finally:
+      file.close()
+      client.close()
+      # QUESTION: reasoning behind this?
+      stdout.eraseLine()
+      madeProgress = false
+
+    # NOTE: only retry on timeout
+    if result != Http408:
+      break
 
 
-proc download(parts: seq[string], filepath: string): Future[HttpCode] {.async.} =
+proc doDownload(parts: seq[string], filepath: string, headers: seq[tuple[key, val: string]]): Future[HttpCode] {.async.} =
   ## download dash/hls streams
   # NOTE: global vars used by onProgressChangedMulti
   currentSegment = 0
   totalSegments = parts.len
-  let client = newAsyncHttpClient(headers=newHttpHeaders(headers))
-  var file = openasync(filepath, fmWrite)
+  var
+    file: AsyncFile
+    attempt: Future[AsyncResponse]
+    resp: AsyncResponse
+    bytesRead: int
+    tempHeaders = headers
+
+  let client = newAsyncHttpClient(headers=newHttpHeaders(tempHeaders))
   client.onProgressChanged = onProgressChangedMulti
+
+  file = openasync(filepath, fmWrite)
   logDebug("file opened at: ", filepath)
 
-  try:
-    for url in parts:
-      # logDebug("download url: ", url)
-      let resp = await client.request(url)
-      await file.writeFromStream(resp.bodyStream)
-      result = resp.code
-      inc currentSegment
-  except Exception as e:
-    logError(e.msg)
-  finally:
-    file.close()
-    client.close()
-    stdout.eraseLine()
-    madeProgress = false
+  for url in parts:
+    logDebug("download url: ", url)
+    for n in 0..<globalRetryCount:
+      if n > 0:
+        logWarning("retry attempt: ", n)
+      if bytesRead > 0:
+        tempHeaders.update(("range", "bytes=$1-" % $bytesRead))
+      logDebug("request headers: ", tempHeaders)
+
+      attempt = client.request(url)
+      try:
+        if await attempt.withTimeout(globalTimeoutInMilliseconds):
+          resp = attempt.read()
+        else:
+          result = Http408
+          raise newException(TimeoutError, "the server did not respond in time")
+        result = resp.code
+      except Exception as e:
+        logError(e.msg)
+        client.close()
+        file.close()
+        return
+
+      logDebug(result)
+
+      if result == Http429:
+        # NOTE: close file while we wait
+        file.close()
+        let waitTime = resp.headers.getOrDefault("retry-after").parseInt()
+        logWarning("too many requests --> waiting: ", waitTime, " seconds")
+        await sleepAsync(waitTime * 1000)
+        file = openasync(filepath, fmAppend)
+        continue
+
+      try:
+        bytesRead = await file.writeFromStream(resp.bodyStream)
+      except TimeoutError:
+        logError("aborting after waiting $1 seconds for a response" % $globalTimeout)
+      except Exception as catchall:
+        logError(catchall.msg)
+        result = HttpCode(0)
+      finally:
+        # QUESTION: reasoning behind this?
+        stdout.eraseLine()
+        madeProgress = false
+
+      # NOTE: only retry on timeout
+      if result != Http408:
+        bytesRead.reset()
+        break
+  client.close()
+  file.close()
 
 
-proc save*(content, filepath: string): bool =
+proc save*(content, filename: string): bool =
   ## write content to disk
-  var file = open(filepath, fmWrite)
+  var file = open(filename, fmWrite)
 
   try:
     file.write(content)
@@ -558,14 +733,56 @@ proc save*(content, filepath: string): bool =
     file.close()
 
 
-proc grab*(url: string | seq[string], filename: string, saveLocation=getCurrentDir(), overwrite=false): HttpCode =
-  ## download front end
+proc grab*(url: string | seq[string], filename: string, saveLocation=getCurrentDir(), overwrite=false, headers=globalHeaders): HttpCode =
+  ## simple download fron end
   let filepath = joinPath(saveLocation, filename)
   if not overwrite and fileExists(filepath):
     logError("file exists: ", filename)
   else:
-    result = waitFor download(url, filepath)
+    result = waitFor doDownload(url, filepath, headers)
     if result.is2xx:
       logGeneric(lvlInfo, "complete", filename)
     elif result != HttpCode(0):
       logError(result)
+
+
+proc complete*(download: Download, fullFilename, safeTitle, subtitlesLanguage, audioFormat: string): bool =
+  ## download streams and finalize
+  var
+    attempt: HttpCode
+
+  if download.includeVideo:
+    reportStreamInfo(download.videoStream)
+    if download.videoStream.format == "dash":
+      attempt = grab(download.videoStream.urlSegments, download.videoStream.filename, overwrite=true, headers=download.headers)
+    else:
+      attempt = grab(download.videoStream.url, download.videoStream.filename, overwrite=true, headers=download.headers)
+    if not attempt.is2xx:
+      logDebug(attempt)
+      logError("failed to download video stream")
+      # NOTE: remove empty file
+      discard tryRemoveFile(download.videoStream.filename)
+      return
+
+  if download.includeAudio and download.audioStream.exists:
+    reportStreamInfo(download.audioStream)
+    if download.audioStream.format == "dash":
+      attempt = grab(download.audioStream.urlSegments, download.audioStream.filename, overwrite=true, headers=download.headers)
+    else:
+      attempt = grab(download.audioStream.url, download.audioStream.filename, overwrite=true, headers=download.headers)
+    if not attempt.is2xx:
+      logDebug(attempt)
+      logError("failed to download audio stream")
+      # NOTE: remove empty file
+      discard tryRemoveFile(download.audioStream.filename)
+      return
+
+  # QUESTION: should we abort if either audio or video streams failed to download?
+  if download.includeAudio and download.includeVideo:
+    result = streamsToMkv(download.videoStream.filename, download.audioStream.filename, fullFilename, subtitlesLanguage, download.includeSubs)
+  elif download.includeAudio and not download.includeVideo:
+    result = convertAudio(download.audioStream.filename, safeTitle & " [" & download.audioStream.id & ']', audioFormat)
+  elif download.includeVideo:
+    result = streamToMkv(download.videoStream.filename, fullFilename, subtitlesLanguage, download.includeSubs)
+  else:
+    logError("no streams were downloaded")

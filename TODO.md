@@ -2,7 +2,6 @@
 + handle vimeo "channels" (playlists) -> eg: https://vimeo.com/channels/1186230
 + view available subtitle languages with --show? other flag?
 + more robust solution to bitrate/average bitrate comparations
-+ handle 429 errors
 + correct malformed error message:
 ```
 [error] 0eceived length doesn't match expected length. Wanted 344325615 got: 95632688
@@ -16,5 +15,4 @@
 + --show output is too wide for power shell
 + --show output should be context specific --> --show when passing a channel url
 should show channel information, while passing a video url should show video information
-+ add retry logic --> this will require homebrew version of writeFromStream
 + reelShelfRenderer

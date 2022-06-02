@@ -42,7 +42,6 @@ const
   # detailsUrl = "https://vimeo.com/api/v2/video/$1.json"
 
 var
-  includeAudio, includeVideo, includeThumb, includeSubtitles: bool
   audioFormat: string
   subtitlesLanguage: string
   showStreams: bool
@@ -59,7 +58,7 @@ proc authorize() =
   let (code, response) = doGet(authorizationUrl)
   if code.is2xx:
     let authResponse = parseJson(response)
-    headers.add(("authorization", "jwt " & authResponse["jwt"].getStr()))
+    globalHeaders.update(("authorization", "jwt " & authResponse["jwt"].getStr()))
   else:
     logError("authorization failed")
 
@@ -69,7 +68,7 @@ proc authorize() =
 ########################################################
 # NOTE: example video https://vimeo.com/358296408
 
-proc generateSubtitles(captions: JsonNode) =
+proc generateSubtitles(captions: JsonNode): bool =
   var textTrack = newJNull()
 
   if subtitlesLanguage != "":
@@ -90,11 +89,11 @@ proc generateSubtitles(captions: JsonNode) =
     logDebug("requesting captions")
     let (code, response) = doGet(textTrackUrl)
     if code.is2xx:
-      includeSubtitles = response.save(addFileExt(subtitlesLanguage, "srt"))
+      result = response.save(addFileExt(subtitlesLanguage, "srt"))
     else:
       logError("failed to download subtitles")
   else:
-    includeSubtitles = false
+    result = false
     logError("failed to obtain subtitles")
 
 
@@ -243,33 +242,6 @@ proc newStream(stream: JsonNode, videoId: string, duration: int, cdnUrl=""): Str
     result.exists = true
 
 
-proc newDownload(streams: seq[Stream], title, vimeoUrl, thumbnailUrl, videoId, aId, vId, aCodec, vCodec: string): Download =
-  result.title = title
-  result.url = vimeoUrl
-  result.videoId = videoId
-  result.thumbnailUrl = thumbnailUrl
-
-  if includeVideo:
-    result.videoStream = selectVideoStream(streams, vId, vCodec)
-  if includeAudio and result.videoStream.kind != "combined":
-    result.audioStream = selectAudioStream(streams, aId, aCodec)
-
-
-proc reportStreamInfo(stream: Stream) =
-  ## echo metadata for single stream
-  logInfo("stream: ", stream.filename)
-  logInfo("id: ", stream.id)
-  logInfo("size: ", stream.sizeShort)
-  if stream.quality != "":
-    logInfo("quality: ", stream.quality)
-  if stream.mime != "":
-    logInfo("mime: ", stream.mime)
-  if stream.codec != "":
-    logInfo("codec: ", stream.codec)
-  if stream.format == "dash":
-    logInfo("segments: ", stream.urlSegments.len)
-
-
 proc extractProfileIds(vimeoUrl: string): tuple[profileId, sectionId: string] =
   ## obtain userId and sectionId from profiles
   var
@@ -379,8 +351,9 @@ proc getPlayerConfig(configUrl, videoId: string): JsonNode =
     logNotice("trying embed url")
     # HACK: use embed url to get meta data
     # QUESTION: is there a seperate bypass url for unlisted videos?
-    headers.add(("referer", "https://cdn.embedly.com/"))
-    (code, response) = doGet(bypassUrl % videoId)
+    var tempHeaders = globalHeaders
+    tempHeaders.add(("referer", "https://cdn.embedly.com/"))
+    (code, response) = doGet(bypassUrl % videoId, tempHeaders)
     let embedResponse = response.captureBetween(' ', ';', response.find("""config =""") + 8)
 
     if embedResponse.contains("cdn_url"):
@@ -458,21 +431,20 @@ proc grabVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
     logDebug("default CDN: ", defaultCDN)
     logDebug("CDN url: ", cdnUrl)
     logDebug("requesting CDN json")
+
     (code, response) = doGet(cdnUrl.dequery())
     if code.is2xx:
       let cdnResponse = parseJson(response)
       if cdnResponse["video"].kind != JNull:
         for stream in cdnResponse["video"]:
           videoStreams.add(newStream(stream, videoId, duration, cdnUrl))
-      elif includeVideo:
+      else:
         logDebug("no video streams present in cdn response")
-        includeVideo = false
       if cdnResponse["audio"].kind != JNull:
         for stream in cdnResponse["audio"]:
           audioStreams.add(newStream(stream, videoId, duration, cdnUrl))
-      elif includeAudio:
+      else:
         logDebug("no audio streams present in cdn response")
-        includeAudio = false
     else:
       logDebug(code)
       logError("failed to obtain cdn json")
@@ -490,61 +462,29 @@ proc grabVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
   if showStreams:
     displayStreams(allStreams)
     return
-  if fileExists(fullFilename):
-    logError("file exists: ", fullFilename)
-    return
 
-  let download = newDownload(allStreams, title, standardVimeoUrl, thumbnailUrl, videoId, aId, vId, aCodec, vCodec)
+  var download = newDownload(title, standardVimeoUrl, thumbnailUrl, videoId)
   logInfo("title: ", download.title)
 
-  if includeThumb and thumbnailUrl != "":
+  if download.includeVideo:
+    download.videoStream = selectVideoStream(allStreams, vId, vCodec)
+  if download.includeAudio and download.videoStream.kind != "combined":
+    download.audioStream = selectAudioStream(allStreams, aId, aCodec)
+
+  if download.includeThumb and thumbnailUrl != "":
     if not grab(download.thumbnailUrl, fullFilename.changeFileExt("jpeg"), overwrite=true).is2xx:
       logError("failed to download thumbnail")
 
-  if includeSubtitles:
+  if download.includeSubs:
     if configResponse["request"].hasKey("text_tracks"):
-      generateSubtitles(configResponse["request"]["text_tracks"])
+      if not generateSubtitles(configResponse["request"]["text_tracks"]):
+        download.includeSubs = false
     else:
-      includeSubtitles = false
+      download.includeSubs = false
       logError("video does not contain subtitles")
 
-  var attempt: HttpCode
-  if includeVideo:
-    reportStreamInfo(download.videoStream)
-    if download.videoStream.format == "dash":
-      attempt = grab(download.videoStream.urlSegments, download.videoStream.filename, overwrite=true)
-    else:
-      attempt = grab(download.videoStream.url, download.videoStream.filename, overwrite=true)
-    if not attempt.is2xx:
-      logError("failed to download video stream")
-      includeVideo = false
-      # NOTE: remove empty file
-      discard tryRemoveFile(download.videoStream.filename)
-      return
-
-  if includeAudio and download.audioStream.exists:
-    reportStreamInfo(download.audioStream)
-    if download.audioStream.format == "dash":
-      attempt = grab(download.audioStream.urlSegments, download.audioStream.filename, overwrite=true)
-    else:
-      attempt = grab(download.audioStream.url, download.audioStream.filename, overwrite=true)
-    if not attempt.is2xx:
-      logError("failed to download audio stream")
-      includeAudio = false
-      # NOTE: remove empty file
-      discard tryRemoveFile(download.audioStream.filename)
-      return
-  else:
-    includeAudio = false
-
-  if includeAudio and includeVideo:
-    streamsToMkv(download.videoStream.filename, download.audioStream.filename, fullFilename, subtitlesLanguage, includeSubtitles)
-  elif includeAudio and not includeVideo:
-    convertAudio(download.audioStream.filename, safeTitle & " [" & videoId & ']', audioFormat)
-  elif includeVideo:
-    streamToMkv(download.videoStream.filename, fullFilename, subtitlesLanguage, includeSubtitles)
-  else:
-    logError("no streams were downloaded")
+  if not download.complete(fullFilename, safeTitle, subtitlesLanguage, audioFormat):
+    logError(download.videoId, ": failed")
 
 
 proc grabProfile(vimeoUrl, aId, vId, aCodec, vCodec: string) =
@@ -583,13 +523,13 @@ proc grabProfile(vimeoUrl, aId, vId, aCodec, vCodec: string) =
     grabVideo(url, aId, vId, aCodec, vCodec)
 
 
-proc vimeoDownload*(vimeoUrl, aFormat, aId, vId, aCodec, vCodec, sLang: string,
-                    iAudio, iVideo, iThumb, iSubtitles, sStreams, debug, silent: bool) =
-  includeAudio = iAudio
-  includeVideo = iVideo
-  includeThumb = iThumb
-  includeSubtitles = iSubtitles
-  subtitlesLanguage = sLang
+proc vimeoDownload*(vimeoUrl, aFormat, aId, vId, aCodec, vCodec, subLang: string,
+                    userWantsAudio, userWantsVideo, userWantsThumb, userWantsSubtitles, sStreams, debug, silent: bool) =
+  globalIncludeAudio = userWantsAudio
+  globalIncludeVideo = userWantsVideo
+  globalIncludeThumb = userWantsThumb
+  globalIncludeSubs = userWantsSubtitles
+  subtitlesLanguage = subLang
   audioFormat = aFormat
   showStreams = sStreams
 
