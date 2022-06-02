@@ -53,6 +53,8 @@ const
                  "mp3": "libmp3lame", "ogg": "libopus", "wav": "pcm_s32le"}.toTable
   codecOptions = {"aac": "-f adts", "flac": "", "m4a": "-bsf:a aac_adtstoasc",
                   "mp3": "-qscale:a 0", "ogg": "", "wav": ""}.toTable
+let
+  termWidth = terminalWidth()
 var
   globalLogLevel* = lvlInfo
   currentSegment, totalSegments: int
@@ -383,7 +385,7 @@ proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
   stdout.eraseLine()
   stdout.writeLine("> size: ", formatSize(total.int, includeSpace=true),
                    " speed: ", formatSize(speed.int, includeSpace=true), "/s",
-                   " eta: ", $eta)
+                   " eta: ", ($eta)[0..<termWidth])
   stdout.eraseLine()
   stdout.write("[", alignLeft(bar, barWidth), "]")
   stdout.setCursorXPos(0)
