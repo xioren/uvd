@@ -651,7 +651,7 @@ proc doDownload(url, filepath: string, headers: seq[tuple[key, val: string]]): F
 proc doDownload(parts: seq[string], filepath: string, headers: seq[tuple[key, val: string]]): Future[HttpCode] {.async.} =
   ## download dash/hls streams
   # NOTE: global vars used by onProgressChangedMulti
-  currentSegment = 0
+  currentSegment = 1
   totalSegments = parts.len
   var
     file: AsyncFile
@@ -716,6 +716,7 @@ proc doDownload(parts: seq[string], filepath: string, headers: seq[tuple[key, va
       if result != Http408:
         bytesRead.reset()
         break
+    inc currentSegment
   client.close()
   file.close()
 
