@@ -996,8 +996,10 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
         if download.includeAudio and download.videoStream.kind != "combined":
           download.audioStream = selectAudioStream(allStreams, aItag, aCodec)
           download.audioStream.setUrl(dashManifestUrl, hlsManifestUrl)
+        else:
+          download.includeAudio = false
 
-        download.headers.add(("range", "bytes=0-$1" % $download.videoStream.size))
+        # download.headers.add(("range", "bytes=0-$1" % $download.videoStream.size))
         if download.includeThumb:
           if not grab(download.thumbnailUrl, fullFilename.changeFileExt("jpeg"), overwrite=true).is2xx:
             logError("failed to download thumbnail")

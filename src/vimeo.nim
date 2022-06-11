@@ -470,6 +470,8 @@ proc grabVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
     download.videoStream = selectVideoStream(allStreams, vId, vCodec)
   if download.includeAudio and download.videoStream.kind != "combined":
     download.audioStream = selectAudioStream(allStreams, aId, aCodec)
+  else:
+    download.includeAudio = false
 
   if download.includeThumb and thumbnailUrl != "":
     if not grab(download.thumbnailUrl, fullFilename.changeFileExt("jpeg"), overwrite=true).is2xx:

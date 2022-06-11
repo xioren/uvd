@@ -597,7 +597,7 @@ proc doDownload(url, filepath: string, headers: seq[tuple[key, val: string]]): F
       logWarning("retry attempt: ", n)
     if bytesRead > 0:
       fMode = fmAppend
-      tempHeaders.update(("range", "bytes=$1-" % $bytesRead))
+      tempHeaders.update(("range", "bytes=$1-" % $(bytesRead.succ)))
     else:
       fMode = fmWrite
 
