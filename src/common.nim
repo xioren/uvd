@@ -412,14 +412,14 @@ proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
     bar = '#'.repeat(floor(progress.int / total.int * barWidth).int)
   var
     eta = $initDuration(seconds=((total - progress).int / speed.int).int)
-
-  if eta.len >= termWidth:
-    eta = eta[0..<termWidth.pred]
+    info = "> size: " & formatSize(total.int, includeSpace=true) &
+           " speed: " & formatSize(speed.int, includeSpace=true) & "/s" &
+           " eta: " & eta
+  if info.len >= termWidth:
+    info = info[0..<termWidth]
 
   stdout.eraseLine()
-  stdout.writeLine("> size: ", formatSize(total.int, includeSpace=true),
-                   " speed: ", formatSize(speed.int, includeSpace=true), "/s",
-                   " eta: ", eta)
+  stdout.writeLine(info)
   stdout.eraseLine()
   stdout.write("[", alignLeft(bar, barWidth), "]")
   stdout.setCursorXPos(0)
