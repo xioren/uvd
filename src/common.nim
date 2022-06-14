@@ -588,22 +588,22 @@ proc doDownload(url, filepath: string, headers: seq[tuple[key, val: string]]): F
     resp: AsyncResponse
     fMode: FileMode
     bytesRead: int
-    tempHeaders = headers
 
   logDebug("download url: ", url)
+
+  let client = newAsyncHttpClient(headers=newHttpHeaders(headers))
+  client.onProgressChanged = onProgressChanged
 
   for n in 0..<globalRetryCount:
     if n > 0:
       logWarning("retry attempt: ", n)
     if bytesRead > 0:
       fMode = fmAppend
-      tempHeaders.update(("range", "bytes=$1-" % $(bytesRead.succ)))
+      client.headers["range"] = "bytes=$1-" % $bytesRead
     else:
       fMode = fmWrite
 
-    let client = newAsyncHttpClient(headers=newHttpHeaders(tempHeaders))
-    client.onProgressChanged = onProgressChanged
-    logDebug("request headers: ", tempHeaders)
+    logDebug("request headers: ", client.headers)
 
     attempt = client.request(url)
     try:
@@ -657,9 +657,9 @@ proc doDownload(parts: seq[string], filepath: string, headers: seq[tuple[key, va
     attempt: Future[AsyncResponse]
     resp: AsyncResponse
     bytesRead: int
-    tempHeaders = headers
 
-  let client = newAsyncHttpClient(headers=newHttpHeaders(tempHeaders))
+
+  let client = newAsyncHttpClient(headers=newHttpHeaders(headers))
   client.onProgressChanged = onProgressChangedMulti
 
   file = openasync(filepath, fmWrite)
@@ -670,9 +670,9 @@ proc doDownload(parts: seq[string], filepath: string, headers: seq[tuple[key, va
     for n in 0..<globalRetryCount:
       if n > 0:
         logWarning("retry attempt: ", n)
-      if bytesRead > 0:
-        tempHeaders.update(("range", "bytes=$1-" % $bytesRead))
-      logDebug("request headers: ", tempHeaders)
+        client.headers["range"] = "bytes=$1-" % $bytesRead
+
+      logDebug("request headers: ", client.headers)
 
       attempt = client.request(url)
       try:
@@ -717,9 +717,10 @@ proc doDownload(parts: seq[string], filepath: string, headers: seq[tuple[key, va
         bytesRead.reset()
         break
     inc currentSegment
+    if client.headers.hasKey("range"):
+      client.headers.del("range")
   client.close()
   file.close()
-  clearProgress()
 
 
 proc save*(content, filename: string): bool =
@@ -736,7 +737,7 @@ proc save*(content, filename: string): bool =
 
 
 proc grab*(url: string | seq[string], filename: string, saveLocation=getCurrentDir(), overwrite=false, headers=globalHeaders): HttpCode =
-  ## simple download fron end
+  ## simple download front end
   let filepath = joinPath(saveLocation, filename)
   if not overwrite and fileExists(filepath):
     logError("file exists: ", filename)
@@ -749,7 +750,7 @@ proc grab*(url: string | seq[string], filename: string, saveLocation=getCurrentD
 
 
 proc complete*(download: Download, fullFilename, safeTitle, subtitlesLanguage, audioFormat: string): bool =
-  ## download streams and finalize
+  ## complete a download
   var
     attempt: HttpCode
 
@@ -779,7 +780,6 @@ proc complete*(download: Download, fullFilename, safeTitle, subtitlesLanguage, a
       discard tryRemoveFile(download.audioStream.filename)
       return
 
-  # QUESTION: should we abort if either audio or video streams failed to download?
   if download.includeAudio and download.includeVideo:
     result = streamsToMkv(download.videoStream.filename, download.audioStream.filename, fullFilename, subtitlesLanguage, download.includeSubs)
   elif download.includeAudio and not download.includeVideo:
