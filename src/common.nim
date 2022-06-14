@@ -414,7 +414,7 @@ proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
     eta = $initDuration(seconds=((total - progress).int / speed.int).int)
 
   if eta.len >= termWidth:
-    eta = eta[0..<termWidth]
+    eta = eta[0..<termWidth.pred]
 
   stdout.eraseLine()
   stdout.writeLine("> size: ", formatSize(total.int, includeSpace=true),
@@ -639,8 +639,7 @@ proc doDownload(url, filepath: string, headers: seq[tuple[key, val: string]]): F
     finally:
       file.close()
       client.close()
-      # QUESTION: reasoning behind this?
-      stdout.eraseLine()
+      clearProgress()
       madeProgress = false
 
     # NOTE: only retry on timeout
@@ -709,6 +708,7 @@ proc doDownload(parts: seq[string], filepath: string, headers: seq[tuple[key, va
         result = HttpCode(0)
       finally:
         # QUESTION: reasoning behind this?
+        # NOTE: i think only eraseline beacuse there is no progress bar here
         stdout.eraseLine()
         madeProgress = false
 
@@ -719,6 +719,7 @@ proc doDownload(parts: seq[string], filepath: string, headers: seq[tuple[key, va
     inc currentSegment
   client.close()
   file.close()
+  clearProgress()
 
 
 proc save*(content, filename: string): bool =

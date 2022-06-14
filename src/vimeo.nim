@@ -512,7 +512,8 @@ proc grabProfile(vimeoUrl, aId, vId, aCodec, vCodec: string) =
     if code.is2xx:
       profileResponse = parseJson(response)
       for video in profileResponse["data"]:
-        urls.add(playerUrl & video["clip"]["uri"].getStr())
+        if video["clip"].kind != JNull:
+          urls.add(playerUrl & video["clip"]["uri"].getStr())
       nextUrl = apiUrl & profileResponse["paging"]["next"].getStr()
     else:
       logDebug(code)
