@@ -43,3 +43,4 @@ options:
   the desired language output of the subtitles; forgoing this option selects the default
   subtitle language for a given video. for youtube, if the desired language
   does not exist natively, a translation is used instead (when available).
+  + with the exception of audio only downloads, uvd outputs exclusively to mkv containers.
