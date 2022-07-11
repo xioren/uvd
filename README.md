@@ -25,7 +25,8 @@ options:
   -v, --video-only                    video only
   --audio-id <id>                     audio stream id
   --video-id <id>                     video stream id
-  -f, --format <format>               audio output format
+  --audio-format <format>             output audio format
+  --container <container>             default mkv
   -h, --help                          print this help
   -l, --language <iso code>           desired subtitle language
   --prefer-acodec <acodec>            audio codec to prefer
@@ -43,4 +44,3 @@ options:
   the desired language output of the subtitles; forgoing this option selects the default
   subtitle language for a given video. for youtube, if the desired language
   does not exist natively, a translation is used instead (when available).
-  + with the exception of audio only downloads, uvd outputs exclusively to mkv containers.
