@@ -528,7 +528,7 @@ proc convertAudio*(audioStream, filename: string): bool =
       (sourceDir, sourceName, sourceExt) = splitFile(audioStream)
       (targetDir, targetName, targetExt) = splitFile(fullFilename)
     fullFilename = addFileExt(targetName, sourceExt)
-    moveFile(audioStream, addFileExt(targetName, sourceExt))
+    moveFile(audioStream, fullFilename)
   else:
     logInfo("converting stream: ", audioStream)
     if audioFormat == "ogg" and audioStream.endsWith(".weba"):
