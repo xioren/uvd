@@ -25,7 +25,8 @@ options:
   -v, --video-only                    video only
   --audio-id <id>                     audio stream id
   --video-id <id>                     video stream id
-  --audio-format <format>             output audio format
+  --audio-format <format>             output audio format used in combination
+                                      with --audio-only; default ogg
   --container <container>             default mkv
   -h, --help                          print this help
   -l, --language <iso code>           desired subtitle language
