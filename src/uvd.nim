@@ -15,7 +15,7 @@ proc main() =
         -v, --video-only                    video only
         --audio-id <id>                     audio stream id
         --video-id <id>                     video stream id
-        --audio-format <format>             output audio format conversion used in
+        --audio-format <format>             audio format conversion used in
                                             combination with --audio-only
         --container <container>             default mkv
         -h, --help                          print this help
