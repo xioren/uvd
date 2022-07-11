@@ -65,11 +65,14 @@ const
 let
   termWidth = terminalWidth()
 var
+  audioFormat*: string
+  containerType*: string
+  showStreams*: bool
+  subtitlesLanguage*: string
   globalHeaders* = @[("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.79 Safari/537.36"),
                      ("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*"),
-                     ("accept-Language", "en-us,en;q=0.5"),
-                     ("accept-encoding", "identity"),
-                     ("sec-fetch-mode", "navigate")]
+                     ("accept-language", "en-us,en;q=0.5"),
+                     ("accept-encoding", "identity")]
   globalIncludeAudio*, globalIncludeVideo*, globalIncludeThumb*, globalIncludeSubs*: bool
   globalLogLevel* = lvlInfo
   currentSegment, totalSegments: int
@@ -469,7 +472,7 @@ proc update*(headers: var seq[tuple[key, val: string]], newEntry: tuple[key, val
   headers.add(newEntry)
 
 
-proc streamToMkv*(stream, filename, subtitlesLanguage: string, includeSubtitles: bool): bool =
+proc streamToMkv*(stream, filename: string, includeSubtitles: bool): bool =
   ## put single stream in mkv container
   logInfo("converting: ", stream)
   var command: string
@@ -491,7 +494,7 @@ proc streamToMkv*(stream, filename, subtitlesLanguage: string, includeSubtitles:
     logError("failed to convert stream")
 
 
-proc streamsToMkv*(videoStream, audioStream, filename, subtitlesLanguage: string, includeSubtitles: bool): bool =
+proc streamsToMkv*(videoStream, audioStream, filename: string, includeSubtitles: bool): bool =
   ## join audio and video streams in mkv container
   logInfo("joining streams: ", videoStream, " + ", audioStream)
   var command: string
@@ -514,17 +517,17 @@ proc streamsToMkv*(videoStream, audioStream, filename, subtitlesLanguage: string
     logError("failed to join streams")
 
 
-proc convertAudio*(audioStream, filename, format: string): bool =
+proc convertAudio*(audioStream, filename: string): bool =
   ## convert audio stream to desired format
   var returnCode: int
-  let fullFilename = addFileExt(filename, format)
+  let fullFilename = addFileExt(filename, audioFormat)
 
-  if not audioStream.endsWith(format):
+  if not audioStream.endsWith(audioFormat):
     logInfo("converting stream: ", audioStream)
-    if format == "ogg" and audioStream.endsWith(".weba"):
+    if audioFormat == "ogg" and audioStream.endsWith(".weba"):
       returnCode = execShellCmd(fmt"ffmpeg -y -loglevel panic -i {audioStream} -codec:a copy {quoteShell(fullFilename)}")
     else:
-      returnCode = execShellCmd(fmt"ffmpeg -y -loglevel panic -i {audioStream} -codec:a {audioCodecs[format]} {codecOptions[format]} {quoteShell(fullFilename)}")
+      returnCode = execShellCmd(fmt"ffmpeg -y -loglevel panic -i {audioStream} -codec:a {audioCodecs[audioFormat]} {codecOptions[audioFormat]} {quoteShell(fullFilename)}")
   else:
     moveFile(audioStream, fullFilename)
 
@@ -749,7 +752,7 @@ proc grab*(url: string | seq[string], filename: string, saveLocation=getCurrentD
       logError(result)
 
 
-proc complete*(download: Download, fullFilename, safeTitle, subtitlesLanguage, audioFormat: string): bool =
+proc complete*(download: Download, fullFilename, safeTitle: string): bool =
   ## complete a download
   var
     attempt: HttpCode
@@ -781,10 +784,10 @@ proc complete*(download: Download, fullFilename, safeTitle, subtitlesLanguage, a
       return
 
   if download.includeAudio and download.includeVideo:
-    result = streamsToMkv(download.videoStream.filename, download.audioStream.filename, fullFilename, subtitlesLanguage, download.includeSubs)
+    result = streamsToMkv(download.videoStream.filename, download.audioStream.filename, fullFilename, download.includeSubs)
   elif download.includeAudio and not download.includeVideo:
-    result = convertAudio(download.audioStream.filename, safeTitle & " [" & download.audioStream.id & ']', audioFormat)
+    result = convertAudio(download.audioStream.filename, safeTitle & " [" & download.audioStream.id & ']')
   elif download.includeVideo:
-    result = streamToMkv(download.videoStream.filename, fullFilename, subtitlesLanguage, download.includeSubs)
+    result = streamToMkv(download.videoStream.filename, fullFilename, download.includeSubs)
   else:
     logError("no streams were downloaded")

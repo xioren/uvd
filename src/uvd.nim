@@ -6,7 +6,7 @@ import vimeo, youtube
 
 proc main() =
   const
-    version = "0.1.5"
+    version = "0.1.6"
     help = """
       usage: uvd [options] url
 
@@ -15,7 +15,8 @@ proc main() =
         -v, --video-only                    video only
         --audio-id <id>                     audio stream id
         --video-id <id>                     video stream id
-        -f, --format <format>               audio output format
+        --audio-format <format>             output audio format
+        --container <container>             default mkv
         -h, --help                          print this help
         -l, --language <iso code>           desired subtitle language
         --prefer-acodec <acodec>            audio codec to prefer
@@ -40,7 +41,8 @@ proc main() =
     vId: string
     aCodec: string
     vCodec: string
-    format = "ogg"
+    audioFormat = "ogg"
+    container = "mkv"
     desiredLanguage: string
     unknownUrl: string
 
@@ -66,12 +68,14 @@ proc main() =
           aId = val
         of "debug":
           debug = true
-        of "f", "format":
+        of "audio-format":
           if val in acceptedFormats:
-            format = val
+            audioFormat = val
           else:
             echo "accepted audio formats: ", acceptedFormats
             return
+        of "container":
+          container = val
         of "h", "help":
           echo help
           return
@@ -101,10 +105,10 @@ proc main() =
           return
 
     if unknownUrl.contains("vimeo"):
-      vimeoDownload(unknownUrl, format, aId, vId, aCodec, vCodec, desiredLanguage,
+      vimeoDownload(unknownUrl, audioFormat, container, aId, vId, aCodec, vCodec, desiredLanguage,
                     iAudio, iVideo, iThumb, iSubtitles, streams, debug, silent)
     elif unknownUrl.contains("youtu"):
-      youtubeDownload(unknownUrl, format, aId, vId, aCodec, vCodec, desiredLanguage,
+      youtubeDownload(unknownUrl, audioFormat, container, aId, vId, aCodec, vCodec, desiredLanguage,
                       iAudio, iVideo, iThumb, iSubtitles, streams, debug, silent)
     else:
       echo "invalid url: ", unknownUrl

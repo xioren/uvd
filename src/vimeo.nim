@@ -41,11 +41,6 @@ const
   authorizationUrl = "https://vimeo.com/_rv/viewer"
   # detailsUrl = "https://vimeo.com/api/v2/video/$1.json"
 
-var
-  audioFormat: string
-  subtitlesLanguage: string
-  showStreams: bool
-
 
 ########################################################
 # authentication
@@ -457,7 +452,7 @@ proc grabVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
 
   let
     safeTitle = makeSafe(title)
-    fullFilename = addFileExt(safeTitle & " [" & videoId & ']', ".mkv")
+    fullFilename = addFileExt(safeTitle & " [" & videoId & ']', containerType)
 
   if showStreams:
     displayStreams(allStreams)
@@ -485,7 +480,7 @@ proc grabVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
       download.includeSubs = false
       logError("video does not contain subtitles")
 
-  if not download.complete(fullFilename, safeTitle, subtitlesLanguage, audioFormat):
+  if not download.complete(fullFilename, safeTitle):
     logError(download.videoId, ": failed")
 
 
@@ -526,7 +521,7 @@ proc grabProfile(vimeoUrl, aId, vId, aCodec, vCodec: string) =
     grabVideo(url, aId, vId, aCodec, vCodec)
 
 
-proc vimeoDownload*(vimeoUrl, aFormat, aId, vId, aCodec, vCodec, subLang: string,
+proc vimeoDownload*(vimeoUrl, aFormat, container, aId, vId, aCodec, vCodec, subLang: string,
                     userWantsAudio, userWantsVideo, userWantsThumb, userWantsSubtitles, sStreams, debug, silent: bool) =
   globalIncludeAudio = userWantsAudio
   globalIncludeVideo = userWantsVideo
@@ -534,6 +529,7 @@ proc vimeoDownload*(vimeoUrl, aFormat, aId, vId, aCodec, vCodec, subLang: string
   globalIncludeSubs = userWantsSubtitles
   subtitlesLanguage = subLang
   audioFormat = aFormat
+  containerType = container
   showStreams = sStreams
 
   if debug:

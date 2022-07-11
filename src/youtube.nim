@@ -158,9 +158,6 @@ let date = now().format("yyyyMMdd")
 
 var
   apiLocale: string
-  subtitlesLanguage: string
-  audioFormat: string
-  showStreams: bool
   globalBaseJsVersion: string
   cipherPlan: seq[string]
   cipherFunctionMap: Table[string, string]
@@ -929,7 +926,7 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
       let
         title = playerResponse["videoDetails"]["title"].getStr()
         safeTitle = makeSafe(title)
-        fullFilename = addFileExt(safeTitle & " [" & videoId & ']', ".mkv")
+        fullFilename = addFileExt(safeTitle & " [" & videoId & ']', containerType)
         duration = parseInt(playerResponse["videoDetails"]["lengthSeconds"].getStr())
         thumbnailUrl = playerResponse["videoDetails"]["thumbnail"]["thumbnails"][^1]["url"].getStr().dequery().multiReplace(("_webp", ""), (".webp", ".jpg"))
 
@@ -1012,7 +1009,7 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
             download.includeSubs = false
             logError("video does not contain subtitles")
 
-        if not download.complete(fullFilename, safeTitle, subtitlesLanguage, audioFormat):
+        if not download.complete(fullFilename, safeTitle):
           logError(download.videoId, ": failed")
     else:
       logDebug(code)
@@ -1155,7 +1152,7 @@ proc grabChannel(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
     grabPlaylist(playlistUrl & id, aItag, vItag, aCodec, vCodec)
 
 
-proc youtubeDownload*(youtubeUrl, aFormat, aItag, vItag, aCodec, vCodec, subLang: string,
+proc youtubeDownload*(youtubeUrl, aFormat, container, aItag, vItag, aCodec, vCodec, subLang: string,
                       userWantsAudio, userWantsVideo, userWantsThumb, userWantsSubtitles, sStreams, debug, silent: bool) =
   globalIncludeAudio = userWantsAudio
   globalIncludeVideo = userWantsVideo
@@ -1163,6 +1160,7 @@ proc youtubeDownload*(youtubeUrl, aFormat, aItag, vItag, aCodec, vCodec, subLang
   globalIncludeSubs = userWantsSubtitles
   subtitlesLanguage = subLang
   audioFormat = aFormat
+  containerType = container
   showStreams = sStreams
 
   if debug:
