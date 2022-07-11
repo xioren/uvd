@@ -518,18 +518,23 @@ proc streamsToMkv*(videoStream, audioStream, filename: string, includeSubtitles:
 
 
 proc convertAudio*(audioStream, filename: string): bool =
-  ## convert audio stream to desired format
-  var returnCode: int
-  let fullFilename = addFileExt(filename, audioFormat)
+  ## convert audio stream to desired format and/or rename final filename
+  var
+    returnCode: int
+    fullFilename = addFileExt(filename, audioFormat)
 
-  if not audioStream.endsWith(audioFormat):
+  if audioStream.endsWith(audioFormat) or audioFormat == "source":
+    let
+      (sourceDir, sourceName, sourceExt) = splitFile(audioStream)
+      (targetDir, targetName, targetExt) = splitFile(fullFilename)
+    fullFilename = addFileExt(targetName, sourceExt)
+    moveFile(audioStream, addFileExt(targetName, sourceExt))
+  else:
     logInfo("converting stream: ", audioStream)
     if audioFormat == "ogg" and audioStream.endsWith(".weba"):
       returnCode = execShellCmd(fmt"ffmpeg -y -loglevel panic -i {audioStream} -codec:a copy {quoteShell(fullFilename)}")
     else:
       returnCode = execShellCmd(fmt"ffmpeg -y -loglevel panic -i {audioStream} -codec:a {audioCodecs[audioFormat]} {codecOptions[audioFormat]} {quoteShell(fullFilename)}")
-  else:
-    moveFile(audioStream, fullFilename)
 
   if returnCode == 0:
     removeFile(audioStream)

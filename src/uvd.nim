@@ -15,8 +15,8 @@ proc main() =
         -v, --video-only                    video only
         --audio-id <id>                     audio stream id
         --video-id <id>                     video stream id
-        --audio-format <format>             output audio format used in combination
-                                            with --audio-only; default ogg
+        --audio-format <format>             output audio format conversion used in
+                                            combination with --audio-only
         --container <container>             default mkv
         -h, --help                          print this help
         -l, --language <iso code>           desired subtitle language
@@ -42,7 +42,7 @@ proc main() =
     vId: string
     aCodec: string
     vCodec: string
-    audioFormat = "ogg"
+    audioFormat = "source"
     container = "mkv"
     desiredLanguage: string
     unknownUrl: string
@@ -50,7 +50,7 @@ proc main() =
   const
     sNoVal = {'a', 'v', 's', 'h', 'S'}
     lNoVal = @["audio-only", "debug", "help", "show", "silent", "subtitles", "thumb", "video-only"]
-    acceptedAudioFormats = ["aac", "flac", "m4a", "mp3", "ogg", "wav"]
+    acceptedAudioFormats = ["aac", "flac", "m4a", "mp3", "ogg", "source", "wav"]
     acceptedContainers = ["mp4", "mkv", "webm"]
 
   if args.len < 1:
