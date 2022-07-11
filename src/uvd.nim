@@ -49,7 +49,8 @@ proc main() =
   const
     sNoVal = {'a', 'v', 's', 'h', 'S'}
     lNoVal = @["audio-only", "debug", "help", "show", "silent", "subtitles", "thumb", "video-only"]
-    acceptedFormats = ["aac", "flac", "m4a", "mp3", "ogg", "wav"]
+    acceptedAudioFormats = ["aac", "flac", "m4a", "mp3", "ogg", "wav"]
+    acceptedContainers = ["mp4", "mkv", "webm"]
 
   if args.len < 1:
     echo help
@@ -69,13 +70,17 @@ proc main() =
         of "debug":
           debug = true
         of "audio-format":
-          if val in acceptedFormats:
+          if val in acceptedAudioFormats:
             audioFormat = val
           else:
-            echo "accepted audio formats: ", acceptedFormats
+            echo "accepted audio formats: ", acceptedAudioFormats
             return
         of "container":
-          container = val
+          if val in acceptedContainers:
+            container = val
+          else:
+            echo "accepted containers: ", acceptedContainers
+            return
         of "h", "help":
           echo help
           return
