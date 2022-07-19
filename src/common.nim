@@ -791,7 +791,7 @@ proc complete*(download: Download, fullFilename, safeTitle: string): bool =
   if download.includeAudio and download.includeVideo:
     result = streamsToMkv(download.videoStream.filename, download.audioStream.filename, fullFilename, download.includeSubs)
   elif download.includeAudio and not download.includeVideo:
-    result = convertAudio(download.audioStream.filename, safeTitle & " [" & download.audioStream.id & ']')
+    result = convertAudio(download.audioStream.filename, safeTitle & " [" & download.videoId & ']')
   elif download.includeVideo:
     result = streamToMkv(download.videoStream.filename, fullFilename, download.includeSubs)
   else:

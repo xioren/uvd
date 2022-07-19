@@ -13,6 +13,8 @@
  --> https://player.vimeo.com/external/videoId.hd.mp4?s=44a9bc0663a3f0cd99fbee1877cc245f2d5878b5&profile_id=175
 + consider letting ffmpeg output to standard out when --debug flag is used
 + --show output is too wide for power shell
-+ --show output should be context specific --> --show when passing a channel url
++ --show output should be context specific --> --
++ --show should be usefull for playlists and channels too
+show when passing a channel url
 should show channel information, while passing a video url should show video information
 + reelShelfRenderer

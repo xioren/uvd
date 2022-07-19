@@ -465,7 +465,7 @@ proc parseThrottleArray(js: string): seq[string] =
 proc parseThrottlePlan(js: string): seq[seq[string]] =
   ## parse steps and indexes of throttle plan
   # NOTE: (c[4](c[52])...) --> @[@[4, 52],...]
-  let plan = js.captureBetween('{', '}', js.find("try"))
+  let plan = js.captureBetween('{', '}', js.find("try{"))
   var
     step: seq[string]
     last: char
