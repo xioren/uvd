@@ -1,5 +1,5 @@
-import std/[algorithm, asyncdispatch, asyncfile, httpclient, json, os, parseutils,
-            sequtils, sets, strformat, strutils, tables, terminal, times, uri]
+import std/[algorithm, asyncdispatch, asyncfile, httpclient, json, monotimes, os,
+            parseutils, sequtils, sets, strformat, strutils, tables, terminal, times, uri]
 from net import TimeoutError
 from math import floor
 
@@ -39,6 +39,7 @@ type
     exists*: bool
 
   Download* = object
+    source*: string
     title*: string
     videoId*: string
     url*: string
@@ -75,11 +76,9 @@ var
                      ("accept-encoding", "identity")]
   globalIncludeAudio*, globalIncludeVideo*, globalIncludeThumb*, globalIncludeSubs*: bool
   globalLogLevel* = lvlInfo
-  currentSegment, totalSegments: int
   # HACK: a not ideal solution to prevent erroneosly clearing terminal when no progress was made (e.g. 403 forbidden)
   madeProgress: bool
-  #[ NOTE: all streams are now throttled by bitrate/filesize despite correct n value translation.
-    using identity encoding and bytes=0-resource size bypasses this ]#
+
 
 proc doGet*(url: string, headers=globalHeaders): tuple[httpcode: HttpCode, body: string]
 
@@ -153,7 +152,8 @@ proc logFatal*(messageParts: varargs[string, `$`]) {.inline.} =
 ########################################################
 
 
-proc newDownload*(title, url, thumbnailUrl, videoId: string): Download =
+proc newDownload*(source, title, url, thumbnailUrl, videoId: string): Download =
+  result.source = source
   result.title = title
   result.url = url
   result.videoId = videoId
@@ -405,42 +405,8 @@ proc clearProgress() =
     stdout.cursorDown()
     stdout.eraseLine()
     stdout.cursorUp()
+    stdout.flushFile()
     madeProgress = false
-
-
-proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
-  ## for progressive streams
-  const barWidth = 50
-  let
-    bar = '#'.repeat(floor(progress.int / total.int * barWidth).int)
-  var
-    eta = $initDuration(seconds=((total - progress).int / speed.int).int)
-    info = "> size: " & formatSize(total.int, includeSpace=true) &
-           " speed: " & formatSize(speed.int, includeSpace=true) & "/s" &
-           " eta: " & eta
-  if info.len >= termWidth:
-    info = info[0..<termWidth]
-
-  stdout.eraseLine()
-  stdout.writeLine(info)
-  stdout.eraseLine()
-  stdout.write("[", alignLeft(bar, barWidth), "]")
-  stdout.setCursorXPos(0)
-  stdout.cursorUp()
-  stdout.flushFile()
-  if not madeProgress:
-    madeProgress = true
-
-
-proc onProgressChangedMulti(total, progress, speed: BiggestInt) {.async.} =
-  ## for segmented streams (e.g. DASH)
-  stdout.eraseLine()
-  stdout.write("> size: ", formatSize(total.int, includeSpace=true),
-               " segment: ", currentSegment, " of ", totalSegments)
-  stdout.setCursorXPos(0)
-  stdout.flushFile()
-  if not madeProgress:
-    madeProgress = true
 
 
 proc reportStreamInfo(stream: Stream) =
@@ -588,14 +554,53 @@ proc doGet*(url: string, headers=globalHeaders): tuple[httpcode: HttpCode, body:
     client.close()
 
 
-proc doDownload(url, filepath: string, headers: seq[tuple[key, val: string]]): Future[HttpCode] {.async.} =
-  ## download progressive streams
+proc getRange(current, total: int): tuple[lower, upper: int] {.inline.} =
+  ## get next download range for youtube urls
+  # TODO: dial this in
+  const chunk = 832500 * 3
+  let limit = current + chunk
+
+  if limit > total:
+    result = (current, total)
+  else:
+    result = (current, limit)
+
+
+proc setRange(url: string, lower, upper: int): string {.inline.} =
+    ## append range to youtube url
+    result = url & "&range=" & $lower & "-" & $upper
+
+
+proc doDirectDownload(url, filepath: string, headers: seq[tuple[key, val: string]]): Future[HttpCode] {.async.} =
+  ## download direct progressive streams
   var
     file: AsyncFile
     attempt: Future[AsyncResponse]
     resp: AsyncResponse
     fMode: FileMode
     bytesRead: int
+
+  proc onProgressChanged(total, progress, speed: BiggestInt) {.async.} =
+    const barWidth = 50
+    let
+      bar = '#'.repeat(floor(progress.int / total.int * barWidth).int)
+    var
+      eta = $initDuration(seconds=((total - progress).int / speed.int).int)
+      info = "> size: " & formatSize(total, includeSpace=true) &
+             " speed: " & formatSize(speed, includeSpace=true) & "/s" &
+             " eta: " & eta
+    if info.len >= termWidth:
+      info = info[0..<termWidth]
+
+    stdout.eraseLine()
+    stdout.writeLine(info)
+    stdout.eraseLine()
+    stdout.write("[", alignLeft(bar, barWidth), "]")
+    stdout.setCursorXPos(0)
+    stdout.cursorUp()
+    stdout.flushFile()
+    if not madeProgress:
+      madeProgress = true
 
   logDebug("download url: ", url)
 
@@ -648,32 +653,164 @@ proc doDownload(url, filepath: string, headers: seq[tuple[key, val: string]]): F
       file.close()
       client.close()
       clearProgress()
-      madeProgress = false
 
     # NOTE: only retry on timeout
     if result != Http408:
       break
 
 
-proc doDownload(parts: seq[string], filepath: string, headers: seq[tuple[key, val: string]]): Future[HttpCode] {.async.} =
+proc doRangedDownload(url, filepath: string, contentSize: int, headers: seq[tuple[key, val: string]]): Future[HttpCode] {.async.} =
+  ## download youtube ranged progressive streams
+  var
+    rangedUrl: string
+    file: AsyncFile
+    attempt: Future[AsyncResponse]
+    resp: AsyncResponse
+    lower, upper, bytesRead, totalBytesRead, currentSpeed: int
+    lastProgressReport: MonoTime
+
+  proc onProgressChangedRanged(total, progress, speed: BiggestInt) {.async.} =
+    const barWidth = 50
+    let
+      bar = '#'.repeat(floor(totalBytesRead / contentSize * barWidth).int)
+
+    var eta: string
+    if currentSpeed == 0:
+      eta = "unknown"
+    else:
+      eta = $initDuration(seconds=((contentSize - totalBytesRead).int / currentSpeed).int)
+
+    var info = "> size: " & formatSize(contentSize, includeSpace=true) &
+               " speed: " & formatSize(currentSpeed, includeSpace=true) & "/s" &
+               " eta: " & eta
+    if info.len >= termWidth:
+      info = info[0..<termWidth]
+
+    stdout.eraseLine()
+    stdout.writeLine(info)
+    stdout.eraseLine()
+    stdout.write("[", alignLeft(bar, barWidth), "]")
+    stdout.setCursorXPos(0)
+    stdout.cursorUp()
+    stdout.flushFile()
+    if not madeProgress:
+      madeProgress = true
+
+  proc writeFromStream(f: AsyncFile, fs: FutureStream[string]): Future[int] {.async.} =
+    ## in house version of stdlib proc with timeout specific for ranged youtube downloads
+    var
+      hasValue: bool
+      value: string
+      attempt: Future[(bool, string)]
+
+    while true:
+      attempt = fs.read()
+      if await attempt.withTimeout(globalTimeoutInMilliseconds):
+        (hasValue, value) = attempt.read()
+        if hasValue:
+          await f.write(value)
+          result.inc(value.len)
+          currentSpeed.inc(value.len)
+        else:
+          break
+        if (getMonoTime() - lastProgressReport).inSeconds >= 1:
+          currentSpeed = bytesRead
+          lastProgressReport = getMonoTime()
+      else:
+        raise newException(TimeoutError, "the server did not respond in time")
+
+  logDebug("download url: ", url)
+
+  let client = newAsyncHttpClient(headers=newHttpHeaders(headers))
+  client.onProgressChanged = onProgressChangedRanged
+
+  file = openasync(filepath, fmWrite)
+  logDebug("file opened at: ", filepath)
+
+  while true:
+    (lower, upper) = getRange(totalBytesRead, contentSize)
+    rangedUrl = setRange(url, lower, upper)
+
+    logDebug("ranged url: ", rangedUrl)
+    for n in 0..<globalRetryCount:
+      if n > 0:
+        logWarning("retry attempt: ", n)
+        (lower, upper) = getRange(totalBytesRead, contentSize)
+        rangedUrl = setRange(url, lower, upper)
+
+      logDebug("request headers: ", client.headers)
+
+      attempt = client.request(rangedUrl)
+      try:
+        if await attempt.withTimeout(globalTimeoutInMilliseconds):
+          resp = attempt.read()
+        else:
+          result = Http408
+          raise newException(TimeoutError, "the server did not respond in time")
+        result = resp.code
+      except Exception as e:
+        logError(e.msg)
+        client.close()
+        file.close()
+        return
+
+      logDebug(result)
+
+      if result == Http429:
+        # NOTE: close file while we wait
+        file.close()
+        let waitTime = resp.headers.getOrDefault("retry-after").parseInt()
+        logWarning("too many requests --> waiting: ", waitTime, " seconds")
+        await sleepAsync(waitTime * 1000)
+        file = openasync(filepath, fmAppend)
+        continue
+
+      try:
+        bytesRead = await file.writeFromStream(resp.bodyStream)
+        totalBytesRead.inc(bytesRead)
+      except TimeoutError:
+        result = Http408
+        logError("aborting after waiting $1 seconds for a response" % $globalTimeout)
+      except Exception as catchall:
+        logError(catchall.msg)
+        result = HttpCode(0)
+
+      # NOTE: only retry on timeout
+      if result != Http408:
+        break
+    if upper >= contentSize:
+      break
+  client.close()
+  file.close()
+  clearProgress()
+
+
+proc doSegmentedDownload(segments: seq[string], filepath: string, headers: seq[tuple[key, val: string]]): Future[HttpCode] {.async.} =
   ## download dash/hls streams
-  # NOTE: global vars used by onProgressChangedMulti
-  currentSegment = 1
-  totalSegments = parts.len
   var
     file: AsyncFile
     attempt: Future[AsyncResponse]
     resp: AsyncResponse
     bytesRead: int
+    currentSegment = 1
+    totalSegments = segments.len
 
+  proc onProgressChangedSegmented(total, progress, speed: BiggestInt) {.async.} =
+    stdout.eraseLine()
+    stdout.write("> size: ", formatSize(total.int, includeSpace=true),
+                 " segment: ", currentSegment, " of ", totalSegments)
+    stdout.setCursorXPos(0)
+    stdout.flushFile()
+    if not madeProgress:
+      madeProgress = true
 
   let client = newAsyncHttpClient(headers=newHttpHeaders(headers))
-  client.onProgressChanged = onProgressChangedMulti
+  client.onProgressChanged = onProgressChangedSegmented
 
   file = openasync(filepath, fmWrite)
   logDebug("file opened at: ", filepath)
 
-  for url in parts:
+  for url in segments:
     logDebug("download url: ", url)
     for n in 0..<globalRetryCount:
       if n > 0:
@@ -708,7 +845,7 @@ proc doDownload(parts: seq[string], filepath: string, headers: seq[tuple[key, va
         continue
 
       try:
-        bytesRead = await file.writeFromStream(resp.bodyStream)
+        bytesRead.inc(await file.writeFromStream(resp.bodyStream))
       except TimeoutError:
         logError("aborting after waiting $1 seconds for a response" % $globalTimeout)
       except Exception as catchall:
@@ -716,7 +853,7 @@ proc doDownload(parts: seq[string], filepath: string, headers: seq[tuple[key, va
         result = HttpCode(0)
       finally:
         # QUESTION: reasoning behind this?
-        # NOTE: i think only eraseline beacuse there is no progress bar here
+        # NOTE: i think only eraseline because there is no progress bar here
         stdout.eraseLine()
         madeProgress = false
 
@@ -744,13 +881,39 @@ proc save*(content, filename: string): bool =
     file.close()
 
 
-proc grab*(url: string | seq[string], filename: string, saveLocation=getCurrentDir(), overwrite=false, headers=globalHeaders): HttpCode =
-  ## simple download front end
+proc grab*(url: string, filename: string, saveLocation=getCurrentDir(), overwrite=false, headers=globalHeaders): HttpCode =
+  ## doDirectDownload front end
   let filepath = joinPath(saveLocation, filename)
   if not overwrite and fileExists(filepath):
     logError("file exists: ", filename)
   else:
-    result = waitFor doDownload(url, filepath, headers)
+    result = waitFor doDirectDownload(url, filepath, headers)
+    if result.is2xx:
+      logGeneric(lvlInfo, "complete", filename)
+    elif result != HttpCode(0):
+      logError(result)
+
+
+proc grab*(url: string, filename: string, contentSize: int, saveLocation=getCurrentDir(), overwrite=false, headers=globalHeaders): HttpCode =
+  ## doRangedDownload front end
+  let filepath = joinPath(saveLocation, filename)
+  if not overwrite and fileExists(filepath):
+    logError("file exists: ", filename)
+  else:
+    result = waitFor doRangedDownload(url, filepath, contentSize, headers)
+    if result.is2xx:
+      logGeneric(lvlInfo, "complete", filename)
+    elif result != HttpCode(0):
+      logError(result)
+
+
+proc grab*(url: seq[string], filename: string, saveLocation=getCurrentDir(), overwrite=false, headers=globalHeaders): HttpCode =
+  ## doSegmentedDownload front end
+  let filepath = joinPath(saveLocation, filename)
+  if not overwrite and fileExists(filepath):
+    logError("file exists: ", filename)
+  else:
+    result = waitFor doSegmentedDownload(url, filepath, headers)
     if result.is2xx:
       logGeneric(lvlInfo, "complete", filename)
     elif result != HttpCode(0):
@@ -758,16 +921,17 @@ proc grab*(url: string | seq[string], filename: string, saveLocation=getCurrentD
 
 
 proc complete*(download: Download, fullFilename, safeTitle: string): bool =
-  ## complete a download
-  var
-    attempt: HttpCode
+  ## initiate and complete download and finalizations
+  var attempt: HttpCode
 
   if download.includeVideo:
     reportStreamInfo(download.videoStream)
     if download.videoStream.format == "dash":
       attempt = grab(download.videoStream.urlSegments, download.videoStream.filename, overwrite=true, headers=download.headers)
-    else:
+    elif download.source == "vimeo":
       attempt = grab(download.videoStream.url, download.videoStream.filename, overwrite=true, headers=download.headers)
+    else:
+      attempt = grab(download.videoStream.url, download.videoStream.filename, download.videoStream.size, overwrite=true, headers=download.headers)
     if not attempt.is2xx:
       logDebug(attempt)
       logError("failed to download video stream")
@@ -779,8 +943,10 @@ proc complete*(download: Download, fullFilename, safeTitle: string): bool =
     reportStreamInfo(download.audioStream)
     if download.audioStream.format == "dash":
       attempt = grab(download.audioStream.urlSegments, download.audioStream.filename, overwrite=true, headers=download.headers)
-    else:
+    elif download.source == "vimeo":
       attempt = grab(download.audioStream.url, download.audioStream.filename, overwrite=true, headers=download.headers)
+    else:
+      attempt = grab(download.audioStream.url, download.audioStream.filename, download.audioStream.size, overwrite=true, headers=download.headers)
     if not attempt.is2xx:
       logDebug(attempt)
       logError("failed to download audio stream")

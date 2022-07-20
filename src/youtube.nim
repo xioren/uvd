@@ -984,7 +984,7 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
           displayStreams(allStreams)
           return
 
-        var download = newDownload(title, standardYoutubeUrl, thumbnailUrl, videoId)
+        var download = newDownload("youtube", title, standardYoutubeUrl, thumbnailUrl, videoId)
         logInfo("title: ", download.title)
 
         if download.includeVideo:

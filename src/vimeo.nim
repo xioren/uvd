@@ -458,7 +458,7 @@ proc grabVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
     displayStreams(allStreams)
     return
 
-  var download = newDownload(title, standardVimeoUrl, thumbnailUrl, videoId)
+  var download = newDownload("vimeo", title, standardVimeoUrl, thumbnailUrl, videoId)
   logInfo("title: ", download.title)
 
   if download.includeVideo:
