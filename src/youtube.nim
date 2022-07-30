@@ -825,7 +825,7 @@ proc parseBaseJS() =
     throttlePlan = parseThrottlePlan(throttleCode)
     throttleArray = parseThrottleArray(throttleCode)
   else:
-    logDebug(code)
+    logDebug("http code: ", code)
     logError("failed to obtain base.js")
 
 
@@ -1012,10 +1012,10 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
         if not download.complete(fullFilename, safeTitle):
           logError(download.videoId, ": failed")
     else:
-      logDebug(code)
+      logDebug("http code: ", code)
       logError(videoMetadataFailureMessage)
   else:
-    logDebug(code)
+    logDebug("http code: ", code)
     logError(videoMetadataFailureMessage)
 
 
@@ -1043,7 +1043,7 @@ proc grabPlaylist(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
         logGeneric(lvlInfo, "download", idx.succ, " of ", videoIds.len)
         grabVideo(watchUrl & id, aItag, vItag, aCodec, vCodec)
   else:
-    logDebug(code)
+    logDebug("http code: ", code)
     logError(playlistMetadataFailureMessage)
 
 
@@ -1085,7 +1085,7 @@ proc grabChannel(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
                 else:
                   lastToken = thisToken
               else:
-                logDebug(code)
+                logDebug("http code: ", code)
                 logError(channelMetadataFailureMessage)
           else:
             yield item["grid" & capRenderer & "Renderer"][renderer & "Id"].getStr()
@@ -1137,10 +1137,10 @@ proc grabChannel(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
           logDebug("no playlist tab found")
           logError(channelMetadataFailureMessage)
       else:
-        logDebug(code)
+        logDebug("http code: ", code)
         logError(channelMetadataFailureMessage)
   else:
-    logDebug(code)
+    logDebug("http code: ", code)
     logError(channelMetadataFailureMessage)
 
   logInfo(videoIds.len, " videos queued")

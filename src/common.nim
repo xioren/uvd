@@ -283,8 +283,8 @@ proc selectVideoByBitrate*(streams: seq[Stream], codec: string): Stream =
       if stream.semiperimeter >= maxSemiperimeter:
         if stream.semiperimeter > maxSemiperimeter:
           maxSemiperimeter = stream.semiperimeter
-
-        if stream.bitrate > maxBitrate:
+          select = idx
+        elif stream.bitrate > maxBitrate:
           maxBitrate = stream.bitrate
           select = idx
     inc idx
@@ -727,18 +727,20 @@ proc doRangedDownload(url, filepath: string, contentSize: int, headers: seq[tupl
   file = openasync(filepath, fmWrite)
   logDebug("file opened at: ", filepath)
 
+  logDebug("request headers: ", client.headers)
+
   while true:
     (lower, upper) = getRange(totalBytesRead, contentSize)
     rangedUrl = setRange(url, lower, upper)
 
-    logDebug("ranged url: ", rangedUrl)
+    # logDebug("ranged url: ", rangedUrl)
     for n in 0..<globalRetryCount:
       if n > 0:
         logWarning("retry attempt: ", n)
         (lower, upper) = getRange(totalBytesRead, contentSize)
         rangedUrl = setRange(url, lower, upper)
 
-      logDebug("request headers: ", client.headers)
+      # logDebug("request headers: ", client.headers)
 
       attempt = client.request(rangedUrl)
       try:
@@ -776,6 +778,7 @@ proc doRangedDownload(url, filepath: string, contentSize: int, headers: seq[tupl
         result = HttpCode(0)
 
       # NOTE: only retry on timeout
+      # QUESTION: what about 503?
       if result != Http408:
         break
     if upper >= contentSize:

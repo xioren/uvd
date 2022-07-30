@@ -250,7 +250,7 @@ proc extractProfileIds(vimeoUrl: string): tuple[profileId, sectionId: string] =
     let parts = profileResponse["data"][0]["uri"].getStr().split('/')
     result = (parts[2], parts[^1])
   else:
-    logDebug(code)
+    logDebug("http code: ", code)
     logError("failed to obtain profile metadata")
 
 
@@ -324,7 +324,7 @@ proc getVideoData(videoId: string, unlistedHash=""): JsonNode =
   if code.is2xx:
     result = parseJson(response)
   else:
-    logDebug(code)
+    logDebug("http code: ", code)
     logError("failed to obtain video api data")
 
 
@@ -342,7 +342,7 @@ proc getPlayerConfig(configUrl, videoId: string): JsonNode =
   (code, response) = doGet(configUrl)
 
   if code == Http403:
-    logDebug(code)
+    logDebug("http code: ", code)
     logNotice("trying embed url")
     # HACK: use embed url to get meta data
     # QUESTION: is there a seperate bypass url for unlisted videos?
@@ -357,7 +357,7 @@ proc getPlayerConfig(configUrl, videoId: string): JsonNode =
       logError("failed to obtain player config")
   elif not code.is2xx:
     # let configResponse = parseJson(response)
-    logDebug(code)
+    logDebug("http code: ", code)
     # logError(configResponse["message"].getStr().strip(chars={'"'}))
     logError("failed to obtain player config")
   else:
@@ -441,7 +441,7 @@ proc grabVideo(vimeoUrl: string, aId, vId, aCodec, vCodec: string) =
       else:
         logDebug("no audio streams present in cdn response")
     else:
-      logDebug(code)
+      logDebug("http code: ", code)
       logError("failed to obtain cdn json")
       return
   else:
@@ -511,7 +511,7 @@ proc grabProfile(vimeoUrl, aId, vId, aCodec, vCodec: string) =
           urls.add(playerUrl & video["clip"]["uri"].getStr())
       nextUrl = apiUrl & profileResponse["paging"]["next"].getStr()
     else:
-      logDebug(code)
+      logDebug("http code: ", code)
       logError("failed to obtain profile metadata")
       return
 
