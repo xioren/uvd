@@ -631,8 +631,6 @@ proc doDirectDownload(url, filepath: string, headers: seq[tuple[key, val: string
       client.close()
       return
 
-    logDebug(result)
-
     if result == Http429:
       let waitTime = resp.headers.getOrDefault("retry-after").parseInt()
       logWarning("too many requests --> waiting: ", waitTime, " seconds")
@@ -756,8 +754,6 @@ proc doRangedDownload(url, filepath: string, contentSize: int, headers: seq[tupl
         file.close()
         return
 
-      logDebug(result)
-
       if result == Http429:
         # NOTE: close file while we wait
         file.close()
@@ -814,13 +810,13 @@ proc doSegmentedDownload(segments: seq[string], filepath: string, headers: seq[t
   logDebug("file opened at: ", filepath)
 
   for url in segments:
-    logDebug("download url: ", url)
+    # logDebug("download url: ", url)
     for n in 0..<globalRetryCount:
       if n > 0:
         logWarning("retry attempt: ", n)
         client.headers["range"] = "bytes=$1-" % $bytesRead
 
-      logDebug("request headers: ", client.headers)
+      # logDebug("request headers: ", client.headers)
 
       attempt = client.request(url)
       try:
@@ -835,8 +831,6 @@ proc doSegmentedDownload(segments: seq[string], filepath: string, headers: seq[t
         client.close()
         file.close()
         return
-
-      logDebug(result)
 
       if result == Http429:
         # NOTE: close file while we wait

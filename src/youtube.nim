@@ -622,6 +622,7 @@ proc decipher(signature: string): string =
 
 proc getSigCipherUrl(signatureCipher: string): string =
   ## produce url with deciphered signature
+  logDebug("cipher url: ", signatureCipher)
   let parts = getParts(signatureCipher)
   result = parts.url & "&" & parts.sc & "=" & encodeUrl(decipher(parts.s))
 
@@ -634,12 +635,11 @@ proc getSigCipherUrl(signatureCipher: string): string =
 proc urlOrCipher(stream: Stream): string =
   ## produce stream url, deciphering if necessary and tranform n throttle string
   var transformedN: string
-  if not stream.url.startsWith("https"):
-    result = getSigCipherUrl(stream.url)
-  else:
+  if stream.url.startsWith("https"):
     result = stream.url
+  else:
+    result = getSigCipherUrl(stream.url)
 
-  # TEMP: this is to see if sometimes the server sends empty urls or some other unkown value / format
   logDebug("initial url: ", result)
 
   let n = result.captureBetween('=', '&', result.find("&n="))
@@ -968,11 +968,12 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
           hlsManifestUrl = playerResponse["streamingData"]["hlsManifestUrl"].getStr()
           logDebug("HLS manifest url: ", hlsManifestUrl)
 
-        for stream in playerResponse["streamingData"]["adaptiveFormats"]:
-          if stream.hasKey("width"):
-            videoStreams.add(newStream(stream, videoId, duration, dashManifestUrl))
-          else:
-            audioStreams.add(newStream(stream, videoId, duration, dashManifestUrl))
+        if playerResponse["streamingData"].hasKey("adaptiveFormats"):
+          for stream in playerResponse["streamingData"]["adaptiveFormats"]:
+            if stream.hasKey("width"):
+              videoStreams.add(newStream(stream, videoId, duration, dashManifestUrl))
+            else:
+              audioStreams.add(newStream(stream, videoId, duration, dashManifestUrl))
 
         if playerResponse["streamingData"].hasKey("formats"):
           for stream in playerResponse["streamingData"]["formats"]:
