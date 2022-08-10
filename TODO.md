@@ -18,3 +18,4 @@
 show when passing a channel url
 should show channel information, while passing a video url should show video information
 + reelShelfRenderer
++ handle error message: {"error":{"code":404,"message":"Requested entity was not found.","errors":[{"message":"Requested entity was not found.","domain":"global","reason":"notFound"}],"status":"NOT_FOUND"}}

@@ -29,47 +29,12 @@ const
     "racyCheckOk": true,
     "videoId": "$1"
   }"""
-  playerBypassContextTier1 = """{
+  playerBypassContext = """{
     "context": {
       "client": {
         "hl": "en",
-        "clientName": "WEB_EMBEDDED_PLAYER",
-        "clientVersion": "2.$3.00.00"
-      }
-    },
-    "playbackContext": {
-      "contentPlaybackContext": {
-        "signatureTimestamp": $2
-      }
-    },
-    "contentCheckOk": true,
-    "racyCheckOk": true,
-    "videoId": "$1"
-  }"""
-  playerBypassContextTier2 = """{
-    "context": {
-      "client": {
-        "hl": "en",
-        "clientName": "WEB",
-        "clientVersion": "2.$3.00.00",
-        "clientScreen": "EMBED"
-      }
-    },
-    "playbackContext": {
-      "contentPlaybackContext": {
-        "signatureTimestamp": $2
-      }
-    },
-    "contentCheckOk": true,
-    "racyCheckOk": true,
-    "videoId": "$1"
-  }"""
-  playerBypassContextTier3 = """{
-    "context": {
-      "client": {
-        "hl": "en",
-        "clientName": "WEB",
-        "clientVersion": "2.$3.00.00",
+        "clientName": "TVHTML5_SIMPLY_EMBEDDED_PLAYER",
+        "clientVersion": "2.0",
         "clientScreen": "EMBED"
         },
       "thirdParty": {
@@ -935,19 +900,13 @@ proc grabVideo(youtubeUrl, aItag, vItag, aCodec, vCodec: string) =
       else:
         # NOTE: age gate and unplayable video handling
         if playerResponse["playabilityStatus"]["status"].getStr() == "LOGIN_REQUIRED":
-          for idx, ctx in [playerBypassContextTier1, playerBypassContextTier2, playerBypassContextTier3]:
-            logNotice("attempting age-gate bypass tier $1" % $idx.succ)
-            logDebug("requesting player")
-            (code, response) = doPost(playerUrl, ctx % [videoId, sigTimeStamp, date])
-            playerResponse = parseJson(response)
-            if playerResponse["playabilityStatus"]["status"].getStr() != "OK":
-              walkErrorMessage(playerResponse["playabilityStatus"])
-              # NOTE: all attempts failed
-              if idx == 2:
-                logNotice("age-gate bypass is unreliable. sometimes waiting a while and retrying works.")
-                return
-            else:
-              break
+          logNotice("attempting age-gate bypass")
+          logDebug("requesting player")
+          (code, response) = doPost(playerUrl, playerBypassContext % [videoId, sigTimeStamp])
+          playerResponse = parseJson(response)
+          if playerResponse.hasKey("playabilityStatus") and playerResponse["playabilityStatus"]["status"].getStr() != "OK":
+            walkErrorMessage(playerResponse["playabilityStatus"])
+            return
         elif playerResponse["videoDetails"].hasKey("isLive") and playerResponse["videoDetails"]["isLive"].getBool():
           if playerResponse["videoDetails"]["isLiveContent"].getBool():
             logError("this video is currently live")
